@@ -1,0 +1,14 @@
+{
+  "name": "beamline",
+  "private": true,
+  "workspaces": [
+    "beamline_js_sdk",
+    "beamline_demo_app/backend",
+    "beamline_demo_app/frontend"
+  ],
+  "scripts": {
+    "build": "npm run -w beamline_js_sdk build && npm run -w beamline_demo_backend build && npm run -w beamline_demo_frontend build",
+    "demo:backend": "npm run -w beamline_demo_backend start",
+    "demo:frontend": "npm run -w beamline_demo_frontend start"
+  }
+}
