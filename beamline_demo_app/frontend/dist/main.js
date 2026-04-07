@@ -3,7 +3,7 @@ async function runFrontendDemo() {
     const frontend = createClient({
         // Replace with hosted Beamline websocket URL in real usage.
         url: "ws://localhost:4000/socket/websocket",
-        transport: "mock",
+        transport: "phoenix",
     });
     frontend.on("stateChange", ({ state }) => {
         console.log(`[frontend] state=${state}`);
@@ -16,6 +16,8 @@ async function runFrontendDemo() {
         from: "frontend",
         ts: Date.now(),
     });
+    // Keep the socket open briefly to show inbound broadcast logs.
+    await new Promise((resolve) => setTimeout(resolve, 250));
     await frontend.disconnect("demo-complete");
 }
 void runFrontendDemo();

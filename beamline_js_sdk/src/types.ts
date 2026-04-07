@@ -35,7 +35,7 @@ export interface ClientOptions {
   authToken?: string;
   getAuthToken?: () => Promise<string>;
   reconnect?: Partial<ReconnectConfig>;
-  transport?: "mock";
+  transport?: "mock" | "phoenix";
 }
 
 export type TopicHandler = (message: BeamlineEnvelope) => void;

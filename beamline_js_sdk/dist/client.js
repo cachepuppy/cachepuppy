@@ -1,5 +1,6 @@
 import { createEnvelope, isEnvelope } from "./protocol.js";
 import { MockTransport } from "./transport/mockTransport.js";
+import { PhoenixTransport } from "./transport/phoenixTransport.js";
 class TypedEventBus {
     handlers = new Map();
     on(event, handler) {
@@ -37,7 +38,10 @@ export class BeamlineClient {
     unlistenEnvelope;
     constructor(options) {
         this.options = options;
-        this.transport = new MockTransport();
+        this.transport =
+            options.transport === "mock"
+                ? new MockTransport()
+                : new PhoenixTransport(options.url, options.authToken);
         this.reconnect = { ...DEFAULT_RECONNECT, ...(options.reconnect ?? {}) };
         this.clientId = `client_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
     }
@@ -91,13 +95,14 @@ export class BeamlineClient {
         }
     }
     async subscribe(topic, handler) {
-        if (!this.topicHandlers.has(topic)) {
+        const isNewTopic = !this.topicHandlers.has(topic);
+        if (isNewTopic) {
             this.topicHandlers.set(topic, new Set());
-            if (this.state === "connected") {
-                await this.transport.sendEnvelope(this.clientId, createEnvelope({ type: "subscribe", topic }));
-            }
         }
         this.topicHandlers.get(topic).add(handler);
+        if (isNewTopic && this.state === "connected") {
+            await this.transport.sendEnvelope(this.clientId, createEnvelope({ type: "subscribe", topic }));
+        }
         return () => {
             const set = this.topicHandlers.get(topic);
             if (!set) {

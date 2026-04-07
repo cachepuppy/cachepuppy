@@ -1,0 +1,22 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# TypeScript build output
+**/dist/
+*.tsbuildinfo
+
+# Elixir / Phoenix
+**/_build/
+**/deps/
+**/.elixir_ls/
+**/cover/
+**/.mix/
+
+# OS / editor noise
+.DS_Store
+.idea/
+.vscode/
