@@ -54,9 +54,9 @@ export class BeamlineClient {
     this.transport =
       options.transport === "mock"
         ? new MockTransport()
-        : new PhoenixTransport(options.url, options.authToken);
+        : new PhoenixTransport(options.url, options.authToken, options.clientId);
     this.reconnect = { ...DEFAULT_RECONNECT, ...(options.reconnect ?? {}) };
-    this.clientId = `client_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    this.clientId = options.clientId ?? `client_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
   }
 
   private setState(state: ConnectionState): void {

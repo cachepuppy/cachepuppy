@@ -8,6 +8,8 @@ This page is a plain-English list of calls available to apps that talk to the Be
 
 Creates a Beamline client object.
 
+Optional: pass `clientId` to label this connection with your own custom ID.
+
 ## 2) Open and close connection
 
 - `connect()` - open websocket connection to Beamline server.

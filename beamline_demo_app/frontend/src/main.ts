@@ -5,6 +5,7 @@ async function runFrontendDemo(): Promise<void> {
     // Replace with hosted Beamline websocket URL in real usage.
     url: "ws://localhost:4000/socket/websocket",
     transport: "phoenix",
+    clientId: "frontend_demo_user_1",
   });
 
   client.on("stateChange", ({ state }) => {
@@ -14,7 +15,7 @@ async function runFrontendDemo(): Promise<void> {
   await client.connect();
 
   await client.subscribe("chat_room_123", (message) => {
-    console.log("[frontend] Received:", message.event, message.payload);
+    console.log("[frontend] Received:", message.event, message.payload, message.meta);
   });
 
   console.log(

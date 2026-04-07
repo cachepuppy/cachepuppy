@@ -10,7 +10,7 @@ defmodule BeamlineCoreAppWeb.EventChannel do
   def handle_in(
         "publish",
         %{"event" => event, "payload" => payload},
-        %{assigns: %{topic: topic}} = socket
+        %{assigns: %{topic: topic, client_id: client_id}} = socket
       ) do
     message = %{
       "v" => 1,
@@ -18,7 +18,8 @@ defmodule BeamlineCoreAppWeb.EventChannel do
       "topic" => topic,
       "event" => event,
       "payload" => payload,
-      "ts" => System.system_time(:millisecond)
+      "ts" => System.system_time(:millisecond),
+      "meta" => %{"clientId" => client_id}
     }
 
     broadcast!(socket, "message", message)
@@ -29,6 +30,7 @@ defmodule BeamlineCoreAppWeb.EventChannel do
   def handle_in("message", %{"type" => "publish"} = envelope, socket) do
     event = Map.get(envelope, "event")
     payload = Map.get(envelope, "payload")
+    client_id = socket.assigns.client_id
 
     message = %{
       "v" => 1,
@@ -36,7 +38,8 @@ defmodule BeamlineCoreAppWeb.EventChannel do
       "topic" => socket.assigns.topic,
       "event" => event,
       "payload" => payload,
-      "ts" => System.system_time(:millisecond)
+      "ts" => System.system_time(:millisecond),
+      "meta" => %{"clientId" => client_id}
     }
 
     broadcast!(socket, "message", message)

@@ -18,6 +18,7 @@ export interface ReconnectConfig {
 }
 export interface ClientOptions {
     url: string;
+    clientId?: string;
     authToken?: string;
     getAuthToken?: () => Promise<string>;
     reconnect?: Partial<ReconnectConfig>;

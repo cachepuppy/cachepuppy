@@ -22,11 +22,19 @@ export class PhoenixTransport implements Transport {
   private channels = new Map<string, Channel>();
   private channelReady = new Map<string, Promise<Channel>>();
 
-  constructor(private readonly baseUrl: string, private readonly authToken?: string) {}
+  constructor(
+    private readonly baseUrl: string,
+    private readonly authToken?: string,
+    private readonly customClientId?: string,
+  ) {}
 
   async connect(_clientId: string): Promise<void> {
+    const clientId = this.customClientId ?? _clientId;
     this.socket = new Socket(toSocketPath(this.baseUrl), {
-      params: this.authToken ? { token: this.authToken } : {},
+      params: {
+        ...(this.authToken ? { token: this.authToken } : {}),
+        client_id: clientId,
+      },
     });
     this.socket.connect();
   }
@@ -62,6 +70,9 @@ export class PhoenixTransport implements Transport {
 
     const channel = this.socket.channel(channelTopic, {});
     channel.on("message", (payload: Record<string, unknown>) => {
+      const payloadMeta =
+        payload.meta && typeof payload.meta === "object" ? (payload.meta as Record<string, unknown>) : {};
+
       const message: BeamlineEnvelope = {
         v: 1,
         type: "publish",
@@ -70,7 +81,7 @@ export class PhoenixTransport implements Transport {
         event: typeof payload.event === "string" ? payload.event : "message",
         payload: payload.payload,
         ts: typeof payload.ts === "number" ? payload.ts : Date.now(),
-        meta: { transport: "phoenix" },
+        meta: { transport: "phoenix", ...payloadMeta },
       };
       this.emit(clientId, message);
     });

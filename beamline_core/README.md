@@ -19,6 +19,7 @@ Server runs on `http://localhost:4000`.
 
 - Socket path: `/socket/websocket`
 - Channel topic format: `events:<topic_name>`
+- Optional connect param: `client_id` for custom client identity labels.
 
 Supported inbound events:
 
@@ -28,4 +29,4 @@ Supported inbound events:
 Broadcast behavior:
 
 - Server broadcasts `"message"` events to all subscribers on the channel topic.
-- Outbound message shape follows the Beamline envelope fields (`v`, `type`, `topic`, `event`, `payload`, `ts`).
+- Outbound message shape follows the Beamline envelope fields (`v`, `type`, `topic`, `event`, `payload`, `ts`, `meta`).

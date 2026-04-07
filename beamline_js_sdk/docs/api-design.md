@@ -16,6 +16,7 @@ This document defines the SDK API first, before any Elixir engine implementation
 ```ts
 const client = createClient({
   url: "ws://localhost:4000/socket/websocket",
+  clientId: "frontend_user_123",
   authToken: "token-123",
   getAuthToken: async () => "token-rotated",
   reconnect: {
