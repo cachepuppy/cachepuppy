@@ -1,23 +1,9 @@
 import { createClient } from "beamline_js_sdk";
 
 async function runFrontendDemo(): Promise<void> {
-  // Mock transport is in-memory and process-local, so we spin up both
-  // sides inside one script for a full end-to-end demo without backend engine.
-  const embeddedBackend = createClient({
-    url: "mock://beamline",
-    transport: "mock",
-  });
-  await embeddedBackend.connect();
-  await embeddedBackend.subscribe("demo.events", async (message) => {
-    if (message.event === "ping") {
-      await embeddedBackend.publish("demo.events", "pong", {
-        from: "embedded-backend",
-        ts: Date.now(),
-      });
-    }
-  });
   const frontend = createClient({
-    url: "mock://beamline",
+    // Replace with hosted Beamline websocket URL in real usage.
+    url: "ws://localhost:4000/socket/websocket",
     transport: "mock",
   });
 
@@ -31,13 +17,12 @@ async function runFrontendDemo(): Promise<void> {
     console.log("[frontend] topic message:", message.event, message.payload);
   });
 
-  await frontend.publish("demo.events", "ping", {
+  await frontend.publish("demo.events", "client_ready", {
     from: "frontend",
     ts: Date.now(),
   });
 
   await frontend.disconnect("demo-complete");
-  await embeddedBackend.disconnect("demo-complete");
 }
 
 void runFrontendDemo();

@@ -1,6 +1,6 @@
 # beamline_demo_app
 
-Demo application for validating Beamline SDK usage before the Elixir backend is implemented.
+Frontend-only demo for validating Beamline SDK usage against the managed Elixir websocket server.
 
 ## Purpose
 
@@ -9,14 +9,11 @@ Demo application for validating Beamline SDK usage before the Elixir backend is 
 
 ## Structure
 
-- `backend`: Node.js process using `beamline_js_sdk`.
 - `frontend`: Browser-style client simulation using `beamline_js_sdk`.
 
 ## Scenario
 
-1. Backend connects and subscribes to `demo.events`.
-2. Frontend connects and subscribes to `demo.events`.
-3. Frontend publishes `demo.events:ping`.
-4. Backend receives and publishes `demo.events:pong`.
-
-Both sides use SDK mock transport in this phase.
+1. Frontend connects to websocket endpoint.
+2. Frontend subscribes to `demo.events`.
+3. Frontend publishes `demo.events:client_ready`.
+4. Frontend logs incoming events from the server.

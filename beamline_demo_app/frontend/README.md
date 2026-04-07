@@ -6,11 +6,11 @@
 
 - Connect to mock transport and emit lifecycle logs.
 - Subscribe to `demo.events`.
-- Publish `demo.events:ping`.
+- Publish `demo.events:client_ready`.
 - Listen for protocol events.
 
 ## Expected behavior
 
-- Receives `demo.events:pong` after ping.
+- Logs incoming events for `demo.events`.
 
-Note: the current `frontend/src/main.ts` starts an embedded mock backend client in-process because mock transport is in-memory and process-local.
+For production usage, point the SDK `url` to the hosted Beamline Elixir websocket endpoint.
