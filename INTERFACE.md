@@ -22,6 +22,7 @@ Optional: pass `clientId` to label this connection with your own custom ID.
 - `subscribe(topic, handler)` - start listening to a topic.
 - `unsubscribe(topic)` - stop listening to a topic.
 - `publish(topic, event, payload)` - send an event to everyone subscribed to that topic.
+- `listClientIds(topic)` - get all currently connected client IDs in that topic.
 
 Example: publish `event = "order_created"` to topic `orders`.
 

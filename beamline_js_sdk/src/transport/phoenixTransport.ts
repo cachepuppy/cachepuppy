@@ -149,4 +149,21 @@ export class PhoenixTransport implements Transport {
     set.add(handler);
     return () => set.delete(handler);
   }
+
+  async listClientIds(clientId: string, topic: string): Promise<string[]> {
+    const channel = await this.ensureChannel(clientId, topic);
+    return new Promise<string[]>((resolve, reject) => {
+      channel
+        .push("list_clients", {})
+        .receive("ok", (payload?: unknown) => {
+          const data = (payload ?? {}) as { client_ids?: unknown };
+          const clientIds = Array.isArray(data.client_ids)
+            ? data.client_ids.filter((item): item is string => typeof item === "string")
+            : [];
+          resolve(clientIds);
+        })
+        .receive("error", () => reject(new Error("Failed to list clients")))
+        .receive("timeout", () => reject(new Error("Timed out while listing clients")));
+    });
+  }
 }

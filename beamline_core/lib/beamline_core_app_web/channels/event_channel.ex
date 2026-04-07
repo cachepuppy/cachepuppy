@@ -1,9 +1,12 @@
 defmodule BeamlineCoreAppWeb.EventChannel do
   use BeamlineCoreAppWeb, :channel
+  alias BeamlineCoreAppWeb.Presence
 
   @impl true
-  def join("events:" <> topic, _payload, socket) do
-    {:ok, assign(socket, :topic, topic)}
+  def join("events:" <> topic, _payload, %{assigns: %{client_id: client_id}} = socket) do
+    socket = assign(socket, :topic, topic)
+    send(self(), {:track_presence, client_id})
+    {:ok, socket}
   end
 
   @impl true
@@ -47,7 +50,28 @@ defmodule BeamlineCoreAppWeb.EventChannel do
   end
 
   @impl true
+  def handle_in("list_clients", _payload, socket) do
+    client_ids =
+      socket
+      |> Presence.list()
+      |> Map.keys()
+      |> Enum.sort()
+
+    {:reply, {:ok, %{"client_ids" => client_ids}}, socket}
+  end
+
+  @impl true
   def handle_in(_event, _payload, socket) do
     {:reply, {:error, %{reason: "unsupported_event"}}, socket}
+  end
+
+  @impl true
+  def handle_info({:track_presence, client_id}, socket) do
+    {:ok, _} =
+      Presence.track(socket, client_id, %{
+        online_at: System.system_time(:second)
+      })
+
+    {:noreply, socket}
   end
 end

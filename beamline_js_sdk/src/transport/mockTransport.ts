@@ -66,6 +66,14 @@ class MockBus {
     }
   }
 
+  listClientIds(topic: string): string[] {
+    const members = this.topicMembers.get(topic);
+    if (!members) {
+      return [];
+    }
+    return Array.from(members.values()).sort();
+  }
+
 }
 
 const globalBus = new MockBus();
@@ -85,6 +93,10 @@ export class MockTransport implements Transport {
 
   onEnvelope(clientId: string, handler: EnvelopeHandler): () => void {
     return globalBus.onEnvelope(clientId, handler);
+  }
+
+  async listClientIds(_clientId: string, topic: string): Promise<string[]> {
+    return globalBus.listClientIds(topic);
   }
 
 }

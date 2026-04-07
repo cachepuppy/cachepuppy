@@ -11,6 +11,7 @@ defmodule BeamlineCoreApp.Application do
       BeamlineCoreAppWeb.Telemetry,
       {DNSCluster, query: Application.get_env(:beamline_core_app, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: BeamlineCoreApp.PubSub},
+      BeamlineCoreAppWeb.Presence,
       # Start a worker by calling: BeamlineCoreApp.Worker.start_link(arg)
       # {BeamlineCoreApp.Worker, arg},
       # Start to serve requests, typically the last entry

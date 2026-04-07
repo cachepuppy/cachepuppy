@@ -43,6 +43,7 @@ States: `idle | connecting | connected | reconnecting | disconnected | destroyed
 - `subscribe(topic: string, handler: TopicHandler): Promise<Unsubscribe>`
 - `unsubscribe(topic: string, handler?: TopicHandler): Promise<void>`
 - `publish(topic: string, event: string, payload: unknown): Promise<void>`
+- `listClientIds(topic: string): Promise<string[]>`
 
 ### Event APIs
 

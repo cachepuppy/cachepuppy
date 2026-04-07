@@ -53,6 +53,13 @@ class MockBus {
             }
         }
     }
+    listClientIds(topic) {
+        const members = this.topicMembers.get(topic);
+        if (!members) {
+            return [];
+        }
+        return Array.from(members.values()).sort();
+    }
 }
 const globalBus = new MockBus();
 export class MockTransport {
@@ -67,5 +74,8 @@ export class MockTransport {
     }
     onEnvelope(clientId, handler) {
         return globalBus.onEnvelope(clientId, handler);
+    }
+    async listClientIds(_clientId, topic) {
+        return globalBus.listClientIds(topic);
     }
 }
