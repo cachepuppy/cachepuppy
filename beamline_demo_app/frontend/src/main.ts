@@ -18,8 +18,8 @@ async function runFrontendDemo(): Promise<void> {
     console.log("[frontend] Received:", message.event, message.payload, message.meta);
   });
 
-  const currentClients = await client.listClientIds("chat_room_123");
-  console.log("[frontend] Current clients in topic:", currentClients);
+  const count = await client.clientCount("chat_room_123");
+  console.log("[frontend] Clients in topic (count):", count);
 
   console.log(
     "[frontend] Publishing chat_message_event to topic chat_room_123",

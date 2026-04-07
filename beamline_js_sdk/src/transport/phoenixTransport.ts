@@ -150,20 +150,18 @@ export class PhoenixTransport implements Transport {
     return () => set.delete(handler);
   }
 
-  async listClientIds(clientId: string, topic: string): Promise<string[]> {
+  async clientCount(clientId: string, topic: string): Promise<number> {
     const channel = await this.ensureChannel(clientId, topic);
-    return new Promise<string[]>((resolve, reject) => {
+    return new Promise<number>((resolve, reject) => {
       channel
-        .push("list_clients", {})
+        .push("client_count", {})
         .receive("ok", (payload?: unknown) => {
-          const data = (payload ?? {}) as { client_ids?: unknown };
-          const clientIds = Array.isArray(data.client_ids)
-            ? data.client_ids.filter((item): item is string => typeof item === "string")
-            : [];
-          resolve(clientIds);
+          const data = (payload ?? {}) as { client_count?: unknown };
+          const n = data.client_count;
+          resolve(typeof n === "number" && Number.isFinite(n) ? Math.floor(n) : 0);
         })
-        .receive("error", () => reject(new Error("Failed to list clients")))
-        .receive("timeout", () => reject(new Error("Timed out while listing clients")));
+        .receive("error", () => reject(new Error("Failed to get client count")))
+        .receive("timeout", () => reject(new Error("Timed out while getting client count")));
     });
   }
 }

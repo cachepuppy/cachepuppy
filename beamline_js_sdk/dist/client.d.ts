@@ -19,7 +19,7 @@ export declare class BeamlineClient {
     subscribe(topic: string, handler: TopicHandler): Promise<() => void>;
     unsubscribe(topic: string): Promise<void>;
     publish(topic: string, event: string, payload: unknown): Promise<void>;
-    listClientIds(topic: string): Promise<string[]>;
+    clientCount(topic: string): Promise<number>;
     reconnectOnce(attempt: number): Promise<void>;
 }
 export declare function createClient(options: ClientOptions): BeamlineClient;

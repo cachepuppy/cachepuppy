@@ -66,12 +66,12 @@ class MockBus {
     }
   }
 
-  listClientIds(topic: string): string[] {
+  clientCount(topic: string): number {
     const members = this.topicMembers.get(topic);
     if (!members) {
-      return [];
+      return 0;
     }
-    return Array.from(members.values()).sort();
+    return members.size;
   }
 
 }
@@ -95,8 +95,8 @@ export class MockTransport implements Transport {
     return globalBus.onEnvelope(clientId, handler);
   }
 
-  async listClientIds(_clientId: string, topic: string): Promise<string[]> {
-    return globalBus.listClientIds(topic);
+  async clientCount(_clientId: string, topic: string): Promise<number> {
+    return globalBus.clientCount(topic);
   }
 
 }

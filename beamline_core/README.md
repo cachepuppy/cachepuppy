@@ -25,7 +25,7 @@ Supported inbound events:
 
 - `"publish"` with payload `%{"event" => "...", "payload" => ...}`
 - `"message"` envelope with `%{"type" => "publish", "event" => "...", "payload" => ...}`
-- `"list_clients"` returns `%{"client_ids" => [...]}` for the current topic.
+- `"client_count"` returns `%{"client_count" => integer}` for the current topic (Presence member count).
 
 Broadcast behavior:
 

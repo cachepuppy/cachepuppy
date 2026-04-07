@@ -13,8 +13,8 @@ async function runFrontendDemo() {
     await client.subscribe("chat_room_123", (message) => {
         console.log("[frontend] Received:", message.event, message.payload, message.meta);
     });
-    const currentClients = await client.listClientIds("chat_room_123");
-    console.log("[frontend] Current clients in topic:", currentClients);
+    const count = await client.clientCount("chat_room_123");
+    console.log("[frontend] Clients in topic (count):", count);
     console.log("[frontend] Publishing chat_message_event to topic chat_room_123");
     await client.publish("chat_room_123", "chat_message_event", {
         text: "Hey all how is it going",

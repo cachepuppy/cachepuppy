@@ -6,6 +6,6 @@ export declare class MockTransport implements Transport {
     disconnect(clientId: string): Promise<void>;
     sendEnvelope(clientId: string, message: BeamlineEnvelope): Promise<void>;
     onEnvelope(clientId: string, handler: EnvelopeHandler): () => void;
-    listClientIds(_clientId: string, topic: string): Promise<string[]>;
+    clientCount(_clientId: string, topic: string): Promise<number>;
 }
 export {};

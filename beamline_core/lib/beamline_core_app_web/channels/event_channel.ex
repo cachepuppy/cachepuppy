@@ -50,14 +50,13 @@ defmodule BeamlineCoreAppWeb.EventChannel do
   end
 
   @impl true
-  def handle_in("list_clients", _payload, socket) do
-    client_ids =
+  def handle_in("client_count", _payload, socket) do
+    count =
       socket
       |> Presence.list()
-      |> Map.keys()
-      |> Enum.sort()
+      |> map_size()
 
-    {:reply, {:ok, %{"client_ids" => client_ids}}, socket}
+    {:reply, {:ok, %{"client_count" => count}}, socket}
   end
 
   @impl true

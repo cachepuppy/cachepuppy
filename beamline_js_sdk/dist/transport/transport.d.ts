@@ -4,5 +4,5 @@ export interface Transport {
     disconnect(clientId: string): Promise<void>;
     sendEnvelope(clientId: string, message: BeamlineEnvelope): Promise<void>;
     onEnvelope(clientId: string, handler: (message: BeamlineEnvelope) => void): () => void;
-    listClientIds?(clientId: string, topic: string): Promise<string[]>;
+    clientCount?(clientId: string, topic: string): Promise<number>;
 }

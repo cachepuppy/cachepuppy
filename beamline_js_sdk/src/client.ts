@@ -149,11 +149,11 @@ export class BeamlineClient {
     await this.transport.sendEnvelope(this.clientId, createEnvelope({ type: "publish", topic, event, payload }));
   }
 
-  async listClientIds(topic: string): Promise<string[]> {
-    if (!this.transport.listClientIds) {
-      throw new Error("TransportError: listClientIds is not supported by this transport");
+  async clientCount(topic: string): Promise<number> {
+    if (!this.transport.clientCount) {
+      throw new Error("TransportError: clientCount is not supported by this transport");
     }
-    return this.transport.listClientIds(this.clientId, topic);
+    return this.transport.clientCount(this.clientId, topic);
   }
 
   async reconnectOnce(attempt: number): Promise<void> {

@@ -53,12 +53,12 @@ class MockBus {
             }
         }
     }
-    listClientIds(topic) {
+    clientCount(topic) {
         const members = this.topicMembers.get(topic);
         if (!members) {
-            return [];
+            return 0;
         }
-        return Array.from(members.values()).sort();
+        return members.size;
     }
 }
 const globalBus = new MockBus();
@@ -75,7 +75,7 @@ export class MockTransport {
     onEnvelope(clientId, handler) {
         return globalBus.onEnvelope(clientId, handler);
     }
-    async listClientIds(_clientId, topic) {
-        return globalBus.listClientIds(topic);
+    async clientCount(_clientId, topic) {
+        return globalBus.clientCount(topic);
     }
 }
