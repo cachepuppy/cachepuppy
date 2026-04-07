@@ -12,9 +12,6 @@ export function createEnvelope(input: {
   topic?: string;
   event?: string;
   payload?: unknown;
-  correlationId?: string;
-  ok?: boolean;
-  error?: string;
   meta?: Record<string, unknown>;
 }): BeamlineEnvelope {
   return {

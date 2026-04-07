@@ -1,4 +1,4 @@
-import { createEnvelope, isEnvelope, nextId } from "./protocol.js";
+import { createEnvelope, isEnvelope } from "./protocol.js";
 import { MockTransport } from "./transport/mockTransport.js";
 class TypedEventBus {
     handlers = new Map();
@@ -32,16 +32,13 @@ export class BeamlineClient {
     events = new TypedEventBus();
     transport;
     reconnect;
-    requestTimeoutMs;
     clientId;
     topicHandlers = new Map();
-    pending = new Map();
     unlistenEnvelope;
     constructor(options) {
         this.options = options;
         this.transport = new MockTransport();
         this.reconnect = { ...DEFAULT_RECONNECT, ...(options.reconnect ?? {}) };
-        this.requestTimeoutMs = options.requestTimeoutMs ?? 5_000;
         this.clientId = `client_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
     }
     setState(state) {
@@ -84,20 +81,6 @@ export class BeamlineClient {
             return;
         }
         this.events.emit("message", message);
-        if (message.type === "response" && message.correlationId) {
-            const pending = this.pending.get(message.correlationId);
-            if (pending) {
-                clearTimeout(pending.timer);
-                this.pending.delete(message.correlationId);
-                if (message.ok === false) {
-                    pending.reject(new Error(message.error ?? "Request failed"));
-                }
-                else {
-                    pending.resolve(message);
-                }
-            }
-            return;
-        }
         if (message.type === "publish" && message.topic) {
             const handlers = this.topicHandlers.get(message.topic);
             if (handlers) {
@@ -133,35 +116,6 @@ export class BeamlineClient {
     }
     async publish(topic, event, payload) {
         await this.transport.sendEnvelope(this.clientId, createEnvelope({ type: "publish", topic, event, payload }));
-    }
-    request(topic, action, payload, timeoutMs = this.requestTimeoutMs) {
-        const correlationId = nextId("req");
-        const requestMsg = createEnvelope({
-            type: "request",
-            topic,
-            event: action,
-            payload,
-            correlationId,
-            meta: { clientId: this.clientId },
-        });
-        const promise = new Promise((resolve, reject) => {
-            const timer = setTimeout(() => {
-                this.pending.delete(correlationId);
-                reject(new Error(`TimeoutError: request timed out (${correlationId})`));
-            }, timeoutMs);
-            this.pending.set(correlationId, { resolve, reject, timer });
-        });
-        void this.transport.sendEnvelope(this.clientId, requestMsg);
-        return promise;
-    }
-    async respond(correlationId, ok, payload, error) {
-        await this.transport.sendEnvelope(this.clientId, createEnvelope({
-            type: "response",
-            correlationId,
-            ok,
-            payload,
-            error,
-        }));
     }
     async reconnectOnce(attempt) {
         if (!this.reconnect.enabled || this.state === "destroyed") {

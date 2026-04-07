@@ -23,14 +23,7 @@ Creates a Beamline client object.
 
 Example: publish `event = "order_created"` to topic `orders`.
 
-## 4) Request/response calls
-
-- `request(topic, action, payload)` - ask Beamline server to do something and wait for reply.
-- `respond(correlationId, ok, payload, error)` - send a reply to a request.
-
-Use this when you need a direct answer (not just a broadcast event).
-
-## 5) Connection and message events you can listen to
+## 4) Connection and message events you can listen to
 
 - `on("connected", handler)` - called when connection opens.
 - `on("disconnected", handler)` - called when connection closes.
@@ -41,7 +34,6 @@ Use this when you need a direct answer (not just a broadcast event).
 
 ## What this means for non-technical teams
 
-Beamline gives you 2 simple communication styles:
+Beamline gives you one simple communication style:
 
 1. Broadcast events by topic (`publish/subscribe`)
-2. Direct ask-and-reply (`request/response`)

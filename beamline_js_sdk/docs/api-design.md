@@ -5,7 +5,7 @@ This document defines the SDK API first, before any Elixir engine implementation
 ## Design goals
 
 - Work for Node.js and browser JavaScript developers.
-- Expose higher-level topic and request semantics over websocket.
+- Expose simple topic-based event semantics over websocket.
 - Keep transport pluggable so Phoenix transport can be added later.
 - Use versioned wire envelopes and explicit error classes.
 
@@ -24,7 +24,6 @@ const client = createClient({
     maxDelayMs: 10_000,
     factor: 2,
   },
-  requestTimeoutMs: 5_000,
   transport: "mock", // default for now
 });
 ```
@@ -43,12 +42,6 @@ States: `idle | connecting | connected | reconnecting | disconnected | destroyed
 - `subscribe(topic: string, handler: TopicHandler): Promise<Unsubscribe>`
 - `unsubscribe(topic: string, handler?: TopicHandler): Promise<void>`
 - `publish(topic: string, event: string, payload: unknown): Promise<void>`
-
-### Request/response API
-
-- `request(topic: string, action: string, payload: unknown, opts?): Promise<ResponseEnvelope>`
-- Correlation ID is auto-generated if not passed.
-- Promise rejects on timeout or explicit error response.
 
 ### Event APIs
 
@@ -69,9 +62,6 @@ All protocol messages use JSON:
   "event": "created",
   "payload": { "orderId": "o1" },
   "ts": 1770000000000,
-  "correlationId": null,
-  "ok": true,
-  "error": null,
   "meta": { "clientId": "web-1" }
 }
 ```
@@ -81,14 +71,11 @@ Required fields by message type:
 - `subscribe`: `topic`
 - `unsubscribe`: `topic`
 - `publish`: `topic`, `event`, `payload`
-- `request`: `topic`, `event` (action), `payload`, `id`
-- `response`: `correlationId`, `ok`, `payload | error`
 
 ## Error taxonomy
 
 - `BeamlineError` (base)
 - `ConnectionError` (connect/disconnect transport failures)
-- `TimeoutError` (request deadline exceeded)
 - `ProtocolError` (invalid envelope or unsupported version)
 - `AuthError` (token missing/invalid/refresh failed)
 - `TransportError` (transport implementation specific)

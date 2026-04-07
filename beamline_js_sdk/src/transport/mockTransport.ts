@@ -58,8 +58,7 @@ class MockBus {
       return;
     }
 
-    // Requests and responses are broadcast in mock mode so consumers
-    // can implement app-level filtering logic.
+    // Non-topic messages are broadcast in mock mode.
     for (const handlers of this.envelopeHandlers.values()) {
       for (const handler of handlers.values()) {
         handler(message);

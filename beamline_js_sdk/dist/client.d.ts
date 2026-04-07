@@ -1,14 +1,12 @@
-import type { BeamlineEnvelope, ClientEventMap, ClientOptions, ConnectionState, TopicHandler } from "./types.js";
+import type { ClientEventMap, ClientOptions, ConnectionState, TopicHandler } from "./types.js";
 export declare class BeamlineClient {
     private readonly options;
     private state;
     private readonly events;
     private readonly transport;
     private readonly reconnect;
-    private readonly requestTimeoutMs;
     private readonly clientId;
     private readonly topicHandlers;
-    private pending;
     private unlistenEnvelope?;
     constructor(options: ClientOptions);
     private setState;
@@ -21,8 +19,6 @@ export declare class BeamlineClient {
     subscribe(topic: string, handler: TopicHandler): Promise<() => void>;
     unsubscribe(topic: string): Promise<void>;
     publish(topic: string, event: string, payload: unknown): Promise<void>;
-    request(topic: string, action: string, payload: unknown, timeoutMs?: number): Promise<BeamlineEnvelope>;
-    respond(correlationId: string, ok: boolean, payload?: unknown, error?: string): Promise<void>;
     reconnectOnce(attempt: number): Promise<void>;
 }
 export declare function createClient(options: ClientOptions): BeamlineClient;

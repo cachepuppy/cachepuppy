@@ -10,8 +10,6 @@ export type MessageType =
   | "subscribe"
   | "unsubscribe"
   | "publish"
-  | "request"
-  | "response"
   | "system";
 
 export interface BeamlineEnvelope {
@@ -22,9 +20,6 @@ export interface BeamlineEnvelope {
   event?: string;
   payload?: unknown;
   ts: number;
-  correlationId?: string;
-  ok?: boolean;
-  error?: string;
   meta?: Record<string, unknown>;
 }
 
@@ -40,7 +35,6 @@ export interface ClientOptions {
   authToken?: string;
   getAuthToken?: () => Promise<string>;
   reconnect?: Partial<ReconnectConfig>;
-  requestTimeoutMs?: number;
   transport?: "mock";
 }
 

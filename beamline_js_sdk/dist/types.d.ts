@@ -1,5 +1,5 @@
 export type ConnectionState = "idle" | "connecting" | "connected" | "reconnecting" | "disconnected" | "destroyed";
-export type MessageType = "subscribe" | "unsubscribe" | "publish" | "request" | "response" | "system";
+export type MessageType = "subscribe" | "unsubscribe" | "publish" | "system";
 export interface BeamlineEnvelope {
     v: 1;
     type: MessageType;
@@ -8,9 +8,6 @@ export interface BeamlineEnvelope {
     event?: string;
     payload?: unknown;
     ts: number;
-    correlationId?: string;
-    ok?: boolean;
-    error?: string;
     meta?: Record<string, unknown>;
 }
 export interface ReconnectConfig {
@@ -24,7 +21,6 @@ export interface ClientOptions {
     authToken?: string;
     getAuthToken?: () => Promise<string>;
     reconnect?: Partial<ReconnectConfig>;
-    requestTimeoutMs?: number;
     transport?: "mock";
 }
 export type TopicHandler = (message: BeamlineEnvelope) => void;
