@@ -1,39 +1,70 @@
-import { createClient } from "beamline_js_sdk";
+import { createClient, type BeamlineClient } from "beamline_js_sdk";
 
-async function runFrontendDemo(): Promise<void> {
+const WS_URL = "ws://localhost:4000/socket/websocket";
+const TOPIC = "demo_room";
+
+function makeClient(label: string, clientId: string): BeamlineClient {
   const client = createClient({
-    // Replace with hosted Beamline websocket URL in real usage.
-    url: "ws://localhost:4000/socket/websocket",
+    url: WS_URL,
     transport: "phoenix",
-    clientId: "frontend_demo_user_1",
+    clientId,
   });
 
   client.on("stateChange", ({ state }) => {
-    console.log(`[frontend] state=${state}`);
+    console.log(`[${label}] state=${state}`);
   });
 
-  await client.connect();
+  return client;
+}
 
-  await client.subscribe("chat_room_123", (message) => {
-    console.log("[frontend] Received:", message.event, message.payload, message.meta);
-  });
+async function runFrontendDemo(): Promise<void> {
+  const alice = makeClient("alice", "alice");
+  const bob = makeClient("bob", "bob");
+  const carol = makeClient("carol", "carol");
 
-  const count = await client.clientCount("chat_room_123");
-  console.log("[frontend] Clients in topic (count):", count);
+  await Promise.all([alice.connect(), bob.connect(), carol.connect()]);
 
-  console.log(
-    "[frontend] Publishing chat_message_event to topic chat_room_123",
-  );
+  await Promise.all([
+    alice.subscribe(TOPIC, (message) => {
+      console.log(`[alice] received`, message.event, message.payload);
+    }),
+    bob.subscribe(TOPIC, (message) => {
+      console.log(`[bob] received`, message.event, message.payload);
+    }),
+    carol.subscribe(TOPIC, (message) => {
+      console.log(`[carol] received`, message.event, message.payload);
+    }),
+  ]);
 
-  await client.publish("chat_room_123", "chat_message_event", {
-    text: "Hey all how is it going",
+  // Brief pause so all channel joins / Presence are settled before publishing.
+  await new Promise((resolve) => setTimeout(resolve, 300));
+
+  const count = await alice.clientCount(TOPIC);
+  console.log(`[demo] clients in topic "${TOPIC}" (count):`, count);
+
+  console.log("[demo] alice publishes to the whole topic — expect alice, bob, carol to receive:");
+  await alice.publish(TOPIC, "room_broadcast", {
+    text: "Hello everyone in the room",
     ts: Date.now(),
   });
 
-  // Keep the socket open briefly to show inbound broadcast logs.
-  await new Promise((resolve) => setTimeout(resolve, 250));
+  await new Promise((resolve) => setTimeout(resolve, 400));
 
-  await client.disconnect("demo-complete");
+  console.log("[demo] alice publishTo only carol — expect only carol to receive:");
+  await alice.publishTo(
+    TOPIC,
+    "direct_to_one",
+    { text: "Private line to carol", ts: Date.now() },
+    ["carol"],
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, 400));
+
+  await Promise.all([
+    alice.disconnect("demo-complete"),
+    bob.disconnect("demo-complete"),
+    carol.disconnect("demo-complete"),
+  ]);
 }
 
 void runFrontendDemo();

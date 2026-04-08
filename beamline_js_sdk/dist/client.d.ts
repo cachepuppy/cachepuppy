@@ -19,6 +19,7 @@ export declare class BeamlineClient {
     subscribe(topic: string, handler: TopicHandler): Promise<() => void>;
     unsubscribe(topic: string): Promise<void>;
     publish(topic: string, event: string, payload: unknown): Promise<void>;
+    publishTo(topic: string, event: string, payload: unknown, clientIds: string[]): Promise<void>;
     clientCount(topic: string): Promise<number>;
     reconnectOnce(attempt: number): Promise<void>;
 }

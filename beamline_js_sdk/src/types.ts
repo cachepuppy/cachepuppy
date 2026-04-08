@@ -10,6 +10,7 @@ export type MessageType =
   | "subscribe"
   | "unsubscribe"
   | "publish"
+  | "publish_to"
   | "system";
 
 export interface BeamlineEnvelope {

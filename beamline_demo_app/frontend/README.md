@@ -1,16 +1,16 @@
 # Demo Frontend Contract
 
-`frontend` simulates a browser-side app consuming `beamline_js_sdk`.
+`frontend` runs a small Node script that uses `beamline_js_sdk` against a live Phoenix server (`transport: "phoenix"`).
 
-## Responsibilities
+## Scenario
 
-- Connect to mock transport and emit lifecycle logs.
-- Subscribe to `demo.events`.
-- Publish `demo.events:client_ready`.
-- Listen for protocol events.
+1. Three clients (`alice`, `bob`, `carol`) connect and subscribe to topic `demo_room`.
+2. `alice` calls `publish` — all three should log `room_broadcast`.
+3. `alice` calls `publishTo` with `["carol"]` — only `carol` should log `direct_to_one`.
 
-## Expected behavior
+## Run
 
-- Logs incoming events for `demo.events`.
+1. Start Beamline core: `cd beamline_core && mix phx.server`
+2. From repo root: `npm run demo:frontend`
 
-For production usage, point the SDK `url` to the hosted Beamline Elixir websocket endpoint.
+Point `WS_URL` in `src/main.ts` at your deployed websocket if not local.

@@ -122,6 +122,15 @@ export class BeamlineClient {
     async publish(topic, event, payload) {
         await this.transport.sendEnvelope(this.clientId, createEnvelope({ type: "publish", topic, event, payload }));
     }
+    async publishTo(topic, event, payload, clientIds) {
+        await this.transport.sendEnvelope(this.clientId, createEnvelope({
+            type: "publish_to",
+            topic,
+            event,
+            payload,
+            meta: { clientIds },
+        }));
+    }
     async clientCount(topic) {
         if (!this.transport.clientCount) {
             throw new Error("TransportError: clientCount is not supported by this transport");

@@ -1,5 +1,5 @@
 export type ConnectionState = "idle" | "connecting" | "connected" | "reconnecting" | "disconnected" | "destroyed";
-export type MessageType = "subscribe" | "unsubscribe" | "publish" | "system";
+export type MessageType = "subscribe" | "unsubscribe" | "publish" | "publish_to" | "system";
 export interface BeamlineEnvelope {
     v: 1;
     type: MessageType;

@@ -30,13 +30,14 @@ No Phoenix runtime is implemented in this phase.
 - `subscribe`: register interest in `topic`
 - `unsubscribe`: remove interest in `topic`
 - `publish`: fire event to topic subscribers
+- `publish_to`: fire event to topic subscribers whose `client_id` is listed in `meta.clientIds` (Phoenix channel: `client_ids` in push payload)
 - `system`: optional informational/system events
 
 ## Validation rules
 
 - Reject envelopes with unsupported `v`.
 - Require `id` for all non-system messages.
-- Require `topic` for `subscribe`, `unsubscribe`, and `publish`.
+- Require `topic` for `subscribe`, `unsubscribe`, `publish`, and `publish_to`.
 
 ## Backend mapping notes (future Phoenix)
 

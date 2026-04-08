@@ -46,6 +46,40 @@ class MockBus {
             }
             return;
         }
+        if (message.type === "publish_to" && message.topic) {
+            const rawIds = message.meta?.clientIds;
+            const allowed = new Set(Array.isArray(rawIds) ? rawIds.filter((id) => typeof id === "string") : []);
+            const members = this.topicMembers.get(message.topic);
+            if (!members || allowed.size === 0) {
+                return;
+            }
+            const outMeta = { ...(message.meta ?? {}) };
+            delete outMeta.clientIds;
+            outMeta.clientId = senderId;
+            const outbound = {
+                v: 1,
+                type: "publish",
+                id: message.id,
+                topic: message.topic,
+                event: message.event,
+                payload: message.payload,
+                ts: message.ts,
+                meta: outMeta,
+            };
+            for (const memberId of members.values()) {
+                if (!allowed.has(memberId)) {
+                    continue;
+                }
+                const handlers = this.envelopeHandlers.get(memberId);
+                if (!handlers) {
+                    continue;
+                }
+                for (const handler of handlers.values()) {
+                    handler(outbound);
+                }
+            }
+            return;
+        }
         // Non-topic messages are broadcast in mock mode.
         for (const handlers of this.envelopeHandlers.values()) {
             for (const handler of handlers.values()) {

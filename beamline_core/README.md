@@ -24,6 +24,7 @@ Server runs on `http://localhost:4000`.
 Supported inbound events:
 
 - `"publish"` with payload `%{"event" => "...", "payload" => ...}`
+- `"publish_to"` with payload `%{"event" => "...", "payload" => ..., "client_ids" => [...]}` (only those Presence keys receive the outbound `message`)
 - `"message"` envelope with `%{"type" => "publish", "event" => "...", "payload" => ...}`
 - `"client_count"` returns `%{"client_count" => integer}` for the current topic (Presence member count).
 

@@ -2,6 +2,8 @@ defmodule BeamlineCoreAppWeb.EventChannel do
   use BeamlineCoreAppWeb, :channel
   alias BeamlineCoreAppWeb.Presence
 
+  intercept ["beamline_targeted"]
+
   @impl true
   def join("events:" <> topic, _payload, %{assigns: %{client_id: client_id}} = socket) do
     socket = assign(socket, :topic, topic)
@@ -50,6 +52,30 @@ defmodule BeamlineCoreAppWeb.EventChannel do
   end
 
   @impl true
+  def handle_in(
+        "publish_to",
+        %{"event" => event, "payload" => payload, "client_ids" => ids},
+        %{assigns: %{topic: topic, client_id: client_id}} = socket
+      )
+      when is_list(ids) do
+    target_ids = for id <- ids, is_binary(id), do: id
+
+    broadcast_payload = %{
+      "v" => 1,
+      "type" => "publish",
+      "topic" => topic,
+      "event" => event,
+      "payload" => payload,
+      "ts" => System.system_time(:millisecond),
+      "meta" => %{"clientId" => client_id},
+      "_target_client_ids" => target_ids
+    }
+
+    broadcast!(socket, "beamline_targeted", broadcast_payload)
+    {:reply, :ok, socket}
+  end
+
+  @impl true
   def handle_in("client_count", _payload, socket) do
     count =
       socket
@@ -62,6 +88,19 @@ defmodule BeamlineCoreAppWeb.EventChannel do
   @impl true
   def handle_in(_event, _payload, socket) do
     {:reply, {:error, %{reason: "unsupported_event"}}, socket}
+  end
+
+  @impl true
+  def handle_out("beamline_targeted", payload, socket) do
+    target_ids = Map.get(payload, "_target_client_ids", [])
+    my_id = socket.assigns.client_id
+
+    if my_id in target_ids do
+      clean = Map.drop(payload, ["_target_client_ids"])
+      push(socket, "message", clean)
+    end
+
+    {:noreply, socket}
   end
 
   @impl true
