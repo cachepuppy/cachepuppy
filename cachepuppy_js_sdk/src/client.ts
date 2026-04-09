@@ -2,6 +2,7 @@ import { createEnvelope, isEnvelope } from "./protocol.js";
 import { MockTransport } from "./transport/mockTransport.js";
 import { PhoenixTransport } from "./transport/phoenixTransport.js";
 import type { Transport } from "./transport/transport.js";
+import type { TopicStateResponse } from "./transport/transport.js";
 import type {
   CachePuppyEnvelope,
   ClientEventMap,
@@ -176,6 +177,15 @@ export class CachePuppyClient {
     }
 
     return this.transport.getState(this.clientId, topic);
+  }
+
+  async getTopicStateWithMeta(topic: string): Promise<TopicStateResponse> {
+    if (this.transport.getStateWithMeta) {
+      return this.transport.getStateWithMeta(this.clientId, topic);
+    }
+
+    const state = await this.getTopicState(topic);
+    return { state };
   }
 
   async closeTopic(topic: string): Promise<boolean> {

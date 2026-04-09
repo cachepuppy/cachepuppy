@@ -63,7 +63,7 @@ Each `events:<topic_name>` topic has a single cluster owner process (one process
 
 ## Local libcluster multi-node testing
 
-This project supports local 3-node clustering via `libcluster` and Docker Compose. An **nginx** service load-balances HTTP and WebSockets across `app1`, `app2`, and `app3` on **port 4000** (non-sticky `least_conn`).
+This project supports local 3-node clustering via `libcluster` and Docker Compose. An **nginx** service load-balances HTTP and WebSockets across `app1`, `app2`, and `app3` on **port 4000** (non-sticky round-robin).
 
 ### Start cluster
 

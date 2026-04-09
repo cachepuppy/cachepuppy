@@ -1,5 +1,5 @@
 import type { CachePuppyEnvelope } from "../types.js";
-import type { Transport } from "./transport.js";
+import type { TopicStateResponse, Transport } from "./transport.js";
 
 type EnvelopeHandler = (message: CachePuppyEnvelope) => void;
 
@@ -184,6 +184,10 @@ export class MockTransport implements Transport {
 
   async getState(_clientId: string, topic: string): Promise<Record<string, unknown>> {
     return globalBus.getState(topic);
+  }
+
+  async getStateWithMeta(_clientId: string, topic: string): Promise<TopicStateResponse> {
+    return { state: globalBus.getState(topic), sourceNode: "mock", servedByNode: "mock" };
   }
 
   async closeTopic(_clientId: string, topic: string): Promise<boolean> {
