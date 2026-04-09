@@ -1,10 +1,10 @@
-# Beamline Monorepo
+# Cachepuppy Monorepo
 
 This repository contains the API-first scaffold for Beamline.
 
 ## Packages
 
-- `beamline_core`: Future Elixir/Phoenix backend (design docs only in this phase).
+- `cachepuppy_core`: Future Elixir/Phoenix backend (design docs only in this phase).
 - `cachepuppy_js_sdk`: TypeScript SDK for Node.js and browser clients.
 - `cachepuppy_demo_app`: Frontend-only demo app that uses the SDK.
 
