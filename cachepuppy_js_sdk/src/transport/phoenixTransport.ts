@@ -1,6 +1,6 @@
 import { Socket, type Channel } from "phoenix";
 import type { CachePuppyEnvelope } from "../types.js";
-import type { Transport } from "./transport.js";
+import type { TopicStateResponse, Transport } from "./transport.js";
 
 type EnvelopeHandler = (message: CachePuppyEnvelope) => void;
 
@@ -199,14 +199,22 @@ export class PhoenixTransport implements Transport {
   }
 
   async getState(clientId: string, topic: string): Promise<Record<string, unknown>> {
+    const response = await this.getStateWithMeta(clientId, topic);
+    return response.state;
+  }
+
+  async getStateWithMeta(clientId: string, topic: string): Promise<TopicStateResponse> {
     const channel = await this.ensureChannel(clientId, topic);
 
-    return new Promise<Record<string, unknown>>((resolve, reject) => {
+    return new Promise<TopicStateResponse>((resolve, reject) => {
       channel
         .push("get_state", {})
         .receive("ok", (response?: unknown) => {
-          const data = (response ?? {}) as { state?: unknown };
-          resolve(asRecord(data.state));
+          const data = (response ?? {}) as { state?: unknown; meta?: unknown };
+          const meta = asRecord(data.meta);
+          const sourceNode = typeof meta.source_node === "string" ? meta.source_node : undefined;
+          const servedByNode = typeof meta.served_by_node === "string" ? meta.served_by_node : undefined;
+          resolve({ state: asRecord(data.state), sourceNode, servedByNode });
         })
         .receive("error", () => reject(new Error("Failed to get topic state")))
         .receive("timeout", () => reject(new Error("Timed out while getting topic state")));

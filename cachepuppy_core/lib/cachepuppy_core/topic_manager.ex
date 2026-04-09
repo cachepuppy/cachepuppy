@@ -21,8 +21,11 @@ defmodule CachePuppyCore.TopicManager do
 
   def get_state(topic) when is_binary(topic) do
     case Horde.Registry.lookup(CachePuppyCore.TopicRegistry, topic) do
-      [{_pid, _}] ->
-        TopicProcess.get_state(topic)
+      [{pid, _}] ->
+        case TopicProcess.get_state(topic) do
+          {:ok, state} -> {:ok, state, to_string(node(pid))}
+          {:error, reason} -> {:error, reason}
+        end
 
       [] ->
         {:error, :topic_not_found}

@@ -3,7 +3,7 @@ defmodule CachePuppyCoreWeb.EventChannel do
   alias CachePuppyCore.TopicManager
   alias CachePuppyCoreWeb.Presence
 
-  intercept ["cachepuppy_targeted"]
+  intercept ["cachepuppy_targeted", "message"]
 
   @impl true
   def join("events:" <> topic, _payload, %{assigns: %{client_id: client_id}} = socket) do
@@ -71,7 +71,17 @@ defmodule CachePuppyCoreWeb.EventChannel do
   @impl true
   def handle_in("get_state", _payload, %{assigns: %{topic: topic}} = socket) do
     case TopicManager.get_state(topic) do
-      {:ok, state} -> {:reply, {:ok, %{"state" => state}}, socket}
+      {:ok, state, source_node} ->
+        {:reply,
+         {:ok,
+          %{
+            "state" => state,
+            "meta" => %{
+              "source_node" => source_node,
+              "served_by_node" => to_string(node())
+            }
+          }}, socket}
+
       {:error, :topic_not_found} -> {:reply, {:error, %{reason: "topic_not_found"}}, socket}
       {:error, _reason} -> {:reply, {:error, %{reason: "state_fetch_failed"}}, socket}
     end
@@ -102,13 +112,19 @@ defmodule CachePuppyCoreWeb.EventChannel do
   end
 
   @impl true
+  def handle_out("message", payload, socket) do
+    push(socket, "message", put_served_by_node(payload))
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_out("cachepuppy_targeted", payload, socket) do
     target_ids = Map.get(payload, "_target_client_ids", [])
     my_id = socket.assigns.client_id
 
     if my_id in target_ids do
       clean = Map.drop(payload, ["_target_client_ids"])
-      push(socket, "message", clean)
+      push(socket, "message", put_served_by_node(clean))
     end
 
     {:noreply, socket}
@@ -143,7 +159,20 @@ defmodule CachePuppyCoreWeb.EventChannel do
       "event" => event,
       "payload" => payload,
       "ts" => System.system_time(:millisecond),
-      "meta" => %{"clientId" => client_id}
+      "meta" => %{"clientId" => client_id, "source_node" => to_string(node())}
     }
+  end
+
+  defp put_served_by_node(payload) do
+    raw_meta = Map.get(payload, "meta")
+
+    meta =
+      if is_map(raw_meta) do
+        Map.put(raw_meta, "served_by_node", to_string(node()))
+      else
+        %{"served_by_node" => to_string(node())}
+      end
+
+    Map.put(payload, "meta", meta)
   end
 end
