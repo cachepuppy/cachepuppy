@@ -6,7 +6,7 @@ defmodule CachePuppyCore.TopicManager do
   @default_idle_timeout_ms 60_000
 
   def ensure_started(topic) when is_binary(topic) do
-    case Registry.lookup(CachePuppyCore.TopicRegistry, topic) do
+    case Horde.Registry.lookup(CachePuppyCore.TopicRegistry, topic) do
       [{pid, _}] -> {:ok, pid}
       [] -> start_topic(topic)
     end
@@ -20,7 +20,7 @@ defmodule CachePuppyCore.TopicManager do
   end
 
   def get_state(topic) when is_binary(topic) do
-    case Registry.lookup(CachePuppyCore.TopicRegistry, topic) do
+    case Horde.Registry.lookup(CachePuppyCore.TopicRegistry, topic) do
       [{_pid, _}] ->
         TopicProcess.get_state(topic)
 
@@ -37,7 +37,7 @@ defmodule CachePuppyCore.TopicManager do
   end
 
   def notify_activity(topic) when is_binary(topic) do
-    case Registry.lookup(CachePuppyCore.TopicRegistry, topic) do
+    case Horde.Registry.lookup(CachePuppyCore.TopicRegistry, topic) do
       [{_pid, _}] ->
         TopicProcess.touch(topic)
         :ok
@@ -48,9 +48,9 @@ defmodule CachePuppyCore.TopicManager do
   end
 
   def close_topic(topic) when is_binary(topic) do
-    case Registry.lookup(CachePuppyCore.TopicRegistry, topic) do
+    case Horde.Registry.lookup(CachePuppyCore.TopicRegistry, topic) do
       [{pid, _}] ->
-        DynamicSupervisor.terminate_child(CachePuppyCore.TopicSupervisor, pid)
+        Horde.DynamicSupervisor.terminate_child(CachePuppyCore.TopicSupervisor, pid)
 
       [] ->
         {:error, :topic_not_found}
@@ -60,7 +60,7 @@ defmodule CachePuppyCore.TopicManager do
   defp start_topic(topic) do
     child_spec = {TopicProcess, topic: topic, idle_timeout_ms: idle_timeout_ms()}
 
-    case DynamicSupervisor.start_child(CachePuppyCore.TopicSupervisor, child_spec) do
+    case Horde.DynamicSupervisor.start_child(CachePuppyCore.TopicSupervisor, child_spec) do
       {:ok, pid} -> {:ok, pid}
       {:error, {:already_started, pid}} -> {:ok, pid}
       {:error, reason} -> {:error, reason}

@@ -7,6 +7,7 @@ Frontend-only demo for validating CachePuppy SDK usage against the managed Elixi
 - Exercise SDK lifecycle events.
 - Exercise publish/subscribe message flow.
 - Exercise per-topic shared state flow (`setTopicState`, `getTopicState`, `closeTopic`, `state_updated`).
+- Validate single cluster owner topic behavior across load-balanced backend nodes.
 
 ## Structure
 

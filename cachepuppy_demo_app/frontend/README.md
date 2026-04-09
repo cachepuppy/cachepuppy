@@ -8,8 +8,8 @@
 2. Five clients (`alice`, `bob`, `carol`, `dave`, `eve`) connect via **the same WS URL** (typically `ws://127.0.0.1:4000/socket/websocket` when using Docker Compose + nginx) and subscribe to topic `demo_room`.
 3. `alice` calls `publish` — all five should log `room_broadcast`.
 4. `alice` calls `publishTo` with `["carol"]` — only `carol` should log `direct_to_one`.
-5. `alice` calls `setTopicState` — all subscribers should log `state_updated` with the same full state payload.
-6. `bob` calls `getTopicState` — returns the same shared topic state map.
+5. `alice` calls `setTopicState` — all subscribers should log `state_updated` with the same full state payload, even when clients are routed to different backend nodes.
+6. `bob` calls `getTopicState` — returns the same shared topic state map regardless of which backend node handled the call.
 7. `alice` calls `closeTopic` — explicit topic process shutdown.
 8. `bob` calls `getTopicState` again — returns an error (`topic_not_found`) and does not recreate the topic process.
 

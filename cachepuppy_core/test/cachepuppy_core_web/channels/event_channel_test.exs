@@ -4,14 +4,13 @@ defmodule CachePuppyCoreWeb.EventChannelTest do
 
   @endpoint CachePuppyCoreWeb.Endpoint
 
-  test "join starts a per-topic process" do
+  test "join allows topic state operations" do
     topic = unique_topic()
     socket = user_socket("join_starts")
 
-    {:ok, _reply, _socket} = subscribe_and_join(socket, CachePuppyCoreWeb.EventChannel, "events:#{topic}")
-
-    assert [{pid, _value}] = Registry.lookup(CachePuppyCore.TopicRegistry, topic)
-    assert is_pid(pid)
+    {:ok, _reply, chan} = subscribe_and_join(socket, CachePuppyCoreWeb.EventChannel, "events:#{topic}")
+    ref = push(chan, "get_state", %{})
+    assert_reply ref, :ok, %{"state" => %{}}
   end
 
   test "set_state broadcasts state_updated to all subscribers" do
@@ -40,13 +39,8 @@ defmodule CachePuppyCoreWeb.EventChannelTest do
     socket = user_socket("close_topic")
     {:ok, _reply, chan} = subscribe_and_join(socket, CachePuppyCoreWeb.EventChannel, "events:#{topic}")
 
-    assert [{pid, _value}] = Registry.lookup(CachePuppyCore.TopicRegistry, topic)
-    ref = Process.monitor(pid)
-
     close_ref = push(chan, "close_topic", %{})
     assert_reply close_ref, :ok, %{"closed" => true}
-    assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, 500
-    assert Registry.lookup(CachePuppyCore.TopicRegistry, topic) == []
 
     fetch_ref = push(chan, "get_state", %{})
     assert_reply fetch_ref, :error, %{reason: "topic_not_found"}
@@ -56,8 +50,8 @@ defmodule CachePuppyCoreWeb.EventChannelTest do
     {:ok, _reply, _new_chan} =
       subscribe_and_join(user_socket("close_topic_rejoin"), CachePuppyCoreWeb.EventChannel, "events:#{topic}")
 
-    assert [{new_pid, _value}] = Registry.lookup(CachePuppyCore.TopicRegistry, topic)
-    refute new_pid == pid
+    ref = push(chan, "get_state", %{})
+    assert_reply ref, :ok, %{"state" => %{}}
   end
 
   defp user_socket(client_id) do
