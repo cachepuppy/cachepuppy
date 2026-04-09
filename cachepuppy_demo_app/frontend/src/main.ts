@@ -1,7 +1,26 @@
 import { createClient, type CachePuppyClient } from "cachepuppy_js_sdk";
 
-const WS_URL = "ws://localhost:4000/socket/websocket";
+/** Base URL for HTTP (LB or single node). Override with API_BASE when testing. */
+const API_BASE = process.env.API_BASE ?? "http://127.0.0.1:4000";
+/** WebSocket URL. Default matches nginx in docker-compose (port 4000). */
+const WS_URL = process.env.WS_URL ?? "ws://127.0.0.1:4000/socket/websocket";
 const TOPIC = "demo_room";
+
+async function probeLoadBalancer(): Promise<void> {
+  console.log(
+    "[demo] HTTP probes via LB (expect mixed node names if multiple backends):",
+  );
+  for (let i = 0; i < 9; i++) {
+    const res = await fetch(`${API_BASE}/api/health`);
+    const data = (await res.json()) as {
+      node?: string;
+      cluster_size?: number;
+    };
+    console.log(
+      `  [probe ${i}] node=${data.node ?? "?"} cluster_size=${data.cluster_size ?? "?"}`,
+    );
+  }
+}
 
 function makeClient(label: string, clientId: string): CachePuppyClient {
   const client = createClient({
@@ -18,11 +37,21 @@ function makeClient(label: string, clientId: string): CachePuppyClient {
 }
 
 async function runFrontendDemo(): Promise<void> {
+  await probeLoadBalancer();
+
   const alice = makeClient("alice", "alice");
   const bob = makeClient("bob", "bob");
   const carol = makeClient("carol", "carol");
+  const dave = makeClient("dave", "dave");
+  const eve = makeClient("eve", "eve");
 
-  await Promise.all([alice.connect(), bob.connect(), carol.connect()]);
+  await Promise.all([
+    alice.connect(),
+    bob.connect(),
+    carol.connect(),
+    dave.connect(),
+    eve.connect(),
+  ]);
 
   await Promise.all([
     alice.subscribe(TOPIC, (message) => {
@@ -34,6 +63,12 @@ async function runFrontendDemo(): Promise<void> {
     carol.subscribe(TOPIC, (message) => {
       console.log(`[carol] received`, message.event, message.payload);
     }),
+    dave.subscribe(TOPIC, (message) => {
+      console.log(`[dave] received`, message.event, message.payload);
+    }),
+    eve.subscribe(TOPIC, (message) => {
+      console.log(`[eve] received`, message.event, message.payload);
+    }),
   ]);
 
   // Brief pause so all channel joins / Presence are settled before publishing.
@@ -42,7 +77,9 @@ async function runFrontendDemo(): Promise<void> {
   const count = await alice.clientCount(TOPIC);
   console.log(`[demo] clients in topic "${TOPIC}" (count):`, count);
 
-  console.log("[demo] alice publishes to the whole topic — expect alice, bob, carol to receive:");
+  console.log(
+    "[demo] alice publishes to the whole topic — expect all five clients to receive:",
+  );
   await alice.publish(TOPIC, "room_broadcast", {
     text: "Hello everyone in the room",
     ts: Date.now(),
@@ -50,7 +87,9 @@ async function runFrontendDemo(): Promise<void> {
 
   await new Promise((resolve) => setTimeout(resolve, 400));
 
-  console.log("[demo] alice publishTo only carol — expect only carol to receive:");
+  console.log(
+    "[demo] alice publishTo only carol — expect only carol to receive:",
+  );
   await alice.publishTo(
     TOPIC,
     "direct_to_one",
@@ -64,6 +103,8 @@ async function runFrontendDemo(): Promise<void> {
     alice.disconnect("demo-complete"),
     bob.disconnect("demo-complete"),
     carol.disconnect("demo-complete"),
+    dave.disconnect("demo-complete"),
+    eve.disconnect("demo-complete"),
   ]);
 }
 

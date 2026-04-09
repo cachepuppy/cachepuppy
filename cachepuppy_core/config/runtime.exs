@@ -38,7 +38,20 @@ if config_env() == :prod do
 
   host = System.get_env("PHX_HOST") || "example.com"
 
-  config :cachepuppy_core, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
+  libcluster_dns_query = System.get_env("LIBCLUSTER_DNS_QUERY", "cachepuppy-core")
+  libcluster_node_basename = System.get_env("LIBCLUSTER_NODE_BASENAME", "cachepuppy_core")
+
+  config :libcluster,
+    topologies: [
+      local_docker: [
+        strategy: Cluster.Strategy.DNSPoll,
+        config: [
+          polling_interval: 5_000,
+          query: libcluster_dns_query,
+          node_basename: libcluster_node_basename
+        ]
+      ]
+    ]
 
   config :cachepuppy_core, CachePuppyCoreWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],

@@ -7,9 +7,11 @@ defmodule CachePuppyCore.Application do
 
   @impl true
   def start(_type, _args) do
+    topologies = Application.get_env(:libcluster, :topologies, [])
+
     children = [
       CachePuppyCoreWeb.Telemetry,
-      {DNSCluster, query: Application.get_env(:cachepuppy_core, :dns_cluster_query) || :ignore},
+      {Cluster.Supervisor, [topologies, [name: CachePuppyCore.ClusterSupervisor]]},
       {Phoenix.PubSub, name: CachePuppyCore.PubSub},
       CachePuppyCoreWeb.Presence,
       # Start a worker by calling: CachePuppyCore.Worker.start_link(arg)

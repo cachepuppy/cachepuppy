@@ -11,6 +11,7 @@
     "cachepuppy_js_sdk": "file:../../cachepuppy_js_sdk"
   },
   "devDependencies": {
+    "@types/node": "^22.10.0",
     "typescript": "^5.9.3"
   }
 }
