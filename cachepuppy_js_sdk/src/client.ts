@@ -162,6 +162,38 @@ export class CachePuppyClient {
     );
   }
 
+  async setTopicState(topic: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!this.transport.setState) {
+      throw new Error("TransportError: setState is not supported by this transport");
+    }
+
+    return this.transport.setState(this.clientId, topic, payload);
+  }
+
+  async getTopicState(topic: string): Promise<Record<string, unknown>> {
+    if (!this.transport.getState) {
+      throw new Error("TransportError: getState is not supported by this transport");
+    }
+
+    return this.transport.getState(this.clientId, topic);
+  }
+
+  async closeTopic(topic: string): Promise<boolean> {
+    if (!this.transport.closeTopic) {
+      throw new Error("TransportError: closeTopic is not supported by this transport");
+    }
+
+    return this.transport.closeTopic(this.clientId, topic);
+  }
+
+  async onStateUpdated(topic: string, handler: (state: Record<string, unknown>) => void): Promise<() => void> {
+    return this.subscribe(topic, (message) => {
+      if (message.event === "state_updated" && message.payload && typeof message.payload === "object") {
+        handler(message.payload as Record<string, unknown>);
+      }
+    });
+  }
+
   async clientCount(topic: string): Promise<number> {
     if (!this.transport.clientCount) {
       throw new Error("TransportError: clientCount is not supported by this transport");

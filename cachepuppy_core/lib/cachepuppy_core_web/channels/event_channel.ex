@@ -1,11 +1,13 @@
 defmodule CachePuppyCoreWeb.EventChannel do
   use CachePuppyCoreWeb, :channel
+  alias CachePuppyCore.TopicManager
   alias CachePuppyCoreWeb.Presence
 
   intercept ["cachepuppy_targeted"]
 
   @impl true
   def join("events:" <> topic, _payload, %{assigns: %{client_id: client_id}} = socket) do
+    {:ok, _pid} = TopicManager.ensure_started(topic)
     socket = assign(socket, :topic, topic)
     send(self(), {:track_presence, client_id})
     {:ok, socket}
@@ -17,16 +19,7 @@ defmodule CachePuppyCoreWeb.EventChannel do
         %{"event" => event, "payload" => payload},
         %{assigns: %{topic: topic, client_id: client_id}} = socket
       ) do
-    message = %{
-      "v" => 1,
-      "type" => "publish",
-      "topic" => topic,
-      "event" => event,
-      "payload" => payload,
-      "ts" => System.system_time(:millisecond),
-      "meta" => %{"clientId" => client_id}
-    }
-
+    message = build_publish(topic, event, payload, client_id)
     broadcast!(socket, "message", message)
     {:reply, :ok, socket}
   end
@@ -37,16 +30,7 @@ defmodule CachePuppyCoreWeb.EventChannel do
     payload = Map.get(envelope, "payload")
     client_id = socket.assigns.client_id
 
-    message = %{
-      "v" => 1,
-      "type" => "publish",
-      "topic" => socket.assigns.topic,
-      "event" => event,
-      "payload" => payload,
-      "ts" => System.system_time(:millisecond),
-      "meta" => %{"clientId" => client_id}
-    }
-
+    message = build_publish(socket.assigns.topic, event, payload, client_id)
     broadcast!(socket, "message", message)
     {:reply, :ok, socket}
   end
@@ -60,19 +44,46 @@ defmodule CachePuppyCoreWeb.EventChannel do
       when is_list(ids) do
     target_ids = for id <- ids, is_binary(id), do: id
 
-    broadcast_payload = %{
-      "v" => 1,
-      "type" => "publish",
-      "topic" => topic,
-      "event" => event,
-      "payload" => payload,
-      "ts" => System.system_time(:millisecond),
-      "meta" => %{"clientId" => client_id},
-      "_target_client_ids" => target_ids
-    }
+    broadcast_payload =
+      build_publish(topic, event, payload, client_id)
+      |> Map.put("_target_client_ids", target_ids)
 
     broadcast!(socket, "cachepuppy_targeted", broadcast_payload)
     {:reply, :ok, socket}
+  end
+
+  @impl true
+  def handle_in("set_state", %{"payload" => payload}, %{assigns: %{topic: topic}} = socket)
+      when is_map(payload) do
+    case TopicManager.set_state(topic, payload) do
+      {:ok, state} ->
+        broadcast_state_updated(socket, topic, state)
+        {:reply, {:ok, %{"state" => state}}, socket}
+
+      {:error, :invalid_payload} ->
+        {:reply, {:error, %{reason: "invalid_payload"}}, socket}
+
+      {:error, _reason} ->
+        {:reply, {:error, %{reason: "state_update_failed"}}, socket}
+    end
+  end
+
+  @impl true
+  def handle_in("get_state", _payload, %{assigns: %{topic: topic}} = socket) do
+    case TopicManager.get_state(topic) do
+      {:ok, state} -> {:reply, {:ok, %{"state" => state}}, socket}
+      {:error, :topic_not_found} -> {:reply, {:error, %{reason: "topic_not_found"}}, socket}
+      {:error, _reason} -> {:reply, {:error, %{reason: "state_fetch_failed"}}, socket}
+    end
+  end
+
+  @impl true
+  def handle_in("close_topic", _payload, %{assigns: %{topic: topic}} = socket) do
+    case TopicManager.close_topic(topic) do
+      :ok -> {:reply, {:ok, %{"closed" => true}}, socket}
+      {:error, :topic_not_found} -> {:reply, {:ok, %{"closed" => false}}, socket}
+      {:error, _reason} -> {:reply, {:error, %{reason: "close_topic_failed"}}, socket}
+    end
   end
 
   @impl true
@@ -111,5 +122,28 @@ defmodule CachePuppyCoreWeb.EventChannel do
       })
 
     {:noreply, socket}
+  end
+
+  @impl true
+  def terminate(_reason, %{assigns: %{topic: topic}}) do
+    TopicManager.notify_activity(topic)
+    :ok
+  end
+
+  defp broadcast_state_updated(socket, topic, state) do
+    message = build_publish(topic, "state_updated", state, "topic_process")
+    broadcast!(socket, "message", message)
+  end
+
+  defp build_publish(topic, event, payload, client_id) do
+    %{
+      "v" => 1,
+      "type" => "publish",
+      "topic" => topic,
+      "event" => event,
+      "payload" => payload,
+      "ts" => System.system_time(:millisecond),
+      "meta" => %{"clientId" => client_id}
+    }
   end
 end

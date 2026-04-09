@@ -13,6 +13,8 @@ defmodule CachePuppyCore.Application do
       CachePuppyCoreWeb.Telemetry,
       {Cluster.Supervisor, [topologies, [name: CachePuppyCore.ClusterSupervisor]]},
       {Phoenix.PubSub, name: CachePuppyCore.PubSub},
+      {Registry, keys: :unique, name: CachePuppyCore.TopicRegistry},
+      CachePuppyCore.TopicSupervisor,
       CachePuppyCoreWeb.Presence,
       # Start a worker by calling: CachePuppyCore.Worker.start_link(arg)
       # {CachePuppyCore.Worker, arg},

@@ -8,7 +8,8 @@
 import Config
 
 config :cachepuppy_core,
-  generators: [timestamp_type: :utc_datetime]
+  generators: [timestamp_type: :utc_datetime],
+  topic_idle_timeout_ms: 120_000
 
 # Configure the endpoint
 config :cachepuppy_core, CachePuppyCoreWeb.Endpoint,

@@ -99,6 +99,43 @@ async function runFrontendDemo(): Promise<void> {
 
   await new Promise((resolve) => setTimeout(resolve, 400));
 
+  console.log(
+    '[demo] alice setTopicState — expect all subscribers to receive "state_updated":',
+  );
+  const stateAfterSet = await alice.setTopicState(TOPIC, {
+    phase: "ready",
+    round: 1,
+    updatedBy: "alice",
+    ts: Date.now(),
+  });
+  console.log("[demo] setTopicState response:", stateAfterSet);
+
+  await new Promise((resolve) => setTimeout(resolve, 400));
+
+  console.log('[demo] bob getTopicState — expect latest shared state map:');
+  const stateFromBob = await bob.getTopicState(TOPIC);
+  console.log("[demo] getTopicState response (bob):", stateFromBob);
+
+  await new Promise((resolve) => setTimeout(resolve, 200));
+
+  console.log("[demo] alice closeTopic — explicit topic process shutdown:");
+  const closed = await alice.closeTopic(TOPIC);
+  console.log("[demo] closeTopic response:", closed);
+
+  await new Promise((resolve) => setTimeout(resolve, 200));
+
+  console.log(
+    "[demo] bob getTopicState after closeTopic — expect an error (topic_not_found):",
+  );
+  try {
+    await bob.getTopicState(TOPIC);
+    console.log("[demo] unexpected: getTopicState succeeded after closeTopic");
+  } catch (error) {
+    console.log("[demo] expected getTopicState failure after closeTopic:", error);
+  }
+
+  await new Promise((resolve) => setTimeout(resolve, 200));
+
   await Promise.all([
     alice.disconnect("demo-complete"),
     bob.disconnect("demo-complete"),
