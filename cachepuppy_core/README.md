@@ -27,11 +27,38 @@ Supported inbound events:
 - `"publish_to"` with payload `%{"event" => "...", "payload" => ..., "client_ids" => [...]}` (only those Presence keys receive the outbound `message`)
 - `"message"` envelope with `%{"type" => "publish", "event" => "...", "payload" => ...}`
 - `"client_count"` returns `%{"client_count" => integer}` for the current topic (Presence member count).
+- `"set_state"` with payload `%{"payload" => map}` updates topic shared state and broadcasts a `state_updated` message event.
+- `"get_state"` returns `%{"state" => map}` for the current topic process state.
+- `"close_topic"` explicitly terminates the per-topic process and returns `%{"closed" => boolean}`.
 
 Broadcast behavior:
 
 - Server broadcasts `"message"` events to all subscribers on the channel topic.
 - Outbound message shape follows the CachePuppy envelope fields (`v`, `type`, `topic`, `event`, `payload`, `ts`, `meta`).
+- Topic state updates are broadcast as a normal `"message"` with `event: "state_updated"` and the full current topic state in `payload`.
+
+## Per-topic state process
+
+Each `events:<topic_name>` topic has a node-local GenServer that owns shared in-memory state for that topic.
+
+- The topic process is started on first join.
+- `set_state` replaces the current topic state with the provided map and then broadcasts `state_updated`.
+- `get_state` returns the latest full state map.
+- `close_topic` manually stops the topic process.
+- Idle fallback: if the topic process is inactive, it is stopped after `:topic_idle_timeout_ms` (default `120_000`).
+
+### Event payload examples
+
+- `set_state` push:
+  - `%{"payload" => %{"count" => 1, "status" => "ready"}}`
+- `set_state` reply:
+  - `%{"state" => %{"count" => 1, "status" => "ready"}}`
+- `state_updated` broadcast (`"message"` event payload):
+  - `%{"v" => 1, "type" => "publish", "topic" => "my_topic", "event" => "state_updated", "payload" => %{"count" => 1, "status" => "ready"}, "ts" => 1_712_345_678_901, "meta" => %{"clientId" => "topic_process"}}`
+- `get_state` reply:
+  - `%{"state" => %{"count" => 1, "status" => "ready"}}`
+- `close_topic` reply:
+  - `%{"closed" => true}`
 
 ## Local libcluster multi-node testing
 

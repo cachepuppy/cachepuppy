@@ -6,6 +6,7 @@ type EnvelopeHandler = (message: CachePuppyEnvelope) => void;
 class MockBus {
   private envelopeHandlers = new Map<string, Set<EnvelopeHandler>>();
   private topicMembers = new Map<string, Set<string>>();
+  private topicStates = new Map<string, Record<string, unknown>>();
 
   connect(clientId: string): void {
     if (!this.envelopeHandlers.has(clientId)) {
@@ -109,6 +110,49 @@ class MockBus {
     return members.size;
   }
 
+  setState(senderId: string, topic: string, payload: Record<string, unknown>): Record<string, unknown> {
+    const next = { ...payload };
+    this.topicStates.set(topic, next);
+
+    const members = this.topicMembers.get(topic);
+    if (members) {
+      const message: CachePuppyEnvelope = {
+        v: 1,
+        type: "publish",
+        id: `state_${Date.now()}`,
+        topic,
+        event: "state_updated",
+        payload: next,
+        ts: Date.now(),
+        meta: { clientId: senderId, transport: "mock" },
+      };
+
+      for (const memberId of members.values()) {
+        const handlers = this.envelopeHandlers.get(memberId);
+        if (!handlers) {
+          continue;
+        }
+
+        for (const handler of handlers.values()) {
+          handler(message);
+        }
+      }
+    }
+
+    return next;
+  }
+
+  getState(topic: string): Record<string, unknown> {
+    return { ...(this.topicStates.get(topic) ?? {}) };
+  }
+
+  closeTopic(topic: string): boolean {
+    const hadTopic = this.topicStates.has(topic) || this.topicMembers.has(topic);
+    this.topicStates.delete(topic);
+    this.topicMembers.delete(topic);
+    return hadTopic;
+  }
+
 }
 
 const globalBus = new MockBus();
@@ -132,6 +176,18 @@ export class MockTransport implements Transport {
 
   async clientCount(_clientId: string, topic: string): Promise<number> {
     return globalBus.clientCount(topic);
+  }
+
+  async setState(clientId: string, topic: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return globalBus.setState(clientId, topic, payload);
+  }
+
+  async getState(_clientId: string, topic: string): Promise<Record<string, unknown>> {
+    return globalBus.getState(topic);
+  }
+
+  async closeTopic(_clientId: string, topic: string): Promise<boolean> {
+    return globalBus.closeTopic(topic);
   }
 
 }

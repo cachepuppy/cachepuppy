@@ -182,4 +182,57 @@ export class PhoenixTransport implements Transport {
         .receive("timeout", () => reject(new Error("Timed out while getting client count")));
     });
   }
+
+  async setState(clientId: string, topic: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const channel = await this.ensureChannel(clientId, topic);
+
+    return new Promise<Record<string, unknown>>((resolve, reject) => {
+      channel
+        .push("set_state", { payload })
+        .receive("ok", (response?: unknown) => {
+          const data = (response ?? {}) as { state?: unknown };
+          resolve(asRecord(data.state));
+        })
+        .receive("error", () => reject(new Error("Failed to set topic state")))
+        .receive("timeout", () => reject(new Error("Timed out while setting topic state")));
+    });
+  }
+
+  async getState(clientId: string, topic: string): Promise<Record<string, unknown>> {
+    const channel = await this.ensureChannel(clientId, topic);
+
+    return new Promise<Record<string, unknown>>((resolve, reject) => {
+      channel
+        .push("get_state", {})
+        .receive("ok", (response?: unknown) => {
+          const data = (response ?? {}) as { state?: unknown };
+          resolve(asRecord(data.state));
+        })
+        .receive("error", () => reject(new Error("Failed to get topic state")))
+        .receive("timeout", () => reject(new Error("Timed out while getting topic state")));
+    });
+  }
+
+  async closeTopic(clientId: string, topic: string): Promise<boolean> {
+    const channel = await this.ensureChannel(clientId, topic);
+
+    return new Promise<boolean>((resolve, reject) => {
+      channel
+        .push("close_topic", {})
+        .receive("ok", (response?: unknown) => {
+          const data = (response ?? {}) as { closed?: unknown };
+          resolve(data.closed === true);
+        })
+        .receive("error", () => reject(new Error("Failed to close topic")))
+        .receive("timeout", () => reject(new Error("Timed out while closing topic")));
+    });
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+
+  return {};
 }

@@ -11,6 +11,9 @@ export type MessageType =
   | "unsubscribe"
   | "publish"
   | "publish_to"
+  | "set_state"
+  | "get_state"
+  | "close_topic"
   | "system";
 
 export interface CachePuppyEnvelope {
