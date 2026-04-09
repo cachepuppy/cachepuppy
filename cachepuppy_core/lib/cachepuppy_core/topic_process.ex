@@ -58,7 +58,7 @@ defmodule CachePuppyCore.TopicProcess do
 
   @impl true
   def handle_info(:idle_timeout, state) do
-    case Registry.lookup(CachePuppyCore.TopicRegistry, state.topic) do
+    case Horde.Registry.lookup(CachePuppyCore.TopicRegistry, state.topic) do
       [{pid, _}] when pid == self() -> {:stop, :normal, state}
       _ -> {:noreply, reset_idle_timer(state)}
     end
@@ -70,5 +70,5 @@ defmodule CachePuppyCore.TopicProcess do
     %{state | timer_ref: ref}
   end
 
-  defp via_topic(topic), do: {:via, Registry, {CachePuppyCore.TopicRegistry, topic}}
+  defp via_topic(topic), do: {:via, Horde.Registry, {CachePuppyCore.TopicRegistry, topic}}
 end

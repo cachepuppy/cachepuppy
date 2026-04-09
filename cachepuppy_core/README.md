@@ -39,13 +39,14 @@ Broadcast behavior:
 
 ## Per-topic state process
 
-Each `events:<topic_name>` topic has a node-local GenServer that owns shared in-memory state for that topic.
+Each `events:<topic_name>` topic has a single cluster owner process (one process for the topic across connected nodes) that owns shared in-memory state.
 
-- The topic process is started on first join.
+- The topic process is started on first join and registered cluster-wide.
 - `set_state` replaces the current topic state with the provided map and then broadcasts `state_updated`.
-- `get_state` returns the latest full state map.
-- `close_topic` manually stops the topic process.
+- `get_state` returns the latest full state map regardless of which backend node handles the request.
+- `close_topic` manually stops the global topic owner process.
 - Idle fallback: if the topic process is inactive, it is stopped after `:topic_idle_timeout_ms` (default `120_000`).
+- If the owner node fails, the topic can be recreated on another node with empty state.
 
 ### Event payload examples
 

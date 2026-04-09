@@ -45,7 +45,8 @@ defmodule CachePuppyCore.MixProject do
       {:gettext, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:libcluster, "~> 3.5"},
-      {:bandit, "~> 1.5"}
+      {:bandit, "~> 1.5"},
+      {:horde, "~> 0.10.0"}
     ]
   end
 
