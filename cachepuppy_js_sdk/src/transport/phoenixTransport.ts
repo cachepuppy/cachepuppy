@@ -17,6 +17,9 @@ function toSocketPath(url: string): string {
   return url.endsWith("/websocket") ? url.slice(0, -"/websocket".length) : url;
 }
 
+/** Fixed Phoenix channel topic for per-connection private state (see SessionChannel). */
+const SESSION_CHANNEL_TOPIC = "session";
+
 export class PhoenixTransport implements Transport {
   private socket?: Socket;
   private handlers = new Map<string, Set<EnvelopeHandler>>();
@@ -65,6 +68,35 @@ export class PhoenixTransport implements Transport {
     for (const handler of set.values()) {
       handler(message);
     }
+  }
+
+  private ensureSessionChannel(clientId: string): Promise<Channel> {
+    const existingReady = this.channelReady.get(SESSION_CHANNEL_TOPIC);
+    if (existingReady) {
+      return existingReady;
+    }
+    if (!this.socket) {
+      throw new Error("TransportError: socket is not connected");
+    }
+
+    const channel = this.socket.channel(SESSION_CHANNEL_TOPIC, {});
+    this.channels.set(SESSION_CHANNEL_TOPIC, channel);
+    const resolvedClientId = this.customClientId ?? clientId;
+    const ready = new Promise<Channel>((resolve, reject) => {
+      channel
+        .join()
+        .receive("ok", (payload?: unknown) => {
+          if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+            this.joinMetaByKey.set(joinMetaKey(resolvedClientId, SESSION_CHANNEL_TOPIC), payload as Record<string, unknown>);
+          }
+          resolve(channel);
+        })
+        .receive("error", () => {
+          reject(new Error("Failed to join session channel"));
+        });
+    });
+    this.channelReady.set(SESSION_CHANNEL_TOPIC, ready);
+    return ready;
   }
 
   private emitPresenceChange(clientId: string, channelTopic: string, presence: Record<string, unknown>): void {
@@ -269,8 +301,38 @@ export class PhoenixTransport implements Transport {
     });
   }
 
+  async setSessionState(clientId: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const channel = await this.ensureSessionChannel(clientId);
+
+    return new Promise<Record<string, unknown>>((resolve, reject) => {
+      channel
+        .push("set_session_state", { payload })
+        .receive("ok", (response?: unknown) => {
+          const data = (response ?? {}) as { state?: unknown };
+          resolve(asRecord(data.state));
+        })
+        .receive("error", () => reject(new Error("Failed to set session state")))
+        .receive("timeout", () => reject(new Error("Timed out while setting session state")));
+    });
+  }
+
+  async getSessionState(clientId: string): Promise<Record<string, unknown>> {
+    const channel = await this.ensureSessionChannel(clientId);
+
+    return new Promise<Record<string, unknown>>((resolve, reject) => {
+      channel
+        .push("get_session_state", {})
+        .receive("ok", (response?: unknown) => {
+          const data = (response ?? {}) as { state?: unknown };
+          resolve(asRecord(data.state));
+        })
+        .receive("error", () => reject(new Error("Failed to get session state")))
+        .receive("timeout", () => reject(new Error("Timed out while getting session state")));
+    });
+  }
+
   getChannelJoinMeta(clientId: string, topic: string): Record<string, unknown> | undefined {
-    const channelTopic = toChannelTopic(topic);
+    const channelTopic = topic === SESSION_CHANNEL_TOPIC ? SESSION_CHANNEL_TOPIC : toChannelTopic(topic);
     const resolvedClientId = this.customClientId ?? clientId;
     return this.joinMetaByKey.get(joinMetaKey(resolvedClientId, channelTopic));
   }

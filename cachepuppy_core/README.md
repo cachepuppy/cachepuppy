@@ -18,10 +18,12 @@ With `mix phx.server`, the app runs on `http://localhost:4000`. With Docker Comp
 ## Websocket endpoint
 
 - Socket path: `/socket/websocket`
-- Channel topic format: `events:<topic_name>`
+- Channel topic formats:
+  - `events:<topic_name>` — shared room messaging and topic state
+  - `session` — private per-connection state (join once per socket; no room name)
 - Optional connect param: `client_id` for custom client identity labels.
 
-Supported inbound events:
+Supported inbound events on **`events:<topic_name>`**:
 
 - `"publish"` with payload `%{"event" => "...", "payload" => ...}`
 - `"publish_to"` with payload `%{"event" => "...", "payload" => ..., "client_ids" => [...]}` (only those Presence keys receive the outbound `message`)
@@ -30,6 +32,11 @@ Supported inbound events:
 - `"set_state"` with payload `%{"payload" => map}` updates topic shared state and broadcasts a `state_updated` message event.
 - `"get_state"` returns `%{"state" => map}` for the current topic process state.
 - `"close_topic"` explicitly terminates the per-topic process and returns `%{"closed" => boolean}`.
+
+Supported inbound events on **`session`**:
+
+- `"set_session_state"` with payload `%{"payload" => map}` stores private state for this websocket connection only.
+- `"get_session_state"` returns `%{"state" => map}` for that connection.
 
 Broadcast behavior:
 
@@ -48,6 +55,14 @@ Each `events:<topic_name>` topic has a single cluster owner process (one process
 - Idle fallback: if the topic process is inactive, it is stopped after `:topic_idle_timeout_ms` (default `120_000`).
 - If the owner node fails, the topic can be recreated on another node with empty state.
 
+## Private session channel
+
+Join Phoenix topic `session` (fixed string) for connection-scoped state that does not use a room name.
+
+- One channel process per joined socket; state is not shared with other clients.
+- `set_session_state` / `get_session_state` behave like topic state but only for that connection.
+- State is dropped when the socket disconnects or the `session` channel is left.
+
 ### Event payload examples
 
 - `set_state` push:
@@ -58,6 +73,12 @@ Each `events:<topic_name>` topic has a single cluster owner process (one process
   - `%{"v" => 1, "type" => "publish", "topic" => "my_topic", "event" => "state_updated", "payload" => %{"count" => 1, "status" => "ready"}, "ts" => 1_712_345_678_901, "meta" => %{"clientId" => "topic_process"}}`
 - `get_state` reply:
   - `%{"state" => %{"count" => 1, "status" => "ready"}}`
+- `set_session_state` push:
+  - `%{"payload" => %{"draft" => "hello"}}`
+- `set_session_state` reply:
+  - `%{"state" => %{"draft" => "hello"}}`
+- `get_session_state` reply:
+  - `%{"state" => %{"draft" => "hello"}}`
 - `close_topic` reply:
   - `%{"closed" => true}`
 

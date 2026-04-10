@@ -2,6 +2,7 @@ defmodule CachePuppyCoreWeb.UserSocket do
   use Phoenix.Socket
 
   channel "events:*", CachePuppyCoreWeb.EventChannel
+  channel "session", CachePuppyCoreWeb.SessionChannel
 
   @impl true
   def connect(params, socket, _connect_info) do

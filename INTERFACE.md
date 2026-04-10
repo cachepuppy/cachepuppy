@@ -27,6 +27,15 @@ Optional: pass `clientId` to label this connection with your own custom ID.
 
 Example: publish `event = "order_created"` to topic `orders`.
 
+## 3b) Session state (this connection only, no room topic)
+
+Private cache for **this** websocket only (other clients never see it). The SDK joins a fixed server channel named `session` for you when you first call these:
+
+- `setSessionState(payload)` - replace session state for this connection.
+- `getSessionState()` - read current session state.
+
+Session state is cleared when this client disconnects or reconnects. You do **not** need to `subscribe` to a room topic to use session state.
+
 ## 4) Connection and message events you can listen to
 
 - `on("connected", handler)` - called when connection opens.
