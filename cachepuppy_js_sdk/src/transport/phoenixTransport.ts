@@ -21,6 +21,7 @@ export class PhoenixTransport implements Transport {
   private handlers = new Map<string, Set<EnvelopeHandler>>();
   private channels = new Map<string, Channel>();
   private channelReady = new Map<string, Promise<Channel>>();
+  private joinMetaByKey = new Map<string, Record<string, unknown>>();
 
   constructor(
     private readonly baseUrl: string,
@@ -40,10 +41,15 @@ export class PhoenixTransport implements Transport {
   }
 
   async disconnect(_clientId: string): Promise<void> {
+    const clientId = this.customClientId ?? _clientId;
+    for (const channelTopic of this.channels.keys()) {
+      this.joinMetaByKey.delete(joinMetaKey(clientId, channelTopic));
+    }
     for (const channel of this.channels.values()) {
       channel.leave();
     }
     this.channels.clear();
+    this.channelReady.clear();
     this.socket?.disconnect();
     this.socket = undefined;
   }
@@ -87,10 +93,16 @@ export class PhoenixTransport implements Transport {
     });
 
     this.channels.set(channelTopic, channel);
+    const resolvedClientId = this.customClientId ?? clientId;
     const ready = new Promise<Channel>((resolve, reject) => {
       channel
         .join()
-        .receive("ok", () => resolve(channel))
+        .receive("ok", (payload?: unknown) => {
+          if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+            this.joinMetaByKey.set(joinMetaKey(resolvedClientId, channelTopic), payload as Record<string, unknown>);
+          }
+          resolve(channel);
+        })
         .receive("error", () => {
           this.emit(clientId, {
             v: 1,
@@ -117,6 +129,8 @@ export class PhoenixTransport implements Transport {
 
     if (message.type === "unsubscribe" && message.topic) {
       const channelTopic = toChannelTopic(message.topic);
+      const resolvedClientId = this.customClientId ?? clientId;
+      this.joinMetaByKey.delete(joinMetaKey(resolvedClientId, channelTopic));
       const channel = this.channels.get(channelTopic);
       if (channel) {
         channel.leave();
@@ -221,6 +235,12 @@ export class PhoenixTransport implements Transport {
     });
   }
 
+  getChannelJoinMeta(clientId: string, topic: string): Record<string, unknown> | undefined {
+    const channelTopic = toChannelTopic(topic);
+    const resolvedClientId = this.customClientId ?? clientId;
+    return this.joinMetaByKey.get(joinMetaKey(resolvedClientId, channelTopic));
+  }
+
   async closeTopic(clientId: string, topic: string): Promise<boolean> {
     const channel = await this.ensureChannel(clientId, topic);
 
@@ -243,4 +263,8 @@ function asRecord(value: unknown): Record<string, unknown> {
   }
 
   return {};
+}
+
+function joinMetaKey(clientId: string, channelTopic: string): string {
+  return `${clientId}::${channelTopic}`;
 }

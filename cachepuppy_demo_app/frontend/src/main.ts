@@ -1,5 +1,9 @@
 import { createClient, type CachePuppyClient } from "cachepuppy_js_sdk";
-import { logTopicMessage, probeLoadBalancer } from "./demoUtils.js";
+import {
+  logDemoWsChannelNodes,
+  logTopicMessage,
+  probeLoadBalancer,
+} from "./demoUtils.js";
 
 /** Base URL for HTTP (LB or single node). Override with API_BASE when testing. */
 const API_BASE = process.env.API_BASE ?? "http://127.0.0.1:4000";
@@ -36,34 +40,42 @@ async function runFrontendDemo(): Promise<void> {
   //-------------------------------------------------------------------
   //-------------------------------------------------------------------
 
-  await Promise.all([
-    alice.connect(),
-    bob.connect(),
-    carol.connect(),
-    dave.connect(),
-    eve.connect(),
-  ]);
+  // Serial connects (one after another) so nginx round-robin matches HTTP probes.
+  await alice.connect();
+  await bob.connect();
+  await carol.connect();
+  await dave.connect();
+  await eve.connect();
 
   //-------------------------------------------------------------------
   //-------------------------------------------------------------------
 
-  await Promise.all([
-    alice.subscribe(TOPIC, (message) => {
-      logTopicMessage("alice", message);
-    }),
-    bob.subscribe(TOPIC, (message) => {
-      logTopicMessage("bob", message);
-    }),
-    carol.subscribe(TOPIC, (message) => {
-      logTopicMessage("carol", message);
-    }),
-    dave.subscribe(TOPIC, (message) => {
-      logTopicMessage("dave", message);
-    }),
-    eve.subscribe(TOPIC, (message) => {
-      logTopicMessage("eve", message);
-    }),
-  ]);
+  await alice.subscribe(TOPIC, (message) => {
+    logTopicMessage("alice", message);
+  });
+  await bob.subscribe(TOPIC, (message) => {
+    logTopicMessage("bob", message);
+  });
+  await carol.subscribe(TOPIC, (message) => {
+    logTopicMessage("carol", message);
+  });
+  await dave.subscribe(TOPIC, (message) => {
+    logTopicMessage("dave", message);
+  });
+  await eve.subscribe(TOPIC, (message) => {
+    logTopicMessage("eve", message);
+  });
+
+  logDemoWsChannelNodes(
+    [
+      { label: "alice", client: alice },
+      { label: "bob", client: bob },
+      { label: "carol", client: carol },
+      { label: "dave", client: dave },
+      { label: "eve", client: eve },
+    ],
+    TOPIC,
+  );
 
   //-------------------------------------------------------------------
   //-------------------------------------------------------------------
@@ -72,7 +84,7 @@ async function runFrontendDemo(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 300));
 
   console.log(
-    "[demo] alice publishes to the whole topic — expect all five clients to receive:",
+    "[alice] publishes to the whole topic — expect all five clients to receive:",
   );
   await alice.publish(TOPIC, "room_broadcast", {
     text: "Hello everyone in the room",
@@ -85,7 +97,7 @@ async function runFrontendDemo(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 400));
 
   console.log(
-    "[demo] alice publishes to only carol — expect only carol to receive:",
+    "[alice] publishes to only carol — expect only carol to receive:",
   );
   await alice.publishTo(
     TOPIC,
@@ -100,7 +112,7 @@ async function runFrontendDemo(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 400));
 
   console.log(
-    '[demo] alice setTopicState — expect all subscribers to receive "state_updated":',
+    '[alice] setTopicState — expect all subscribers to receive "state_updated":',
   );
   const _ = await alice.setTopicState(TOPIC, {
     phase: "ready",
@@ -115,11 +127,11 @@ async function runFrontendDemo(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 400));
 
   console.log(
-    "[demo] bob getTopicStateWithMeta — expect latest shared state map + node ids:",
+    "[bob] getTopicStateWithMeta — expect latest shared state map + node ids:",
   );
   const stateFromBob = await bob.getTopicStateWithMeta(TOPIC);
   console.log(
-    "[demo] getTopicState response (bob):",
+    "[bob] getTopicState response:",
     stateFromBob.state,
     "source_node=",
     stateFromBob.sourceNode ?? "unknown",
@@ -132,9 +144,9 @@ async function runFrontendDemo(): Promise<void> {
 
   await new Promise((resolve) => setTimeout(resolve, 200));
 
-  console.log("[demo] alice closeTopic — explicit topic process shutdown:");
+  console.log("[alice] closeTopic — explicit topic process shutdown:");
   const closed = await alice.closeTopic(TOPIC);
-  console.log("[demo] closeTopic response:", closed);
+  console.log("[alice] closeTopic response:", closed);
 
   //-------------------------------------------------------------------
   //-------------------------------------------------------------------
@@ -142,13 +154,13 @@ async function runFrontendDemo(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 200));
 
   console.log(
-    "[demo] bob getTopicState after closeTopic — expect an error (topic_not_found):",
+    "[bob] getTopicState after closeTopic — expect an error (topic_not_found):",
   );
   try {
     await bob.getTopicState(TOPIC);
-    console.log("[demo] unexpected: getTopicState succeeded after closeTopic");
+    console.log("[bob] unexpected: getTopicState succeeded after closeTopic");
   } catch (error) {
-    console.log("[demo] expected getTopicState failure after closeTopic:");
+    console.log("[bob] expected getTopicState failure after closeTopic:");
   }
 
   //-------------------------------------------------------------------
