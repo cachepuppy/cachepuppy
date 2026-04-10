@@ -1,4 +1,5 @@
-import { Socket, type Channel } from "phoenix";
+import { Presence, Socket, type Channel } from "phoenix";
+import { nextId } from "../protocol.js";
 import type { CachePuppyEnvelope } from "../types.js";
 import type { TopicStateResponse, Transport } from "./transport.js";
 
@@ -22,6 +23,7 @@ export class PhoenixTransport implements Transport {
   private channels = new Map<string, Channel>();
   private channelReady = new Map<string, Promise<Channel>>();
   private joinMetaByKey = new Map<string, Record<string, unknown>>();
+  private presenceStateByChannel = new Map<string, Record<string, unknown>>();
 
   constructor(
     private readonly baseUrl: string,
@@ -50,6 +52,7 @@ export class PhoenixTransport implements Transport {
     }
     this.channels.clear();
     this.channelReady.clear();
+    this.presenceStateByChannel.clear();
     this.socket?.disconnect();
     this.socket = undefined;
   }
@@ -64,6 +67,20 @@ export class PhoenixTransport implements Transport {
     }
   }
 
+  private emitPresenceChange(clientId: string, channelTopic: string, presence: Record<string, unknown>): void {
+    const clientCount = Object.keys(presence).length;
+    this.emit(clientId, {
+      v: 1,
+      type: "system",
+      id: nextId("presence"),
+      topic: toSdkTopic(channelTopic),
+      event: "presence_change",
+      payload: { clientCount },
+      ts: Date.now(),
+      meta: { transport: "phoenix" },
+    });
+  }
+
   private ensureChannel(clientId: string, topic: string): Promise<Channel> {
     const channelTopic = toChannelTopic(topic);
     const existingReady = this.channelReady.get(channelTopic);
@@ -75,6 +92,22 @@ export class PhoenixTransport implements Transport {
     }
 
     const channel = this.socket.channel(channelTopic, {});
+    this.presenceStateByChannel.set(channelTopic, {});
+
+    channel.on("presence_state", (state: Record<string, unknown>) => {
+      const prev = this.presenceStateByChannel.get(channelTopic) ?? {};
+      const next = Presence.syncState(prev, state);
+      this.presenceStateByChannel.set(channelTopic, next);
+      this.emitPresenceChange(clientId, channelTopic, next);
+    });
+
+    channel.on("presence_diff", (diff: { joins?: Record<string, unknown>; leaves?: Record<string, unknown> }) => {
+      const prev = this.presenceStateByChannel.get(channelTopic) ?? {};
+      const next = Presence.syncDiff(prev, diff);
+      this.presenceStateByChannel.set(channelTopic, next);
+      this.emitPresenceChange(clientId, channelTopic, next);
+    });
+
     channel.on("message", (payload: Record<string, unknown>) => {
       const payloadMeta =
         payload.meta && typeof payload.meta === "object" ? (payload.meta as Record<string, unknown>) : {};
@@ -136,6 +169,7 @@ export class PhoenixTransport implements Transport {
         channel.leave();
         this.channels.delete(channelTopic);
         this.channelReady.delete(channelTopic);
+        this.presenceStateByChannel.delete(channelTopic);
       }
       return;
     }

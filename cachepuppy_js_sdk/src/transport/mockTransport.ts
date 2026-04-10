@@ -1,3 +1,4 @@
+import { nextId } from "../protocol.js";
 import type { CachePuppyEnvelope } from "../types.js";
 import type { TopicStateResponse, Transport } from "./transport.js";
 
@@ -15,9 +16,43 @@ class MockBus {
   }
 
   disconnect(clientId: string): void {
+    const affectedTopics: string[] = [];
+    for (const [topic, members] of this.topicMembers.entries()) {
+      if (members.has(clientId)) {
+        affectedTopics.push(topic);
+        members.delete(clientId);
+      }
+    }
+    for (const topic of affectedTopics) {
+      this.broadcastPresenceChange(topic);
+    }
     this.envelopeHandlers.delete(clientId);
-    for (const members of this.topicMembers.values()) {
-      members.delete(clientId);
+  }
+
+  private broadcastPresenceChange(topic: string): void {
+    const members = this.topicMembers.get(topic);
+    const clientCount = members?.size ?? 0;
+    const envelope: CachePuppyEnvelope = {
+      v: 1,
+      type: "system",
+      id: nextId("presence"),
+      topic,
+      event: "presence_change",
+      payload: { clientCount },
+      ts: Date.now(),
+      meta: { transport: "mock" },
+    };
+    if (!members || members.size === 0) {
+      return;
+    }
+    for (const memberId of members.values()) {
+      const handlers = this.envelopeHandlers.get(memberId);
+      if (!handlers) {
+        continue;
+      }
+      for (const handler of handlers.values()) {
+        handler(envelope);
+      }
     }
   }
 
@@ -34,11 +69,13 @@ class MockBus {
         this.topicMembers.set(message.topic, new Set());
       }
       this.topicMembers.get(message.topic)!.add(senderId);
+      this.broadcastPresenceChange(message.topic);
       return;
     }
 
     if (message.type === "unsubscribe" && message.topic) {
       this.topicMembers.get(message.topic)?.delete(senderId);
+      this.broadcastPresenceChange(message.topic);
       return;
     }
 

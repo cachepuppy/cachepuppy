@@ -50,6 +50,12 @@ async function runFrontendDemo(): Promise<void> {
   //-------------------------------------------------------------------
   //-------------------------------------------------------------------
 
+  alice.onPresenceChange(TOPIC, ({ clientCount }) => {
+    console.log(
+      `[alice] live presence on "${TOPIC}": ${clientCount} client(s) connected`,
+    );
+  });
+
   await alice.subscribe(TOPIC, (message) => {
     logTopicMessage("alice", message);
   });

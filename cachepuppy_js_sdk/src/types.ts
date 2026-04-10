@@ -51,5 +51,7 @@ export interface ClientEventMap {
   reconnecting: { attempt: number; delayMs: number };
   stateChange: { state: ConnectionState };
   message: CachePuppyEnvelope;
+  /** Emitted when Phoenix Presence count changes for a subscribed topic (Phoenix + mock transports). */
+  topicPresence: { topic: string; clientCount: number };
   error: Error;
 }
