@@ -109,6 +109,16 @@ export class CachePuppyClient {
     }
     this.events.emit("message", message);
 
+    if (message.type === "system" && message.event === "presence_change" && message.topic) {
+      const rawPayload =
+        message.payload && typeof message.payload === "object" && !Array.isArray(message.payload)
+          ? (message.payload as Record<string, unknown>)
+          : {};
+      const n = rawPayload.clientCount;
+      const clientCount = typeof n === "number" && Number.isFinite(n) ? Math.floor(n) : 0;
+      this.events.emit("topicPresence", { topic: message.topic, clientCount });
+    }
+
     if (message.type === "publish" && message.topic) {
       const handlers = this.topicHandlers.get(message.topic);
       if (handlers) {
@@ -204,6 +214,14 @@ export class CachePuppyClient {
     return this.subscribe(topic, (message) => {
       if (message.event === "state_updated" && message.payload && typeof message.payload === "object") {
         handler(message.payload as Record<string, unknown>);
+      }
+    });
+  }
+
+  onPresenceChange(topic: string, handler: (payload: { clientCount: number }) => void): () => void {
+    return this.on("topicPresence", (payload) => {
+      if (payload.topic === topic) {
+        handler({ clientCount: payload.clientCount });
       }
     });
   }
