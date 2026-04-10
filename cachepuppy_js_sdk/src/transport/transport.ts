@@ -16,4 +16,5 @@ export interface Transport {
   getState?(clientId: string, topic: string): Promise<Record<string, unknown>>;
   getStateWithMeta?(clientId: string, topic: string): Promise<TopicStateResponse>;
   closeTopic?(clientId: string, topic: string): Promise<boolean>;
+  getChannelJoinMeta?(clientId: string, topic: string): Record<string, unknown> | undefined;
 }

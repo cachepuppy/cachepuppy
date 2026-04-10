@@ -10,7 +10,7 @@ defmodule CachePuppyCoreWeb.EventChannel do
     {:ok, _pid} = TopicManager.ensure_started(topic)
     socket = assign(socket, :topic, topic)
     send(self(), {:track_presence, client_id})
-    {:ok, socket}
+    {:ok, %{"connected_node" => to_string(node())}, socket}
   end
 
   @impl true

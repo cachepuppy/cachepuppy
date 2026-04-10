@@ -194,4 +194,8 @@ export class MockTransport implements Transport {
     return globalBus.closeTopic(topic);
   }
 
+  getChannelJoinMeta(_clientId: string, _topic: string): Record<string, unknown> | undefined {
+    return undefined;
+  }
+
 }

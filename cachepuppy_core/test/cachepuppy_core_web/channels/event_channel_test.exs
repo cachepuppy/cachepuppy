@@ -8,7 +8,9 @@ defmodule CachePuppyCoreWeb.EventChannelTest do
     topic = unique_topic()
     socket = user_socket("join_starts")
 
-    {:ok, _reply, chan} = subscribe_and_join(socket, CachePuppyCoreWeb.EventChannel, "events:#{topic}")
+    {:ok, %{"connected_node" => _connected}, chan} =
+      subscribe_and_join(socket, CachePuppyCoreWeb.EventChannel, "events:#{topic}")
+
     ref = push(chan, "get_state", %{})
     assert_reply ref, :ok, %{
       "state" => %{},

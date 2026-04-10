@@ -188,6 +188,10 @@ export class CachePuppyClient {
     return { state };
   }
 
+  getChannelJoinMeta(topic: string): Record<string, unknown> | undefined {
+    return this.transport.getChannelJoinMeta?.(this.clientId, topic);
+  }
+
   async closeTopic(topic: string): Promise<boolean> {
     if (!this.transport.closeTopic) {
       throw new Error("TransportError: closeTopic is not supported by this transport");
