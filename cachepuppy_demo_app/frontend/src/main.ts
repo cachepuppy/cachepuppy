@@ -50,6 +50,16 @@ async function runFrontendDemo(): Promise<void> {
   //-------------------------------------------------------------------
   //-------------------------------------------------------------------
 
+  console.log(
+    "[alice] setSessionState (no room topic) — only this connection; bob stays empty:",
+  );
+  await alice.setSessionState({ uiTab: "settings", note: "alice-only" });
+  console.log("[alice] getSessionState:", await alice.getSessionState());
+  console.log("[bob] getSessionState (expect {}):", await bob.getSessionState());
+
+  //-------------------------------------------------------------------
+  //-------------------------------------------------------------------
+
   alice.onPresenceChange(TOPIC, ({ clientCount }) => {
     console.log(
       `[alice] live presence on "${TOPIC}": ${clientCount} client(s) connected`,

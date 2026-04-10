@@ -8,6 +8,8 @@ class MockBus {
   private envelopeHandlers = new Map<string, Set<EnvelopeHandler>>();
   private topicMembers = new Map<string, Set<string>>();
   private topicStates = new Map<string, Record<string, unknown>>();
+  /** Per simulated client (private session channel; no room topic). */
+  private sessionStates = new Map<string, Record<string, unknown>>();
 
   connect(clientId: string): void {
     if (!this.envelopeHandlers.has(clientId)) {
@@ -26,6 +28,7 @@ class MockBus {
     for (const topic of affectedTopics) {
       this.broadcastPresenceChange(topic);
     }
+    this.sessionStates.delete(clientId);
     this.envelopeHandlers.delete(clientId);
   }
 
@@ -183,6 +186,16 @@ class MockBus {
     return { ...(this.topicStates.get(topic) ?? {}) };
   }
 
+  setSessionState(clientId: string, payload: Record<string, unknown>): Record<string, unknown> {
+    const next = { ...payload };
+    this.sessionStates.set(clientId, next);
+    return next;
+  }
+
+  getSessionState(clientId: string): Record<string, unknown> {
+    return { ...(this.sessionStates.get(clientId) ?? {}) };
+  }
+
   closeTopic(topic: string): boolean {
     const hadTopic = this.topicStates.has(topic) || this.topicMembers.has(topic);
     this.topicStates.delete(topic);
@@ -229,6 +242,14 @@ export class MockTransport implements Transport {
 
   async closeTopic(_clientId: string, topic: string): Promise<boolean> {
     return globalBus.closeTopic(topic);
+  }
+
+  async setSessionState(clientId: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+    return globalBus.setSessionState(clientId, payload);
+  }
+
+  async getSessionState(clientId: string): Promise<Record<string, unknown>> {
+    return globalBus.getSessionState(clientId);
   }
 
   getChannelJoinMeta(_clientId: string, _topic: string): Record<string, unknown> | undefined {

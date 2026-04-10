@@ -198,6 +198,22 @@ export class CachePuppyClient {
     return { state };
   }
 
+  async setSessionState(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (!this.transport.setSessionState) {
+      throw new Error("TransportError: setSessionState is not supported by this transport");
+    }
+
+    return this.transport.setSessionState(this.clientId, payload);
+  }
+
+  async getSessionState(): Promise<Record<string, unknown>> {
+    if (!this.transport.getSessionState) {
+      throw new Error("TransportError: getSessionState is not supported by this transport");
+    }
+
+    return this.transport.getSessionState(this.clientId);
+  }
+
   getChannelJoinMeta(topic: string): Record<string, unknown> | undefined {
     return this.transport.getChannelJoinMeta?.(this.clientId, topic);
   }

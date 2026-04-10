@@ -46,6 +46,11 @@ States: `idle | connecting | connected | reconnecting | disconnected | destroyed
 - `publishTo(topic: string, event: string, payload: unknown, clientIds: string[]): Promise<void>`
 - `clientCount(topic: string): Promise<number>`
 
+### Topic shared state vs connection session state
+
+- `setTopicState(topic, payload)` / `getTopicState(topic)` / `getTopicStateWithMeta(topic)` — cluster-wide shared state for the topic; all subscribers see `state_updated` broadcasts.
+- `setSessionState(payload)` / `getSessionState()` — private state on the Phoenix `session` channel (no room topic); other clients do not see it; reconnect starts empty.
+
 ### Event APIs
 
 - `on("connected" | "disconnected" | "reconnecting" | "stateChange", handler)`
