@@ -109,9 +109,11 @@ Expected steady-state: each response reports `cluster_size: 3`. Via nginx, `node
 
 ### Demo frontend (multi-client, behind LB)
 
-From the repo root, with the stack running:
+From the repository root, with the stack running (build the JS SDK first if you have not already):
 
-- `npm run demo:frontend`
+```bash
+(cd sdk/javascript && npm ci && npm run build) && (cd example/javascript_demo/frontend && npm ci && npm run build && npm start)
+```
 
 The demo uses `http://localhost:4000` and `ws://localhost:4000` by default (nginx). It runs HTTP probes first (to show LB distribution), then opens five WebSocket clients and runs the same publish / `publishTo` checks as before.
 

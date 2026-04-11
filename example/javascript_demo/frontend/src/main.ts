@@ -1,4 +1,4 @@
-import { createClient, type CachePuppyClient } from "cachepuppy_js_sdk";
+import { createClient, type CachePuppyClient } from "cachepuppy-js-sdk";
 import {
   logDemoWsChannelNodes,
   logTopicMessage,

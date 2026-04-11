@@ -1,4 +1,4 @@
-# cachepuppy_demo_app
+# javascript_demo
 
 Frontend-only demo for validating CachePuppy SDK usage against the managed Elixir websocket server.
 
@@ -11,7 +11,7 @@ Frontend-only demo for validating CachePuppy SDK usage against the managed Elixi
 
 ## Structure
 
-- `frontend`: Browser-style client simulation using `cachepuppy_js_sdk`.
+- `frontend`: Browser-style client simulation using the `cachepuppy-js-sdk` package (`file:` link to `sdk/javascript`).
 
 ## Scenario
 
@@ -24,7 +24,7 @@ Frontend-only demo for validating CachePuppy SDK usage against the managed Elixi
 
 # Demo Frontend Contract
 
-`frontend` runs a small Node script that uses `cachepuppy_js_sdk` against a live Phoenix server (`transport: "phoenix"`).
+`frontend` runs a small Node script that uses `cachepuppy-js-sdk` against a live Phoenix server (`transport: "phoenix"`).
 
 ## Scenario
 
@@ -42,12 +42,12 @@ Frontend-only demo for validating CachePuppy SDK usage against the managed Elixi
 **Multi-node cluster + nginx (recommended for LB validation)**
 
 1. `cd cachepuppy_core && docker compose up --build -d`
-2. From repo root: `npm run demo:frontend`
+2. From repo root: `(cd sdk/javascript && npm ci && npm run build) && (cd example/javascript_demo/frontend && npm ci && npm run build && npm start)`
 
 **Single local Phoenix (no Docker)**
 
 1. `cd cachepuppy_core && mix phx.server`
-2. From repo root: `npm run demo:frontend`
+2. From repo root: `(cd sdk/javascript && npm ci && npm run build) && (cd example/javascript_demo/frontend && npm ci && npm run build && npm start)`
 
 Environment overrides (optional):
 
