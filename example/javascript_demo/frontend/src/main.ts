@@ -55,7 +55,10 @@ async function runFrontendDemo(): Promise<void> {
   );
   await alice.setSessionState({ uiTab: "settings", note: "alice-only" });
   console.log("[alice] getSessionState:", await alice.getSessionState());
-  console.log("[bob] getSessionState (expect {}):", await bob.getSessionState());
+  console.log(
+    "[bob] getSessionState (expect {}):",
+    await bob.getSessionState(),
+  );
 
   //-------------------------------------------------------------------
   //-------------------------------------------------------------------
@@ -82,6 +85,9 @@ async function runFrontendDemo(): Promise<void> {
     logTopicMessage("eve", message);
   });
 
+  // Brief pause so all channel joins / Presence are settled.
+  await new Promise((resolve) => setTimeout(resolve, 600));
+
   logDemoWsChannelNodes(
     [
       { label: "alice", client: alice },
@@ -96,14 +102,24 @@ async function runFrontendDemo(): Promise<void> {
   //-------------------------------------------------------------------
   //-------------------------------------------------------------------
 
-  // Brief pause so all channel joins / Presence are settled before publishing.
+  // Brief pause so all channel joins / Presence are settled.
   await new Promise((resolve) => setTimeout(resolve, 300));
 
   console.log(
-    "[alice] publishes to the whole topic — expect all five clients to receive:",
+    "[eve] unsubscribe(TOPIC) — leave this topic (Phoenix channel leave); room stays open for others:",
+  );
+  await eve.unsubscribe(TOPIC);
+
+  //-------------------------------------------------------------------
+  //-------------------------------------------------------------------
+
+  await new Promise((resolve) => setTimeout(resolve, 300));
+
+  console.log(
+    "[alice] publishes to the whole topic — expect only four clients (eve left the room):",
   );
   await alice.publish(TOPIC, "room_broadcast", {
-    text: "Hello everyone in the room",
+    text: "Hello everyone still in the room",
     ts: Date.now(),
   });
 
@@ -160,33 +176,9 @@ async function runFrontendDemo(): Promise<void> {
 
   await new Promise((resolve) => setTimeout(resolve, 200));
 
-  console.log("[alice] closeTopic — explicit topic process shutdown:");
-  const closed = await alice.closeTopic(TOPIC);
-  console.log("[alice] closeTopic response:", closed);
-
-  //-------------------------------------------------------------------
-  //-------------------------------------------------------------------
-
-  await new Promise((resolve) => setTimeout(resolve, 200));
-
-  console.log(
-    "[bob] getTopicState after closeTopic — expect an error (topic_not_found):",
-  );
-  try {
-    await bob.getTopicState(TOPIC);
-    console.log("[bob] unexpected: getTopicState succeeded after closeTopic");
-  } catch (error) {
-    console.log("[bob] expected getTopicState failure after closeTopic:");
-  }
-
-  //-------------------------------------------------------------------
-  //-------------------------------------------------------------------
-
-  await new Promise((resolve) => setTimeout(resolve, 200));
-
   const countBeforeDisconnect = await alice.clientCount(TOPIC);
   console.log(
-    `[demo] clients in topic "${TOPIC}" right before disconnect:`,
+    `[demo] clients in topic "${TOPIC}" right before disconnect (expect 4):`,
     countBeforeDisconnect,
   );
 
