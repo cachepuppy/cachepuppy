@@ -337,7 +337,7 @@ export class PhoenixTransport implements Transport {
     return this.joinMetaByKey.get(joinMetaKey(resolvedClientId, channelTopic));
   }
 
-  async closeTopic(clientId: string, topic: string): Promise<boolean> {
+  async clearTopicState(clientId: string, topic: string): Promise<boolean> {
     const channel = await this.ensureChannel(clientId, topic);
 
     return new Promise<boolean>((resolve, reject) => {
@@ -347,8 +347,8 @@ export class PhoenixTransport implements Transport {
           const data = (response ?? {}) as { closed?: unknown };
           resolve(data.closed === true);
         })
-        .receive("error", () => reject(new Error("Failed to close topic")))
-        .receive("timeout", () => reject(new Error("Timed out while closing topic")));
+        .receive("error", () => reject(new Error("Failed to clear topic state")))
+        .receive("timeout", () => reject(new Error("Timed out while clearing topic state")));
     });
   }
 }

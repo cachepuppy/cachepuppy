@@ -218,12 +218,12 @@ export class CachePuppyClient {
     return this.transport.getChannelJoinMeta?.(this.clientId, topic);
   }
 
-  async closeTopic(topic: string): Promise<boolean> {
-    if (!this.transport.closeTopic) {
-      throw new Error("TransportError: closeTopic is not supported by this transport");
+  async clearTopicState(topic: string): Promise<boolean> {
+    if (!this.transport.clearTopicState) {
+      throw new Error("TransportError: clearTopicState is not supported by this transport");
     }
 
-    return this.transport.closeTopic(this.clientId, topic);
+    return this.transport.clearTopicState(this.clientId, topic);
   }
 
   async onStateUpdated(topic: string, handler: (state: Record<string, unknown>) => void): Promise<() => void> {

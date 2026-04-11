@@ -176,11 +176,37 @@ async function runFrontendDemo(): Promise<void> {
 
   await new Promise((resolve) => setTimeout(resolve, 200));
 
-  const countBeforeDisconnect = await alice.clientCount(TOPIC);
+  const countBeforeClear = await alice.clientCount(TOPIC);
   console.log(
-    `[demo] clients in topic "${TOPIC}" right before disconnect (expect 4):`,
-    countBeforeDisconnect,
+    `[demo] clients in topic "${TOPIC}" before clearTopicState (expect 4):`,
+    countBeforeClear,
   );
+
+  //-------------------------------------------------------------------
+  //-------------------------------------------------------------------
+
+  await new Promise((resolve) => setTimeout(resolve, 200));
+
+  console.log(
+    "[alice] clearTopicState(TOPIC) — server clears topic process / shared state for demo_room:",
+  );
+  const cleared = await alice.clearTopicState(TOPIC);
+  console.log("[alice] clearTopicState response:", cleared);
+
+  //-------------------------------------------------------------------
+  //-------------------------------------------------------------------
+
+  await new Promise((resolve) => setTimeout(resolve, 200));
+
+  console.log(
+    "[bob] getTopicState after clearTopicState — expect an error (topic_not_found):",
+  );
+  try {
+    await bob.getTopicState(TOPIC);
+    console.log("[bob] unexpected: getTopicState succeeded after clearTopicState");
+  } catch {
+    console.log("[bob] expected getTopicState failure after clearTopicState");
+  }
 
   //-------------------------------------------------------------------
   //-------------------------------------------------------------------

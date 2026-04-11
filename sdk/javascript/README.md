@@ -6,7 +6,7 @@ This package provides:
 
 - Client lifecycle management
 - Topic publish/subscribe
-- Per-topic shared state helpers (`setTopicState`, `getTopicState`, `closeTopic`)
+- Per-topic shared state helpers (`setTopicState`, `getTopicState`, `clearTopicState`)
 - Per-connection private session state via the fixed `session` channel (`setSessionState`, `getSessionState`; no room topic)
 - `onStateUpdated` helper for `state_updated` topic events
 - Mock transport for local development and demo flows

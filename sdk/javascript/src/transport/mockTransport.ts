@@ -196,7 +196,7 @@ class MockBus {
     return { ...(this.sessionStates.get(clientId) ?? {}) };
   }
 
-  closeTopic(topic: string): boolean {
+  clearTopicState(topic: string): boolean {
     const hadTopic = this.topicStates.has(topic) || this.topicMembers.has(topic);
     this.topicStates.delete(topic);
     this.topicMembers.delete(topic);
@@ -240,8 +240,8 @@ export class MockTransport implements Transport {
     return { state: globalBus.getState(topic), sourceNode: "mock", servedByNode: "mock" };
   }
 
-  async closeTopic(_clientId: string, topic: string): Promise<boolean> {
-    return globalBus.closeTopic(topic);
+  async clearTopicState(_clientId: string, topic: string): Promise<boolean> {
+    return globalBus.clearTopicState(topic);
   }
 
   async setSessionState(clientId: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {

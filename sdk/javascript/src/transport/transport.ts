@@ -18,6 +18,6 @@ export interface Transport {
   setSessionState?(clientId: string, payload: Record<string, unknown>): Promise<Record<string, unknown>>;
   getSessionState?(clientId: string): Promise<Record<string, unknown>>;
   getStateWithMeta?(clientId: string, topic: string): Promise<TopicStateResponse>;
-  closeTopic?(clientId: string, topic: string): Promise<boolean>;
+  clearTopicState?(clientId: string, topic: string): Promise<boolean>;
   getChannelJoinMeta?(clientId: string, topic: string): Record<string, unknown> | undefined;
 }

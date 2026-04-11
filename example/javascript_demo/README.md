@@ -6,7 +6,7 @@ Frontend-only demo for validating CachePuppy SDK usage against the managed Elixi
 
 - Exercise SDK lifecycle events.
 - Exercise publish/subscribe message flow.
-- Exercise per-topic shared state flow (`setTopicState`, `getTopicState`, `closeTopic`, `state_updated`).
+- Exercise per-topic shared state flow (`setTopicState`, `getTopicState`, `clearTopicState`, `state_updated`).
 - Validate single cluster owner topic behavior across load-balanced backend nodes.
 
 ## Structure
@@ -19,7 +19,7 @@ Frontend-only demo for validating CachePuppy SDK usage against the managed Elixi
 2. Frontend subscribes to `demo.events`.
 3. Frontend publishes `demo.events:client_ready`.
 4. Frontend updates and reads shared topic state.
-5. Frontend closes the topic process and demonstrates that read-after-close returns an error.
+5. Frontend calls `clearTopicState` on the same topic and demonstrates that read-after-clear returns an error.
 6. Frontend logs incoming events from the server.
 
 # Demo Frontend Contract
@@ -29,13 +29,14 @@ Frontend-only demo for validating CachePuppy SDK usage against the managed Elixi
 ## Scenario
 
 1. Optional HTTP probes call `GET /api/health` through the load balancer (expect mixed `node` values when multiple backends are behind nginx).
-2. Five clients (`alice`, `bob`, `carol`, `dave`, `eve`) connect via **the same WS URL** (typically `ws://127.0.0.1:4000/socket/websocket` when using Docker Compose + nginx) and subscribe to topic `demo_room`.
-3. `alice` calls `publish` — all five should log `room_broadcast`.
-4. `alice` calls `publishTo` with `["carol"]` — only `carol` should log `direct_to_one`.
-5. `alice` calls `setTopicState` — all subscribers should log `state_updated` with the same full state payload, even when clients are routed to different backend nodes.
-6. `bob` calls `getTopicState` — returns the same shared topic state map regardless of which backend node handled the call.
-7. `alice` calls `closeTopic` — explicit topic process shutdown.
-8. `bob` calls `getTopicState` again — returns an error (`topic_not_found`) and does not recreate the topic process.
+2. Five clients connect via **the same WS URL** (typically `ws://127.0.0.1:4000/socket/websocket` when using Docker Compose + nginx) and subscribe to topic `demo_room`. Live presence is logged for all five.
+3. `eve` calls `unsubscribe(demo_room)` — leaves the topic (Phoenix channel leave); the room stays open for the other four. Presence on the remaining clients should move to four members.
+4. `alice` calls `publish` — only the four remaining members should log `room_broadcast` (`eve` must not).
+5. `alice` calls `publishTo` with `["carol"]` — only `carol` should log `direct_to_one`.
+6. `alice` calls `setTopicState` on `demo_room` — all subscribers still in the room should log `state_updated`.
+7. `bob` calls `getTopicStateWithMeta` — returns the shared topic state map plus node metadata.
+8. `alice` reports `clientCount` for `demo_room` (expect four), then calls `clearTopicState` on `demo_room` — server-side topic process shutdown. `bob` calling `getTopicState` afterward should fail with `topic_not_found`.
+9. All clients `disconnect`.
 
 ## Run
 
