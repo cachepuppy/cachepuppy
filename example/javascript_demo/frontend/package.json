@@ -1,5 +1,5 @@
 {
-  "name": "cachepuppy_demo_frontend",
+  "name": "cachepuppy-demo-frontend",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,7 +8,7 @@
     "start": "node dist/main.js"
   },
   "dependencies": {
-    "cachepuppy_js_sdk": "file:../../cachepuppy_js_sdk"
+    "cachepuppy-js-sdk": "file:../../../sdk/javascript"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

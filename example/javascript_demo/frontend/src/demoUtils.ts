@@ -1,4 +1,4 @@
-import type { CachePuppyClient } from "cachepuppy_js_sdk";
+import type { CachePuppyClient } from "cachepuppy-js-sdk";
 
 export type TopicMessage = {
   event?: unknown;
