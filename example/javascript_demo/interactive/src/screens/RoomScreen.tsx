@@ -61,17 +61,17 @@ export function RoomScreen({ session, onLeave }: RoomScreenProps) {
 
     const start = async () => {
       try {
+        //Set up presence listeners to update in realtime how many are in channel
         cleanupPresence = client.onPresenceChange(TOPIC, ({ clientCount }) => {
           if (isCurrent) setHowManyPeople(clientCount);
         });
 
+        //Subscribe tp topics
         cleanupSub = await client.subscribe(TOPIC, (message) => {
-          //If event is not cursor tracked then ignore
-          if (!isCurrent || message.event !== "cursor_tracked") {
+          if (!isCurrent) {
             return;
           }
 
-          //If event is received from current user ignore
           const sender =
             message.meta && typeof message.meta.clientId === "string"
               ? message.meta.clientId
@@ -80,7 +80,22 @@ export function RoomScreen({ session, onLeave }: RoomScreenProps) {
             return;
           }
 
-          //Parse and set the cursor event payload
+          if (message.event === "cursor_left") {
+            setPeerCursors((prev) => {
+              if (!(sender in prev)) {
+                return prev;
+              }
+              const next = { ...prev };
+              delete next[sender];
+              return next;
+            });
+            return;
+          }
+
+          if (message.event !== "cursor_tracked") {
+            return;
+          }
+
           const parsed = parsePeerPayload(message.payload);
           if (!parsed) {
             return;
@@ -207,6 +222,11 @@ export function RoomScreen({ session, onLeave }: RoomScreenProps) {
   }
 
   async function leave() {
+    try {
+      await client.publish(TOPIC, "cursor_left", {});
+    } catch {
+      /* channel may already be gone; still tear down */
+    }
     await client.unsubscribe(TOPIC);
     await client.destroy();
     onLeave();
