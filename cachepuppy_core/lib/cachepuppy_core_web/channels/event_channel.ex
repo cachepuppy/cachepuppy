@@ -9,8 +9,22 @@ defmodule CachePuppyCoreWeb.EventChannel do
   def join("events:" <> topic, _payload, %{assigns: %{client_id: client_id}} = socket) do
     {:ok, _pid} = TopicManager.ensure_started(topic)
     socket = assign(socket, :topic, topic)
-    send(self(), {:track_presence, client_id})
-    {:ok, %{"connected_node" => to_string(node())}, socket}
+
+    case Presence.track(socket, client_id, %{online_at: System.system_time(:second)}) do
+      {:ok, _} ->
+        # After join completes, push a full snapshot (push/3 is not allowed inside join/3 on Phoenix 1.8+).
+        send(self(), :presence_snapshot)
+        {:ok, %{"connected_node" => to_string(node())}, socket}
+
+      {:error, reason} ->
+        {:error, %{reason: "presence_track_failed", detail: inspect(reason)}}
+    end
+  end
+
+  @impl true
+  def handle_info(:presence_snapshot, socket) do
+    push(socket, "presence_state", Presence.list(socket))
+    {:noreply, socket}
   end
 
   @impl true
@@ -151,16 +165,6 @@ defmodule CachePuppyCoreWeb.EventChannel do
       clean = Map.drop(payload, ["_target_client_ids"])
       push(socket, "message", put_served_by_node(clean))
     end
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:track_presence, client_id}, socket) do
-    {:ok, _} =
-      Presence.track(socket, client_id, %{
-        online_at: System.system_time(:second)
-      })
 
     {:noreply, socket}
   end

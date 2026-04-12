@@ -127,8 +127,10 @@ export class PhoenixTransport implements Transport {
     this.presenceStateByChannel.set(channelTopic, {});
 
     channel.on("presence_state", (state: Record<string, unknown>) => {
-      const prev = this.presenceStateByChannel.get(channelTopic) ?? {};
-      const next = Presence.syncState(prev, state);
+      // Server pushes a full snapshot (`Presence.list`); always reconcile from empty so we
+      // never keep stale keys if a `presence_diff` was missed (e.g. last client left).
+      const snapshot = state && typeof state === "object" && !Array.isArray(state) ? state : {};
+      const next = Presence.syncState({}, snapshot);
       this.presenceStateByChannel.set(channelTopic, next);
       this.emitPresenceChange(clientId, channelTopic, next);
     });
