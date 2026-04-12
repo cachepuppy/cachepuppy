@@ -36,6 +36,13 @@ Private cache for **this** websocket only (other clients never see it). The SDK 
 
 Session state is cleared when this client disconnects or reconnects. You do **not** need to `subscribe` to a room topic to use session state.
 
+## 3c) Shared topic state (room-scoped)
+
+- `setTopicState(topic, payload)` — replace shared state for the topic. Subscribers get `state_updated` only when the new payload is different from what is already stored (idempotent repeats are quiet).
+- `configureTopicWebhook(topic, { flush, url?, frequency? })` — separately enable or disable periodic webhook delivery: when `flush` is true, the server POSTs `{ topic, state, ts }` to `url` on a timer; if the state changed since the last successful check, it sends and clears an internal dirty flag. `frequency` is the tick interval in seconds (default 10). When `flush` is false, webhook delivery is turned off. Client-supplied URLs are an SSRF risk in production; restrict or proxy in real deployments.
+- `getTopicState(topic)` / metadata variant — read shared state.
+- `clearTopicState(topic)` — tear down the topic process on the server.
+
 ## 4) Connection and message events you can listen to
 
 - `on("connected", handler)` - called when connection opens.

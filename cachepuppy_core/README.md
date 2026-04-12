@@ -29,7 +29,8 @@ Supported inbound events on **`events:<topic_name>`**:
 - `"publish_to"` with payload `%{"event" => "...", "payload" => ..., "client_ids" => [...]}` (only those Presence keys receive the outbound `message`)
 - `"message"` envelope with `%{"type" => "publish", "event" => "...", "payload" => ...}`
 - `"client_count"` returns `%{"client_count" => integer}` for the current topic (Presence member count).
-- `"set_state"` with payload `%{"payload" => map}` updates topic shared state and broadcasts a `state_updated` message event.
+- `"set_state"` with payload `%{"payload" => map}` updates topic shared state. If the map equals the stored state, the reply is still `ok` but no `state_updated` broadcast is sent.
+- `"configure_topic_webhook"` with `%{"flush" => true, "url" => "http(s)://...", "frequency" => seconds}` enables a repeating timer on the topic process: each tick POSTs JSON `%{"topic", "state", "ts"}` to `url` when state has changed since the last post. `%{"flush" => false}` disables webhooks and clears the timer.
 - `"get_state"` returns `%{"state" => map}` for the current topic process state.
 - `"close_topic"` explicitly terminates the per-topic process and returns `%{"closed" => boolean}`.
 
@@ -49,7 +50,8 @@ Broadcast behavior:
 Each `events:<topic_name>` topic has a single cluster owner process (one process for the topic across connected nodes) that owns shared in-memory state.
 
 - The topic process is started on first join and registered cluster-wide.
-- `set_state` replaces the current topic state with the provided map and then broadcasts `state_updated`.
+- `set_state` replaces the current topic state when the payload differs; then broadcasts `state_updated`. Identical payloads are idempotent (no broadcast).
+- Optional `configure_topic_webhook` stores webhook URL and tick interval; a dirty flag is set on real state changes and cleared after a successful tick posts (or when there was nothing to send).
 - `get_state` returns the latest full state map regardless of which backend node handles the request.
 - `close_topic` manually stops the global topic owner process.
 - Idle fallback: if the topic process is inactive, it is stopped after `:topic_idle_timeout_ms` (default `120_000`).

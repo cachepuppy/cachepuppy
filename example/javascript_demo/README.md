@@ -6,21 +6,21 @@ Frontend-only demo for validating CachePuppy SDK usage against the managed Elixi
 
 - Exercise SDK lifecycle events.
 - Exercise publish/subscribe message flow.
-- Exercise per-topic shared state flow (`setTopicState`, `getTopicState`, `clearTopicState`, `state_updated`).
+- Exercise per-topic shared state flow (`setTopicState`, `configureTopicWebhook`, `getTopicState`, `clearTopicState`, `state_updated`).
 - Validate single cluster owner topic behavior across load-balanced backend nodes.
 
 ## Structure
 
+- `webhook-server`: Minimal Node server that logs `POST /topic-state` JSON bodies (run this when demoing server-side webhook flush).
 - `frontend`: Browser-style client simulation using the `cachepuppy-js-sdk` package (`file:` link to `sdk/javascript`).
 
-## Scenario
+## Scenario (high level)
 
 1. Frontend connects to websocket endpoint.
-2. Frontend subscribes to `demo.events`.
-3. Frontend publishes `demo.events:client_ready`.
-4. Frontend updates and reads shared topic state.
-5. Frontend calls `clearTopicState` on the same topic and demonstrates that read-after-clear returns an error.
-6. Frontend logs incoming events from the server.
+2. Frontend subscribes to a room topic and runs publish / presence / unsubscribe flows.
+3. Frontend updates shared topic state; optional webhook receiver logs outbound flushes from the Elixir topic process.
+4. Frontend calls `clearTopicState` and demonstrates read-after-clear failure.
+5. Frontend disconnects.
 
 # Demo Frontend Contract
 
@@ -33,24 +33,43 @@ Frontend-only demo for validating CachePuppy SDK usage against the managed Elixi
 3. `eve` calls `unsubscribe(demo_room)` — leaves the topic (Phoenix channel leave); the room stays open for the other four. Presence on the remaining clients should move to four members.
 4. `alice` calls `publish` — only the four remaining members should log `room_broadcast` (`eve` must not).
 5. `alice` calls `publishTo` with `["carol"]` — only `carol` should log `direct_to_one`.
-6. `alice` calls `setTopicState` on `demo_room` — all subscribers still in the room should log `state_updated`.
+6. `alice` calls `configureTopicWebhook` with `flush: true`, `url` to the webhook server, and `frequency: 1` — starts a 1s tick. She calls `setTopicState` — marks state dirty; after the next tick the webhook terminal logs a POST. Repeating the **same** payload is idempotent (no extra `state_updated`). After waiting for a tick, a **changed** `setTopicState` updates subscribers; the following tick posts again.
 7. `bob` calls `getTopicStateWithMeta` — returns the shared topic state map plus node metadata.
 8. `alice` reports `clientCount` for `demo_room` (expect four), then calls `clearTopicState` on `demo_room` — server-side topic process shutdown. `bob` calling `getTopicState` afterward should fail with `topic_not_found`.
 9. All clients `disconnect`.
 
 ## Run
 
+**1) Start the webhook receiver (optional but needed to see HTTP flush logs)**
+
+```bash
+cd example/javascript_demo/webhook-server && npm start
+```
+
+**2) Start Phoenix** (pick one)
+
 **Multi-node cluster + nginx (recommended for LB validation)**
 
 1. `cd cachepuppy_core && docker compose up --build -d`
-2. From repo root: `(cd sdk/javascript && npm ci && npm run build) && (cd example/javascript_demo/frontend && npm ci && npm run build && npm start)`
+2. If Phoenix runs **in Docker**, the app must reach the webhook on your host, for example:
+   - `WEBHOOK_URL=http://host.docker.internal:8765/topic-state` (Docker Desktop macOS/Windows), or
+   - Add a compose service on the same network and use that hostname.
 
 **Single local Phoenix (no Docker)**
 
 1. `cd cachepuppy_core && mix phx.server`
-2. From repo root: `(cd sdk/javascript && npm ci && npm run build) && (cd example/javascript_demo/frontend && npm ci && npm run build && npm start)`
+
+**3) Build SDK + demo client**
+
+From repo root:
+
+```bash
+(cd sdk/javascript && npm ci && npm run build) && (cd example/javascript_demo/frontend && npm ci && npm run build && npm start)
+```
 
 Environment overrides (optional):
 
 - `API_BASE` — HTTP origin for health probes (default `http://127.0.0.1:4000`)
 - `WS_URL` — WebSocket URL (default `ws://127.0.0.1:4000/socket/websocket`)
+- `WEBHOOK_URL` — Topic-state webhook target (default `http://127.0.0.1:8765/topic-state`)
+- `PORT` — Webhook server listen port when using `webhook-server` (default `8765`)

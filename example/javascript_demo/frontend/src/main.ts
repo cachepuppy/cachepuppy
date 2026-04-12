@@ -10,6 +10,9 @@ const API_BASE = process.env.API_BASE ?? "http://127.0.0.1:4000";
 /** WebSocket URL. Default matches nginx in docker-compose (port 4000). */
 const WS_URL = process.env.WS_URL ?? "ws://127.0.0.1:4000/socket/websocket";
 const TOPIC = "demo_room";
+/** Receiver for topic-state webhooks; start `example/javascript_demo/webhook-server` first. */
+const WEBHOOK_URL =
+  process.env.WEBHOOK_URL ?? "http://127.0.0.1:8765/topic-state";
 
 function makeClient(label: string, clientId: string): CachePuppyClient {
   const client = createClient({
@@ -144,7 +147,30 @@ async function runFrontendDemo(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 400));
 
   console.log(
-    '[alice] setTopicState — expect all subscribers to receive "state_updated":',
+    "[alice] configureTopicWebhook — each tick posts if state changed since last post (see webhook-server):",
+  );
+  await alice.configureTopicWebhook(TOPIC, {
+    flush: true,
+    url: WEBHOOK_URL,
+    frequency: 1,
+  });
+
+  const sharedForWebhook = { phase: "webhook_demo", version: 1 };
+  console.log("[alice] setTopicState (first write) — marks topic dirty for next tick:");
+  await alice.setTopicState(TOPIC, sharedForWebhook);
+
+  await new Promise((resolve) => setTimeout(resolve, 400));
+
+  console.log(
+    "[alice] setTopicState identical payload — idempotent (no extra state_updated):",
+  );
+  await alice.setTopicState(TOPIC, sharedForWebhook);
+
+  // First tick is ~1s after configure; wait so first POST runs before we change state again.
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+
+  console.log(
+    '[alice] setTopicState changed payload — subscribers see "state_updated"; webhook on next tick:',
   );
   const _ = await alice.setTopicState(TOPIC, {
     phase: "ready",

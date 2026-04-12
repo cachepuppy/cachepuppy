@@ -12,6 +12,7 @@ defmodule CachePuppyCoreWeb.EventChannelTest do
       subscribe_and_join(socket, CachePuppyCoreWeb.EventChannel, "events:#{topic}")
 
     ref = push(chan, "get_state", %{})
+
     assert_reply ref, :ok, %{
       "state" => %{},
       "meta" => %{"source_node" => _source_node, "served_by_node" => _served_by_node}
@@ -45,16 +46,43 @@ defmodule CachePuppyCoreWeb.EventChannelTest do
     }
 
     ref = push(chan_two, "get_state", %{})
+
     assert_reply ref, :ok, %{
       "state" => %{"counter" => 2},
       "meta" => %{"source_node" => _source_node, "served_by_node" => _served_by_node}
     }
   end
 
+  test "set_state with identical payload does not broadcast state_updated" do
+    topic = unique_topic()
+    socket = user_socket("idempotent_state")
+
+    {:ok, _reply, chan} =
+      subscribe_and_join(socket, CachePuppyCoreWeb.EventChannel, "events:#{topic}")
+
+    ref1 = push(chan, "set_state", %{"payload" => %{"n" => 1}})
+    assert_reply ref1, :ok, %{"state" => %{"n" => 1}}
+
+    assert_push "message", %{
+      "event" => "state_updated",
+      "payload" => %{"n" => 1}
+    }
+
+    ref2 = push(chan, "set_state", %{"payload" => %{"n" => 1}})
+    assert_reply ref2, :ok, %{"state" => %{"n" => 1}}
+
+    refute_receive %Phoenix.Socket.Message{
+      event: "message",
+      payload: %{"event" => "state_updated"}
+    }
+  end
+
   test "close_topic stops process and get_state returns topic_not_found until rejoin" do
     topic = unique_topic()
     socket = user_socket("close_topic")
-    {:ok, _reply, chan} = subscribe_and_join(socket, CachePuppyCoreWeb.EventChannel, "events:#{topic}")
+
+    {:ok, _reply, chan} =
+      subscribe_and_join(socket, CachePuppyCoreWeb.EventChannel, "events:#{topic}")
 
     close_ref = push(chan, "close_topic", %{})
     assert_reply close_ref, :ok, %{"closed" => true}
@@ -65,9 +93,14 @@ defmodule CachePuppyCoreWeb.EventChannelTest do
     Process.unlink(chan.channel_pid)
 
     {:ok, _reply, _new_chan} =
-      subscribe_and_join(user_socket("close_topic_rejoin"), CachePuppyCoreWeb.EventChannel, "events:#{topic}")
+      subscribe_and_join(
+        user_socket("close_topic_rejoin"),
+        CachePuppyCoreWeb.EventChannel,
+        "events:#{topic}"
+      )
 
     ref = push(chan, "get_state", %{})
+
     assert_reply ref, :ok, %{
       "state" => %{},
       "meta" => %{"source_node" => _source_node, "served_by_node" => _served_by_node}
@@ -75,7 +108,9 @@ defmodule CachePuppyCoreWeb.EventChannelTest do
   end
 
   defp user_socket(client_id) do
-    Phoenix.ChannelTest.socket(CachePuppyCoreWeb.UserSocket, "usersocket:#{client_id}", %{client_id: client_id})
+    Phoenix.ChannelTest.socket(CachePuppyCoreWeb.UserSocket, "usersocket:#{client_id}", %{
+      client_id: client_id
+    })
   end
 
   defp unique_topic do

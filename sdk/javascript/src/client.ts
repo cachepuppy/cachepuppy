@@ -10,6 +10,7 @@ import type {
   ConnectionState,
   ReconnectConfig,
   TopicHandler,
+  TopicWebhookConfigOptions,
 } from "./types.js";
 
 class TypedEventBus {
@@ -179,6 +180,14 @@ export class CachePuppyClient {
     }
 
     return this.transport.setState(this.clientId, topic, payload);
+  }
+
+  async configureTopicWebhook(topic: string, options: TopicWebhookConfigOptions): Promise<void> {
+    if (!this.transport.configureTopicWebhook) {
+      throw new Error("TransportError: configureTopicWebhook is not supported by this transport");
+    }
+
+    await this.transport.configureTopicWebhook(this.clientId, topic, options);
   }
 
   async getTopicState(topic: string): Promise<Record<string, unknown>> {
