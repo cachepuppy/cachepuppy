@@ -1,4 +1,4 @@
-import type { CachePuppyEnvelope } from "../types.js";
+import type { CachePuppyEnvelope, TopicWebhookConfigOptions } from "../types.js";
 
 export interface TopicStateResponse {
   state: Record<string, unknown>;
@@ -13,6 +13,11 @@ export interface Transport {
   onEnvelope(clientId: string, handler: (message: CachePuppyEnvelope) => void): () => void;
   clientCount?(clientId: string, topic: string): Promise<number>;
   setState?(clientId: string, topic: string, payload: Record<string, unknown>): Promise<Record<string, unknown>>;
+  configureTopicWebhook?(
+    clientId: string,
+    topic: string,
+    options: TopicWebhookConfigOptions,
+  ): Promise<void>;
   getState?(clientId: string, topic: string): Promise<Record<string, unknown>>;
   /** Per-websocket private state on the fixed `session` channel (no room topic). */
   setSessionState?(clientId: string, payload: Record<string, unknown>): Promise<Record<string, unknown>>;

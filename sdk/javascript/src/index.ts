@@ -8,4 +8,5 @@ export type {
   ConnectionState,
   MessageType,
   TopicHandler,
+  TopicWebhookConfigOptions,
 } from "./types.js";

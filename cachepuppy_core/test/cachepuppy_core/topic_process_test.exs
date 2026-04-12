@@ -8,7 +8,8 @@ defmodule CachePuppyCore.TopicProcessTest do
     pid = start_supervised!({TopicProcess, topic: topic, idle_timeout_ms: 5_000})
     _ = :sys.get_state(pid)
 
-    assert {:ok, %{"count" => 1}} = TopicProcess.set_state(topic, %{"count" => 1})
+    assert {:ok, %{"count" => 1}, true} = TopicProcess.set_state(topic, %{"count" => 1})
+    assert {:ok, %{"count" => 1}, false} = TopicProcess.set_state(topic, %{"count" => 1})
     assert {:ok, %{"count" => 1}} = TopicProcess.get_state(topic)
   end
 

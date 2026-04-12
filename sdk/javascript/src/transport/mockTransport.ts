@@ -1,5 +1,5 @@
 import { nextId } from "../protocol.js";
-import type { CachePuppyEnvelope } from "../types.js";
+import type { CachePuppyEnvelope, TopicWebhookConfigOptions } from "../types.js";
 import type { TopicStateResponse, Transport } from "./transport.js";
 
 type EnvelopeHandler = (message: CachePuppyEnvelope) => void;
@@ -10,6 +10,8 @@ class MockBus {
   private topicStates = new Map<string, Record<string, unknown>>();
   /** Per simulated client (private session channel; no room topic). */
   private sessionStates = new Map<string, Record<string, unknown>>();
+  /** Last webhook config per topic (mock does not perform HTTP). */
+  private topicWebhookConfig = new Map<string, TopicWebhookConfigOptions>();
 
   connect(clientId: string): void {
     if (!this.envelopeHandlers.has(clientId)) {
@@ -150,8 +152,17 @@ class MockBus {
     return members.size;
   }
 
+  configureTopicWebhook(topic: string, options: TopicWebhookConfigOptions): void {
+    this.topicWebhookConfig.set(topic, { ...options });
+  }
+
   setState(senderId: string, topic: string, payload: Record<string, unknown>): Record<string, unknown> {
+    const prev = this.topicStates.get(topic);
     const next = { ...payload };
+    if (prev !== undefined && JSON.stringify(prev) === JSON.stringify(next)) {
+      return next;
+    }
+
     this.topicStates.set(topic, next);
 
     const members = this.topicMembers.get(topic);
@@ -200,6 +211,7 @@ class MockBus {
     const hadTopic = this.topicStates.has(topic) || this.topicMembers.has(topic);
     this.topicStates.delete(topic);
     this.topicMembers.delete(topic);
+    this.topicWebhookConfig.delete(topic);
     return hadTopic;
   }
 
@@ -230,6 +242,14 @@ export class MockTransport implements Transport {
 
   async setState(clientId: string, topic: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
     return globalBus.setState(clientId, topic, payload);
+  }
+
+  async configureTopicWebhook(
+    _clientId: string,
+    topic: string,
+    options: TopicWebhookConfigOptions,
+  ): Promise<void> {
+    globalBus.configureTopicWebhook(topic, options);
   }
 
   async getState(_clientId: string, topic: string): Promise<Record<string, unknown>> {

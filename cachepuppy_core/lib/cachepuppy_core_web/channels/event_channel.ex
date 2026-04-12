@@ -56,8 +56,11 @@ defmodule CachePuppyCoreWeb.EventChannel do
   def handle_in("set_state", %{"payload" => payload}, %{assigns: %{topic: topic}} = socket)
       when is_map(payload) do
     case TopicManager.set_state(topic, payload) do
-      {:ok, state} ->
+      {:ok, state, true} ->
         broadcast_state_updated(socket, topic, state)
+        {:reply, {:ok, %{"state" => state}}, socket}
+
+      {:ok, state, false} ->
         {:reply, {:ok, %{"state" => state}}, socket}
 
       {:error, :invalid_payload} ->
@@ -65,6 +68,25 @@ defmodule CachePuppyCoreWeb.EventChannel do
 
       {:error, _reason} ->
         {:reply, {:error, %{reason: "state_update_failed"}}, socket}
+    end
+  end
+
+  def handle_in("set_state", _body, socket) do
+    {:reply, {:error, %{reason: "invalid_payload"}}, socket}
+  end
+
+  @impl true
+  def handle_in("configure_topic_webhook", body, %{assigns: %{topic: topic}} = socket)
+      when is_map(body) do
+    case TopicManager.configure_topic_webhook(topic, body) do
+      :ok ->
+        {:reply, :ok, socket}
+
+      {:error, :invalid_webhook_config} ->
+        {:reply, {:error, %{reason: "invalid_webhook_config"}}, socket}
+
+      {:error, _reason} ->
+        {:reply, {:error, %{reason: "webhook_configure_failed"}}, socket}
     end
   end
 
@@ -82,8 +104,11 @@ defmodule CachePuppyCoreWeb.EventChannel do
             }
           }}, socket}
 
-      {:error, :topic_not_found} -> {:reply, {:error, %{reason: "topic_not_found"}}, socket}
-      {:error, _reason} -> {:reply, {:error, %{reason: "state_fetch_failed"}}, socket}
+      {:error, :topic_not_found} ->
+        {:reply, {:error, %{reason: "topic_not_found"}}, socket}
+
+      {:error, _reason} ->
+        {:reply, {:error, %{reason: "state_fetch_failed"}}, socket}
     end
   end
 

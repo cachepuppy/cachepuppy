@@ -14,8 +14,14 @@ defmodule CachePuppyCore.TopicManager do
 
   def set_state(topic, payload) when is_binary(topic) do
     with {:ok, _pid} <- ensure_started(topic),
-         {:ok, state} <- TopicProcess.set_state(topic, payload) do
-      {:ok, state}
+         {:ok, data, changed?} <- TopicProcess.set_state(topic, payload) do
+      {:ok, data, changed?}
+    end
+  end
+
+  def configure_topic_webhook(topic, opts) when is_binary(topic) and is_map(opts) do
+    with {:ok, _pid} <- ensure_started(topic) do
+      TopicProcess.configure_webhook(topic, opts)
     end
   end
 

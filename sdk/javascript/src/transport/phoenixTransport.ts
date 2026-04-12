@@ -1,6 +1,6 @@
 import { Presence, Socket, type Channel } from "phoenix";
 import { nextId } from "../protocol.js";
-import type { CachePuppyEnvelope } from "../types.js";
+import type { CachePuppyEnvelope, TopicWebhookConfigOptions } from "../types.js";
 import type { TopicStateResponse, Transport } from "./transport.js";
 
 type EnvelopeHandler = (message: CachePuppyEnvelope) => void;
@@ -263,7 +263,11 @@ export class PhoenixTransport implements Transport {
     });
   }
 
-  async setState(clientId: string, topic: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  async setState(
+    clientId: string,
+    topic: string,
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
     const channel = await this.ensureChannel(clientId, topic);
 
     return new Promise<Record<string, unknown>>((resolve, reject) => {
@@ -275,6 +279,30 @@ export class PhoenixTransport implements Transport {
         })
         .receive("error", () => reject(new Error("Failed to set topic state")))
         .receive("timeout", () => reject(new Error("Timed out while setting topic state")));
+    });
+  }
+
+  async configureTopicWebhook(
+    clientId: string,
+    topic: string,
+    options: TopicWebhookConfigOptions,
+  ): Promise<void> {
+    const channel = await this.ensureChannel(clientId, topic);
+
+    const body: Record<string, unknown> = { flush: options.flush };
+    if (options.url !== undefined) {
+      body.url = options.url;
+    }
+    if (options.frequency !== undefined) {
+      body.frequency = options.frequency;
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      channel
+        .push("configure_topic_webhook", body)
+        .receive("ok", () => resolve())
+        .receive("error", () => reject(new Error("Failed to configure topic webhook")))
+        .receive("timeout", () => reject(new Error("Timed out while configuring topic webhook")));
     });
   }
 

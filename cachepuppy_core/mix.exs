@@ -46,7 +46,9 @@ defmodule CachePuppyCore.MixProject do
       {:jason, "~> 1.2"},
       {:libcluster, "~> 3.5"},
       {:bandit, "~> 1.5"},
-      {:horde, "~> 0.10.0"}
+      {:horde, "~> 0.10.0"},
+      {:req, "~> 0.5"},
+      {:bypass, "~> 2.1", only: :test}
     ]
   end
 

@@ -54,6 +54,8 @@ defmodule CachePuppyCoreWeb.SessionChannelTest do
   end
 
   defp user_socket(client_id) do
-    Phoenix.ChannelTest.socket(CachePuppyCoreWeb.UserSocket, "usersocket:#{client_id}", %{client_id: client_id})
+    Phoenix.ChannelTest.socket(CachePuppyCoreWeb.UserSocket, "usersocket:#{client_id}", %{
+      client_id: client_id
+    })
   end
 end

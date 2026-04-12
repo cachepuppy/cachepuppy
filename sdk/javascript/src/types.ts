@@ -43,6 +43,16 @@ export interface ClientOptions {
   transport?: "mock" | "phoenix";
 }
 
+/** Options for `configureTopicWebhook` (Phoenix `configure_topic_webhook`). */
+export interface TopicWebhookConfigOptions {
+  /** When true, enable periodic POSTs of topic state to `url` every `frequency` seconds if state changed. */
+  flush: boolean;
+  /** Required when `flush` is true. Webhook URL (`http` or `https` only). */
+  url?: string;
+  /** Seconds between webhook checks; default 10. Ignored when `flush` is false. */
+  frequency?: number;
+}
+
 export type TopicHandler = (message: CachePuppyEnvelope) => void;
 
 export interface ClientEventMap {
