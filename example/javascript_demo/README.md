@@ -13,7 +13,7 @@ Frontend-only demo for validating CachePuppy SDK usage against the managed Elixi
 
 - `webhook-server`: Minimal Node server that logs `POST /topic-state` JSON bodies (run this when demoing server-side webhook flush).
 - `frontend`: Browser-style client simulation using the `cachepuppy-js-sdk` package (`file:` link to `sdk/javascript`).
-- `interactive`: Vite + React browser app — join `sticky_notes_room`, share ephemeral `cursor` publishes, and collaborative sticky notes in topic state.
+- `interactive`: Vite + React browser app — join `sticky_notes_room`, share ephemeral `cursor_tracked` publishes (notes board only), and collaborative sticky notes in topic state.
 
 ## Interactive React demo (Sticky Notes Room)
 
@@ -30,7 +30,7 @@ Frontend-only demo for validating CachePuppy SDK usage against the managed Elixi
    cd example/javascript_demo/interactive && npm ci && npm run dev
    ```
 
-4. Open the printed local URL (usually `http://localhost:5173`). Enter a name and colour, connect, then use the board: mouse movements publish `cursor` events; posting a note calls `setTopicState` with a `notes` list. Open a second browser window to see ghost cursors and shared notes.
+4. Open the printed local URL (usually `http://localhost:5173`). Enter a name and colour, connect, then move the pointer over the **sticky notes board** to publish `cursor_tracked` events; posting a note calls `setTopicState` with a `notes` list. Open a second browser window to see ghost cursors on the board and shared notes.
 
 Optional: copy `.env.example` to `.env` and set `VITE_WS_URL` if your websocket endpoint differs from `ws://127.0.0.1:4000/socket/websocket`.
 
