@@ -11,37 +11,47 @@ defmodule CachePuppyCore.CacheRouter do
   @default_storage_dir "tmp/cache_shards"
   @ring_space 4_294_967_296
 
-  def setdata(key, value) when is_binary(key) do
-    with {:ok, shard_id} <- shard_id_for_key(key),
+  def setdata(table, key, value) when is_binary(table) and is_binary(key) do
+    with {:ok, shard_id} <- shard_id_for_entry(table, key),
          {:ok, owner_node} <- owner_node_for_shard(shard_id) do
       Logger.info(
-        "cache_set route key=#{inspect(key)} shard_id=#{shard_id} requested_by=#{node()} owner_node=#{owner_node}"
+        "cache_set route table=#{inspect(table)} key=#{inspect(key)} shard_id=#{shard_id} requested_by=#{node()} owner_node=#{owner_node}"
       )
 
-      dispatch_set(owner_node, shard_id, key, value)
+      dispatch_set(owner_node, shard_id, table, key, value)
     end
   end
 
-  def setdata(_key, _value), do: {:error, :invalid_key}
+  def setdata(_table, _key, _value), do: {:error, :invalid_table_or_key}
 
-  def getdata(key) when is_binary(key) do
-    with {:ok, shard_id} <- shard_id_for_key(key),
+  def getdata(table, key) when is_binary(table) and is_binary(key) do
+    with {:ok, shard_id} <- shard_id_for_entry(table, key),
          {:ok, owner_node} <- owner_node_for_shard(shard_id) do
       Logger.info(
-        "cache_get route key=#{inspect(key)} shard_id=#{shard_id} requested_by=#{node()} owner_node=#{owner_node}"
+        "cache_get route table=#{inspect(table)} key=#{inspect(key)} shard_id=#{shard_id} requested_by=#{node()} owner_node=#{owner_node}"
       )
 
-      dispatch_get(owner_node, shard_id, key)
+      dispatch_get(owner_node, shard_id, table, key)
     end
   end
 
-  def getdata(_key), do: {:error, :invalid_key}
+  def getdata(_table, _key), do: {:error, :invalid_table_or_key}
 
   def shard_id_for_key(key) when is_binary(key) do
     shard_count = Application.get_env(:cachepuppy_core, :cache_shard_count, @default_shard_count)
 
     if shard_count > 0 do
       {:ok, :erlang.phash2(key, shard_count)}
+    else
+      {:error, :invalid_shard_count}
+    end
+  end
+
+  def shard_id_for_entry(table, key) when is_binary(table) and is_binary(key) do
+    shard_count = Application.get_env(:cachepuppy_core, :cache_shard_count, @default_shard_count)
+
+    if shard_count > 0 do
+      {:ok, :erlang.phash2({table, key}, shard_count)}
     else
       {:error, :invalid_shard_count}
     end
@@ -92,49 +102,55 @@ defmodule CachePuppyCore.CacheRouter do
     end
   end
 
-  def remote_setdata(shard_id, key, value) do
+  def remote_setdata(shard_id, table, key, value) do
     with {:ok, _pid} <- ensure_shard_started(shard_id) do
-      CacheShardProcess.set(shard_id, key, value)
+      CacheShardProcess.set(shard_id, table, key, value)
     end
   end
 
-  def remote_getdata(shard_id, key) do
+  def remote_getdata(shard_id, table, key) do
     with {:ok, _pid} <- ensure_shard_started(shard_id) do
-      CacheShardProcess.get(shard_id, key)
+      CacheShardProcess.get(shard_id, table, key)
     end
   end
 
-  defp dispatch_set(owner_node, shard_id, key, value) when owner_node == node() do
+  defp dispatch_set(owner_node, shard_id, table, key, value) when owner_node == node() do
     Logger.info("cache_set local_execute shard_id=#{shard_id} node=#{node()}")
 
     with {:ok, _pid} <- ensure_shard_started(shard_id) do
-      CacheShardProcess.set(shard_id, key, value)
+      CacheShardProcess.set(shard_id, table, key, value)
     end
   end
 
-  defp dispatch_set(owner_node, shard_id, key, value) do
+  defp dispatch_set(owner_node, shard_id, table, key, value) do
     rpc_timeout_ms = Application.get_env(:cachepuppy_core, :cache_rpc_timeout_ms, @default_rpc_timeout_ms)
     Logger.info("cache_set rpc_execute shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node}")
 
-    case :rpc.call(owner_node, __MODULE__, :remote_setdata, [shard_id, key, value], rpc_timeout_ms) do
+    case :rpc.call(
+           owner_node,
+           __MODULE__,
+           :remote_setdata,
+           [shard_id, table, key, value],
+           rpc_timeout_ms
+         ) do
       {:badrpc, reason} -> {:error, {:rpc_failed, reason}}
       result -> result
     end
   end
 
-  defp dispatch_get(owner_node, shard_id, key) when owner_node == node() do
+  defp dispatch_get(owner_node, shard_id, table, key) when owner_node == node() do
     Logger.info("cache_get local_execute shard_id=#{shard_id} node=#{node()}")
 
     with {:ok, _pid} <- ensure_shard_started(shard_id) do
-      CacheShardProcess.get(shard_id, key)
+      CacheShardProcess.get(shard_id, table, key)
     end
   end
 
-  defp dispatch_get(owner_node, shard_id, key) do
+  defp dispatch_get(owner_node, shard_id, table, key) do
     rpc_timeout_ms = Application.get_env(:cachepuppy_core, :cache_rpc_timeout_ms, @default_rpc_timeout_ms)
     Logger.info("cache_get rpc_execute shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node}")
 
-    case :rpc.call(owner_node, __MODULE__, :remote_getdata, [shard_id, key], rpc_timeout_ms) do
+    case :rpc.call(owner_node, __MODULE__, :remote_getdata, [shard_id, table, key], rpc_timeout_ms) do
       {:badrpc, reason} -> {:error, {:rpc_failed, reason}}
       result -> result
     end

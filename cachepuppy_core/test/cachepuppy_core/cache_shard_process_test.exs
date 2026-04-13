@@ -11,7 +11,7 @@ defmodule CachePuppyCore.CacheShardProcessTest do
     File.mkdir_p!(storage_dir)
 
     table = :ets.new(:rehydrate_seed, [:set, :protected])
-    true = :ets.insert(table, {"name", "beamline"})
+    true = :ets.insert(table, {{"users", "name"}, "beamline"})
     :ok = :ets.tab2file(table, String.to_charlist(snapshot), sync: true)
     :ets.delete(table)
     File.write!(meta, :erlang.term_to_binary(%{"epoch" => 1, "owner_node" => "seed", "rehydrating" => false}))
@@ -26,7 +26,7 @@ defmodule CachePuppyCore.CacheShardProcessTest do
       })
 
     _ = :sys.get_state(pid)
-    assert {:ok, "beamline"} = GenServer.call(pid, {:get, "name"})
+    assert {:ok, "beamline"} = GenServer.call(pid, {:get, "users", "name"})
   end
 
   test "flush_tick writes only when shard is dirty" do
@@ -47,13 +47,13 @@ defmodule CachePuppyCore.CacheShardProcessTest do
     _ = :sys.get_state(pid)
     refute File.exists?(snapshot)
 
-    assert {:ok, 42} = GenServer.call(pid, {:set, "answer", 42})
+    assert {:ok, 42} = GenServer.call(pid, {:set, "users", "answer", 42})
     send(pid, :flush_tick)
     _ = :sys.get_state(pid)
     assert File.exists?(snapshot)
 
     assert {:ok, restored} = :ets.file2tab(String.to_charlist(snapshot))
-    assert [{"answer", 42}] = :ets.lookup(restored, "answer")
+    assert [{{"users", "answer"}, 42}] = :ets.lookup(restored, {"users", "answer"})
     :ets.delete(restored)
   end
 
@@ -72,7 +72,7 @@ defmodule CachePuppyCore.CacheShardProcessTest do
         name: nil
       })
 
-    assert {:ok, "value"} = GenServer.call(pid, {:set, "key", "value"})
+    assert {:ok, "value"} = GenServer.call(pid, {:set, "users", "key", "value"})
 
     stale_meta = %{
       "epoch" => 999,

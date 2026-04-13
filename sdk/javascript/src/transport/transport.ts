@@ -19,8 +19,8 @@ export interface Transport {
     options: TopicWebhookConfigOptions,
   ): Promise<void>;
   getState?(clientId: string, topic: string): Promise<Record<string, unknown>>;
-  setData?(clientId: string, key: string, value: unknown): Promise<unknown>;
-  getData?(clientId: string, key: string): Promise<unknown>;
+  setData?(clientId: string, table: string, key: string, value: unknown): Promise<unknown>;
+  getData?(clientId: string, table: string, key: string): Promise<unknown>;
   /** Per-websocket private state on the fixed `session` channel (no room topic). */
   setSessionState?(clientId: string, payload: Record<string, unknown>): Promise<Record<string, unknown>>;
   getSessionState?(clientId: string): Promise<Record<string, unknown>>;

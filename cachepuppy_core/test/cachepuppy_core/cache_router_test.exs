@@ -30,9 +30,11 @@ defmodule CachePuppyCore.CacheRouterTest do
     key = "router_key_#{System.unique_integer([:positive])}"
     value = %{"enabled" => true}
 
-    assert {:ok, ^value} = CacheRouter.setdata(key, value)
-    assert {:ok, ^value} = CacheRouter.getdata(key)
-    assert {:ok, nil} = CacheRouter.getdata("#{key}_missing")
+    table = "users"
+
+    assert {:ok, ^value} = CacheRouter.setdata(table, key, value)
+    assert {:ok, ^value} = CacheRouter.getdata(table, key)
+    assert {:ok, nil} = CacheRouter.getdata(table, "#{key}_missing")
   end
 
   test "ring owner selection is deterministic for same shard and nodes" do

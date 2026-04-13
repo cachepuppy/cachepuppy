@@ -38,12 +38,12 @@ defmodule CachePuppyCore.CacheShardProcess do
     end
   end
 
-  def set(shard_id, key, value) when is_integer(shard_id) do
-    GenServer.call(via_shard(shard_id), {:set, key, value})
+  def set(shard_id, table, key, value) when is_integer(shard_id) do
+    GenServer.call(via_shard(shard_id), {:set, table, key, value})
   end
 
-  def get(shard_id, key) when is_integer(shard_id) do
-    GenServer.call(via_shard(shard_id), {:get, key})
+  def get(shard_id, table, key) when is_integer(shard_id) do
+    GenServer.call(via_shard(shard_id), {:get, table, key})
   end
 
   @impl true
@@ -72,30 +72,39 @@ defmodule CachePuppyCore.CacheShardProcess do
   end
 
   @impl true
-  def handle_call({:set, key, value}, _from, state) when is_binary(key) do
-    :ets.insert(state.table, {key, value})
-    Logger.info("cache_set execute shard_id=#{state.shard_id} node=#{node()} key=#{inspect(key)}")
+  def handle_call({:set, table, key, value}, _from, state) when is_binary(table) and is_binary(key) do
+    storage_key = {table, key}
+    :ets.insert(state.table, {storage_key, value})
+    Logger.info(
+      "cache_set execute shard_id=#{state.shard_id} node=#{node()} table=#{inspect(table)} key=#{inspect(key)}"
+    )
+
     {:reply, {:ok, value}, %{state | dirty: true}}
   end
 
-  def handle_call({:set, _key, _value}, _from, state) do
-    {:reply, {:error, :invalid_key}, state}
+  def handle_call({:set, _table, _key, _value}, _from, state) do
+    {:reply, {:error, :invalid_table_or_key}, state}
   end
 
   @impl true
-  def handle_call({:get, key}, _from, state) when is_binary(key) do
+  def handle_call({:get, table, key}, _from, state) when is_binary(table) and is_binary(key) do
+    storage_key = {table, key}
+
     value =
-      case :ets.lookup(state.table, key) do
-        [{^key, found}] -> found
+      case :ets.lookup(state.table, storage_key) do
+        [{^storage_key, found}] -> found
         [] -> nil
       end
 
-    Logger.info("cache_get execute shard_id=#{state.shard_id} node=#{node()} key=#{inspect(key)}")
+    Logger.info(
+      "cache_get execute shard_id=#{state.shard_id} node=#{node()} table=#{inspect(table)} key=#{inspect(key)}"
+    )
+
     {:reply, {:ok, value}, state}
   end
 
-  def handle_call({:get, _key}, _from, state) do
-    {:reply, {:error, :invalid_key}, state}
+  def handle_call({:get, _table, _key}, _from, state) do
+    {:reply, {:error, :invalid_table_or_key}, state}
   end
 
   @impl true

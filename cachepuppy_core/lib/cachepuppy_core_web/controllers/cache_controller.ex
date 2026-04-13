@@ -3,13 +3,14 @@ defmodule CachePuppyCoreWeb.CacheController do
 
   alias CachePuppyCore.CacheRouter
 
-  def setdata(conn, %{"key" => key, "value" => value}) when is_binary(key) do
-    case CacheRouter.setdata(key, value) do
+  def setdata(conn, %{"table" => table, "key" => key, "value" => value})
+      when is_binary(table) and is_binary(key) do
+    case CacheRouter.setdata(table, key, value) do
       {:ok, stored_value} ->
-        json(conn, %{"key" => key, "value" => stored_value})
+        json(conn, %{"table" => table, "key" => key, "value" => stored_value})
 
-      {:error, :invalid_key} ->
-        conn |> put_status(:bad_request) |> json(%{reason: "invalid_key"})
+      {:error, :invalid_table_or_key} ->
+        conn |> put_status(:bad_request) |> json(%{reason: "invalid_table_or_key"})
 
       {:error, _reason} ->
         conn |> put_status(:internal_server_error) |> json(%{reason: "setdata_failed"})
@@ -20,13 +21,13 @@ defmodule CachePuppyCoreWeb.CacheController do
     conn |> put_status(:bad_request) |> json(%{reason: "invalid_payload"})
   end
 
-  def getdata(conn, %{"key" => key}) when is_binary(key) do
-    case CacheRouter.getdata(key) do
+  def getdata(conn, %{"table" => table, "key" => key}) when is_binary(table) and is_binary(key) do
+    case CacheRouter.getdata(table, key) do
       {:ok, value} ->
-        json(conn, %{"key" => key, "value" => value})
+        json(conn, %{"table" => table, "key" => key, "value" => value})
 
-      {:error, :invalid_key} ->
-        conn |> put_status(:bad_request) |> json(%{reason: "invalid_key"})
+      {:error, :invalid_table_or_key} ->
+        conn |> put_status(:bad_request) |> json(%{reason: "invalid_table_or_key"})
 
       {:error, _reason} ->
         conn |> put_status(:internal_server_error) |> json(%{reason: "getdata_failed"})
