@@ -37,16 +37,7 @@ defmodule CachePuppyCore.CacheRouterTest do
     assert {:ok, nil} = CacheRouter.getdata(table, "#{key}_missing")
   end
 
-  test "ring owner selection is deterministic for same shard and nodes" do
-    nodes = [:"n1@local", :"n2@local", :"n3@local"]
-    shard_id = 11
-
-    owner = CacheRouter.owner_from_nodes(shard_id, nodes, 64)
-    assert owner in nodes
-    assert owner == CacheRouter.owner_from_nodes(shard_id, nodes, 64)
-  end
-
-  test "single-node cluster resolves owner to current node" do
+  test "single-node cluster resolves owner to current node via horde placement" do
     assert {:ok, owner} = CacheRouter.owner_node_for_shard(5)
     assert owner == node()
   end
