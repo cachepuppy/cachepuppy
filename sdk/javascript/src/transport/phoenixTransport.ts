@@ -331,6 +331,44 @@ export class PhoenixTransport implements Transport {
     });
   }
 
+  async setData(clientId: string, key: string, value: unknown): Promise<unknown> {
+    const resolvedClientId = this.customClientId ?? clientId;
+    const response = await fetch(`${toSocketPath(this.baseUrl)}/api/cache/setdata`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(this.authToken ? { authorization: `Bearer ${this.authToken}` } : {}),
+      },
+      body: JSON.stringify({ key, value, client_id: resolvedClientId }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to set cache data");
+    }
+
+    const data = (await response.json()) as { value?: unknown };
+    return data.value;
+  }
+
+  async getData(clientId: string, key: string): Promise<unknown> {
+    const resolvedClientId = this.customClientId ?? clientId;
+    const response = await fetch(`${toSocketPath(this.baseUrl)}/api/cache/getdata`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...(this.authToken ? { authorization: `Bearer ${this.authToken}` } : {}),
+      },
+      body: JSON.stringify({ key, client_id: resolvedClientId }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to get cache data");
+    }
+
+    const data = (await response.json()) as { value?: unknown };
+    return data.value;
+  }
+
   async setSessionState(clientId: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
     const channel = await this.ensureSessionChannel(clientId);
 

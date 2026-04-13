@@ -8,6 +8,7 @@ class MockBus {
   private envelopeHandlers = new Map<string, Set<EnvelopeHandler>>();
   private topicMembers = new Map<string, Set<string>>();
   private topicStates = new Map<string, Record<string, unknown>>();
+  private cacheData = new Map<string, unknown>();
   /** Per simulated client (private session channel; no room topic). */
   private sessionStates = new Map<string, Record<string, unknown>>();
   /** Last webhook config per topic (mock does not perform HTTP). */
@@ -197,6 +198,15 @@ class MockBus {
     return { ...(this.topicStates.get(topic) ?? {}) };
   }
 
+  setData(key: string, value: unknown): unknown {
+    this.cacheData.set(key, value);
+    return value;
+  }
+
+  getData(key: string): unknown {
+    return this.cacheData.get(key);
+  }
+
   setSessionState(clientId: string, payload: Record<string, unknown>): Record<string, unknown> {
     const next = { ...payload };
     this.sessionStates.set(clientId, next);
@@ -258,6 +268,14 @@ export class MockTransport implements Transport {
 
   async getStateWithMeta(_clientId: string, topic: string): Promise<TopicStateResponse> {
     return { state: globalBus.getState(topic), sourceNode: "mock", servedByNode: "mock" };
+  }
+
+  async setData(_clientId: string, key: string, value: unknown): Promise<unknown> {
+    return globalBus.setData(key, value);
+  }
+
+  async getData(_clientId: string, key: string): Promise<unknown> {
+    return globalBus.getData(key);
   }
 
   async clearTopicState(_clientId: string, topic: string): Promise<boolean> {
