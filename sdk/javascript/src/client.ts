@@ -207,6 +207,22 @@ export class CachePuppyClient {
     return { state };
   }
 
+  async setData(key: string, value: unknown): Promise<unknown> {
+    if (!this.transport.setData) {
+      throw new Error("TransportError: setData is not supported by this transport");
+    }
+
+    return this.transport.setData(this.clientId, key, value);
+  }
+
+  async getData(key: string): Promise<unknown> {
+    if (!this.transport.getData) {
+      throw new Error("TransportError: getData is not supported by this transport");
+    }
+
+    return this.transport.getData(this.clientId, key);
+  }
+
   async setSessionState(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
     if (!this.transport.setSessionState) {
       throw new Error("TransportError: setSessionState is not supported by this transport");

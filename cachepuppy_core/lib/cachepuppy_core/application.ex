@@ -17,6 +17,9 @@ defmodule CachePuppyCore.Application do
       {Horde.Registry, [name: CachePuppyCore.TopicRegistry, keys: :unique, members: :auto]},
       {Horde.DynamicSupervisor,
        [name: CachePuppyCore.TopicSupervisor, strategy: :one_for_one, members: :auto]},
+      {Horde.Registry, [name: CachePuppyCore.CacheShardRegistry, keys: :unique, members: :auto]},
+      {Horde.DynamicSupervisor,
+       [name: CachePuppyCore.CacheShardSupervisor, strategy: :one_for_one, members: :auto]},
       CachePuppyCoreWeb.Presence,
       # Start a worker by calling: CachePuppyCore.Worker.start_link(arg)
       # {CachePuppyCore.Worker, arg},

@@ -9,7 +9,12 @@ import Config
 
 config :cachepuppy_core,
   generators: [timestamp_type: :utc_datetime],
-  topic_idle_timeout_ms: 120_000
+  topic_idle_timeout_ms: 120_000,
+  cache_shard_count: 64,
+  cache_ring_virtual_nodes: 128,
+  cache_flush_interval_ms: 5_000,
+  cache_rpc_timeout_ms: 5_000,
+  cache_storage_dir: "tmp/cache_shards"
 
 # Configure the endpoint
 config :cachepuppy_core, CachePuppyCoreWeb.Endpoint,
