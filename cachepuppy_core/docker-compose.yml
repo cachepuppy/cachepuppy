@@ -32,6 +32,8 @@ services:
       exec bin/cachepuppy_core start'
     ports:
       - "4001:4000"
+    volumes:
+      - ./cache_data:/app/tmp/cache_shards
     networks:
       default:
         aliases:
@@ -60,6 +62,8 @@ services:
       exec bin/cachepuppy_core start'
     ports:
       - "4002:4000"
+    volumes:
+      - ./cache_data:/app/tmp/cache_shards
     networks:
       default:
         aliases:
@@ -88,6 +92,8 @@ services:
       exec bin/cachepuppy_core start'
     ports:
       - "4003:4000"
+    volumes:
+      - ./cache_data:/app/tmp/cache_shards
     networks:
       default:
         aliases:
