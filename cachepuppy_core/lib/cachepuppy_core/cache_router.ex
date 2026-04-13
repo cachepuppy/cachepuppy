@@ -2,6 +2,7 @@ defmodule CachePuppyCore.CacheRouter do
   @moduledoc false
 
   alias CachePuppyCore.CacheShardProcess
+  require Logger
 
   @default_shard_count 64
   @default_ring_virtual_nodes 128
@@ -13,6 +14,10 @@ defmodule CachePuppyCore.CacheRouter do
   def setdata(key, value) when is_binary(key) do
     with {:ok, shard_id} <- shard_id_for_key(key),
          {:ok, owner_node} <- owner_node_for_shard(shard_id) do
+      Logger.info(
+        "cache_set route key=#{inspect(key)} shard_id=#{shard_id} requested_by=#{node()} owner_node=#{owner_node}"
+      )
+
       dispatch_set(owner_node, shard_id, key, value)
     end
   end
@@ -22,6 +27,10 @@ defmodule CachePuppyCore.CacheRouter do
   def getdata(key) when is_binary(key) do
     with {:ok, shard_id} <- shard_id_for_key(key),
          {:ok, owner_node} <- owner_node_for_shard(shard_id) do
+      Logger.info(
+        "cache_get route key=#{inspect(key)} shard_id=#{shard_id} requested_by=#{node()} owner_node=#{owner_node}"
+      )
+
       dispatch_get(owner_node, shard_id, key)
     end
   end
@@ -96,6 +105,8 @@ defmodule CachePuppyCore.CacheRouter do
   end
 
   defp dispatch_set(owner_node, shard_id, key, value) when owner_node == node() do
+    Logger.info("cache_set local_execute shard_id=#{shard_id} node=#{node()}")
+
     with {:ok, _pid} <- ensure_shard_started(shard_id) do
       CacheShardProcess.set(shard_id, key, value)
     end
@@ -103,6 +114,7 @@ defmodule CachePuppyCore.CacheRouter do
 
   defp dispatch_set(owner_node, shard_id, key, value) do
     rpc_timeout_ms = Application.get_env(:cachepuppy_core, :cache_rpc_timeout_ms, @default_rpc_timeout_ms)
+    Logger.info("cache_set rpc_execute shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node}")
 
     case :rpc.call(owner_node, __MODULE__, :remote_setdata, [shard_id, key, value], rpc_timeout_ms) do
       {:badrpc, reason} -> {:error, {:rpc_failed, reason}}
@@ -111,6 +123,8 @@ defmodule CachePuppyCore.CacheRouter do
   end
 
   defp dispatch_get(owner_node, shard_id, key) when owner_node == node() do
+    Logger.info("cache_get local_execute shard_id=#{shard_id} node=#{node()}")
+
     with {:ok, _pid} <- ensure_shard_started(shard_id) do
       CacheShardProcess.get(shard_id, key)
     end
@@ -118,6 +132,7 @@ defmodule CachePuppyCore.CacheRouter do
 
   defp dispatch_get(owner_node, shard_id, key) do
     rpc_timeout_ms = Application.get_env(:cachepuppy_core, :cache_rpc_timeout_ms, @default_rpc_timeout_ms)
+    Logger.info("cache_get rpc_execute shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node}")
 
     case :rpc.call(owner_node, __MODULE__, :remote_getdata, [shard_id, key], rpc_timeout_ms) do
       {:badrpc, reason} -> {:error, {:rpc_failed, reason}}
