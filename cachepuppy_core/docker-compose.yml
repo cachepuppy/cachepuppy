@@ -37,7 +37,7 @@ services:
         aliases:
           - cachepuppy-core
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/api/health"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/healthz"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -65,7 +65,7 @@ services:
         aliases:
           - cachepuppy-core
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/api/health"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/healthz"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -93,7 +93,7 @@ services:
         aliases:
           - cachepuppy-core
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/api/health"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/healthz"]
       interval: 5s
       timeout: 3s
       retries: 12

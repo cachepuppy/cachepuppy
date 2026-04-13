@@ -17,6 +17,20 @@ function toSocketPath(url: string): string {
   return url.endsWith("/websocket") ? url.slice(0, -"/websocket".length) : url;
 }
 
+function toHttpBaseUrl(url: string): string {
+  const parsed = new URL(url);
+  if (parsed.protocol === "ws:") parsed.protocol = "http:";
+  if (parsed.protocol === "wss:") parsed.protocol = "https:";
+
+  if (parsed.pathname.endsWith("/socket/websocket")) {
+    parsed.pathname = parsed.pathname.slice(0, -"/socket/websocket".length) || "/";
+  } else if (parsed.pathname.endsWith("/socket")) {
+    parsed.pathname = parsed.pathname.slice(0, -"/socket".length) || "/";
+  }
+
+  return parsed.toString().replace(/\/$/, "");
+}
+
 /** Fixed Phoenix channel topic for per-connection private state (see SessionChannel). */
 const SESSION_CHANNEL_TOPIC = "session";
 
@@ -333,7 +347,7 @@ export class PhoenixTransport implements Transport {
 
   async setData(clientId: string, table: string, key: string, value: unknown): Promise<unknown> {
     const resolvedClientId = this.customClientId ?? clientId;
-    const response = await fetch(`${toSocketPath(this.baseUrl)}/api/cache/setdata`, {
+    const response = await fetch(`${toHttpBaseUrl(this.baseUrl)}/api/cache/setdata`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -343,7 +357,8 @@ export class PhoenixTransport implements Transport {
     });
 
     if (!response.ok) {
-      throw new Error("Failed to set cache data");
+      const detail = await readErrorReason(response);
+      throw new Error(`Failed to set cache data (status ${response.status}${detail ? `, reason ${detail}` : ""})`);
     }
 
     const data = (await response.json()) as { value?: unknown };
@@ -352,7 +367,7 @@ export class PhoenixTransport implements Transport {
 
   async getData(clientId: string, table: string, key: string): Promise<unknown> {
     const resolvedClientId = this.customClientId ?? clientId;
-    const response = await fetch(`${toSocketPath(this.baseUrl)}/api/cache/getdata`, {
+    const response = await fetch(`${toHttpBaseUrl(this.baseUrl)}/api/cache/getdata`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -362,7 +377,8 @@ export class PhoenixTransport implements Transport {
     });
 
     if (!response.ok) {
-      throw new Error("Failed to get cache data");
+      const detail = await readErrorReason(response);
+      throw new Error(`Failed to get cache data (status ${response.status}${detail ? `, reason ${detail}` : ""})`);
     }
 
     const data = (await response.json()) as { value?: unknown };
@@ -431,4 +447,13 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function joinMetaKey(clientId: string, channelTopic: string): string {
   return `${clientId}::${channelTopic}`;
+}
+
+async function readErrorReason(response: Response): Promise<string | null> {
+  try {
+    const payload = (await response.json()) as { reason?: unknown };
+    return typeof payload.reason === "string" ? payload.reason : null;
+  } catch {
+    return null;
+  }
 }

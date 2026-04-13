@@ -17,4 +17,11 @@ defmodule CachePuppyCoreWeb.CacheControllerTest do
     conn = post(conn, ~p"/api/cache/setdata", %{"table" => "users", "key" => 123, "value" => "x"})
     assert %{"reason" => "invalid_payload"} = json_response(conn, 400)
   end
+
+  test "cors preflight works for cache api", %{conn: conn} do
+    conn = options(conn, ~p"/api/cache/setdata")
+    assert response(conn, 204)
+    assert get_resp_header(conn, "access-control-allow-origin") == ["*"]
+    assert get_resp_header(conn, "access-control-allow-methods") == ["GET,POST,OPTIONS"]
+  end
 end

@@ -8,7 +8,7 @@ defmodule CachePuppyCoreWeb.Router do
   scope "/api", CachePuppyCoreWeb do
     pipe_through :api
 
-    get "/health", HealthController, :show
+    get "/health", HealthController, :show, log: false
     post "/cache/setdata", CacheController, :setdata
     post "/cache/getdata", CacheController, :getdata
   end
