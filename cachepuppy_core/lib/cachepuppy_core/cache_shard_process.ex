@@ -2,6 +2,7 @@ defmodule CachePuppyCore.CacheShardProcess do
   @moduledoc false
 
   use GenServer
+  require Logger
 
   defmodule State do
     @moduledoc false
@@ -63,12 +64,17 @@ defmodule CachePuppyCore.CacheShardProcess do
     }
 
     mark_rehydration_done(state)
+    Logger.info(
+      "cache_shard init shard_id=#{shard_id} node=#{node()} owner_epoch=#{owner_epoch} storage_dir=#{storage_dir}"
+    )
+
     {:ok, schedule_flush(state)}
   end
 
   @impl true
   def handle_call({:set, key, value}, _from, state) when is_binary(key) do
     :ets.insert(state.table, {key, value})
+    Logger.info("cache_set execute shard_id=#{state.shard_id} node=#{node()} key=#{inspect(key)}")
     {:reply, {:ok, value}, %{state | dirty: true}}
   end
 
@@ -84,6 +90,7 @@ defmodule CachePuppyCore.CacheShardProcess do
         [] -> nil
       end
 
+    Logger.info("cache_get execute shard_id=#{state.shard_id} node=#{node()} key=#{inspect(key)}")
     {:reply, {:ok, value}, state}
   end
 
@@ -105,10 +112,25 @@ defmodule CachePuppyCore.CacheShardProcess do
       _ = File.mkdir_p(state.storage_dir)
 
       case :ets.tab2file(state.table, snapshot_path_charlist(state), sync: true) do
-        :ok -> %{state | dirty: false}
-        {:error, _reason} -> state
+        :ok ->
+          Logger.info(
+            "cache_flush success shard_id=#{state.shard_id} node=#{node()} path=#{snapshot_path(state)}"
+          )
+
+          %{state | dirty: false}
+
+        {:error, reason} ->
+          Logger.warning(
+            "cache_flush failed shard_id=#{state.shard_id} node=#{node()} reason=#{inspect(reason)}"
+          )
+
+          state
       end
     else
+      Logger.info(
+        "cache_flush skipped_stale_owner shard_id=#{state.shard_id} node=#{node()} owner_epoch=#{state.owner_epoch}"
+      )
+
       state
     end
   end
@@ -118,9 +140,14 @@ defmodule CachePuppyCore.CacheShardProcess do
 
     case :ets.file2tab(String.to_charlist(path)) do
       {:ok, tid} ->
+        Logger.info("cache_rehydrate loaded shard_id=#{shard_id} node=#{node()} path=#{path}")
         tid
 
-      {:error, _reason} ->
+      {:error, reason} ->
+        Logger.info(
+          "cache_rehydrate cold_start shard_id=#{shard_id} node=#{node()} path=#{path} reason=#{inspect(reason)}"
+        )
+
         :ets.new(__MODULE__, [:set, :protected])
     end
   end
