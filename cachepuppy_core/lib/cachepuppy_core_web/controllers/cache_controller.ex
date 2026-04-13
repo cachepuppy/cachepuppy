@@ -12,6 +12,9 @@ defmodule CachePuppyCoreWeb.CacheController do
       {:error, :invalid_table_or_key} ->
         conn |> put_status(:bad_request) |> json(%{reason: "invalid_table_or_key"})
 
+      {:error, {:rpc_failed, _reason}} ->
+        conn |> put_status(:service_unavailable) |> json(%{reason: "rpc_failed"})
+
       {:error, _reason} ->
         conn |> put_status(:internal_server_error) |> json(%{reason: "setdata_failed"})
     end
@@ -28,6 +31,9 @@ defmodule CachePuppyCoreWeb.CacheController do
 
       {:error, :invalid_table_or_key} ->
         conn |> put_status(:bad_request) |> json(%{reason: "invalid_table_or_key"})
+
+      {:error, {:rpc_failed, _reason}} ->
+        conn |> put_status(:service_unavailable) |> json(%{reason: "rpc_failed"})
 
       {:error, _reason} ->
         conn |> put_status(:internal_server_error) |> json(%{reason: "getdata_failed"})

@@ -133,7 +133,13 @@ defmodule CachePuppyCore.CacheRouter do
            [shard_id, table, key, value],
            rpc_timeout_ms
          ) do
-      {:badrpc, reason} -> {:error, {:rpc_failed, reason}}
+      {:badrpc, reason} ->
+        Logger.warning(
+          "cache_set rpc_failed shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node} reason=#{inspect(reason)}"
+        )
+
+        {:error, {:rpc_failed, reason}}
+
       result -> result
     end
   end
@@ -151,7 +157,13 @@ defmodule CachePuppyCore.CacheRouter do
     Logger.info("cache_get rpc_execute shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node}")
 
     case :rpc.call(owner_node, __MODULE__, :remote_getdata, [shard_id, table, key], rpc_timeout_ms) do
-      {:badrpc, reason} -> {:error, {:rpc_failed, reason}}
+      {:badrpc, reason} ->
+        Logger.warning(
+          "cache_get rpc_failed shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node} reason=#{inspect(reason)}"
+        )
+
+        {:error, {:rpc_failed, reason}}
+
       result -> result
     end
   end

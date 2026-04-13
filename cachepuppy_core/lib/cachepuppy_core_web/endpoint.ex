@@ -36,6 +36,7 @@ defmodule CachePuppyCoreWeb.Endpoint do
     plug Phoenix.CodeReloader
   end
 
+  plug CachePuppyCoreWeb.Plugs.Healthcheck
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
@@ -46,6 +47,7 @@ defmodule CachePuppyCoreWeb.Endpoint do
 
   plug Plug.MethodOverride
   plug Plug.Head
+  plug CachePuppyCoreWeb.Plugs.CORS
   plug Plug.Session, @session_options
   plug CachePuppyCoreWeb.Router
 end

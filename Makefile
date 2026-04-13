@@ -1,7 +1,12 @@
-.PHONY: compose-up sdk-build demo-interactive demo-backend
+.PHONY: compose-up compose-clean-rebuild sdk-build demo-interactive demo-backend
 
 compose-up:
 	cd cachepuppy_core && docker compose up --build
+
+compose-clean-rebuild:
+	cd cachepuppy_core && docker compose down --volumes --remove-orphans --rmi local
+	cd cachepuppy_core && docker compose build --no-cache
+	cd cachepuppy_core && docker compose up
 
 sdk-build:
 	cd sdk/javascript && npm run build
