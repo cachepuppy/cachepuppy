@@ -15,6 +15,9 @@ defmodule CachePuppyCoreWeb.CacheController do
       {:error, {:rpc_failed, _reason}} ->
         conn |> put_status(:service_unavailable) |> json(%{reason: "rpc_failed"})
 
+      {:error, {:shard_unavailable, _reason}} ->
+        conn |> put_status(:service_unavailable) |> json(%{reason: "shard_unavailable"})
+
       {:error, _reason} ->
         conn |> put_status(:internal_server_error) |> json(%{reason: "setdata_failed"})
     end
@@ -34,6 +37,9 @@ defmodule CachePuppyCoreWeb.CacheController do
 
       {:error, {:rpc_failed, _reason}} ->
         conn |> put_status(:service_unavailable) |> json(%{reason: "rpc_failed"})
+
+      {:error, {:shard_unavailable, _reason}} ->
+        conn |> put_status(:service_unavailable) |> json(%{reason: "shard_unavailable"})
 
       {:error, _reason} ->
         conn |> put_status(:internal_server_error) |> json(%{reason: "getdata_failed"})
