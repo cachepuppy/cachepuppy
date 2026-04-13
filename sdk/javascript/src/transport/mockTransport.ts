@@ -198,13 +198,13 @@ class MockBus {
     return { ...(this.topicStates.get(topic) ?? {}) };
   }
 
-  setData(key: string, value: unknown): unknown {
-    this.cacheData.set(key, value);
+  setData(table: string, key: string, value: unknown): unknown {
+    this.cacheData.set(cacheDataKey(table, key), value);
     return value;
   }
 
-  getData(key: string): unknown {
-    return this.cacheData.get(key);
+  getData(table: string, key: string): unknown {
+    return this.cacheData.get(cacheDataKey(table, key));
   }
 
   setSessionState(clientId: string, payload: Record<string, unknown>): Record<string, unknown> {
@@ -270,12 +270,12 @@ export class MockTransport implements Transport {
     return { state: globalBus.getState(topic), sourceNode: "mock", servedByNode: "mock" };
   }
 
-  async setData(_clientId: string, key: string, value: unknown): Promise<unknown> {
-    return globalBus.setData(key, value);
+  async setData(_clientId: string, table: string, key: string, value: unknown): Promise<unknown> {
+    return globalBus.setData(table, key, value);
   }
 
-  async getData(_clientId: string, key: string): Promise<unknown> {
-    return globalBus.getData(key);
+  async getData(_clientId: string, table: string, key: string): Promise<unknown> {
+    return globalBus.getData(table, key);
   }
 
   async clearTopicState(_clientId: string, topic: string): Promise<boolean> {
@@ -294,4 +294,8 @@ export class MockTransport implements Transport {
     return undefined;
   }
 
+}
+
+function cacheDataKey(table: string, key: string): string {
+  return `${table}::${key}`;
 }

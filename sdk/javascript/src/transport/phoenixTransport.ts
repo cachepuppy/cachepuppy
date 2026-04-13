@@ -331,7 +331,7 @@ export class PhoenixTransport implements Transport {
     });
   }
 
-  async setData(clientId: string, key: string, value: unknown): Promise<unknown> {
+  async setData(clientId: string, table: string, key: string, value: unknown): Promise<unknown> {
     const resolvedClientId = this.customClientId ?? clientId;
     const response = await fetch(`${toSocketPath(this.baseUrl)}/api/cache/setdata`, {
       method: "POST",
@@ -339,7 +339,7 @@ export class PhoenixTransport implements Transport {
         "content-type": "application/json",
         ...(this.authToken ? { authorization: `Bearer ${this.authToken}` } : {}),
       },
-      body: JSON.stringify({ key, value, client_id: resolvedClientId }),
+      body: JSON.stringify({ table, key, value, client_id: resolvedClientId }),
     });
 
     if (!response.ok) {
@@ -350,7 +350,7 @@ export class PhoenixTransport implements Transport {
     return data.value;
   }
 
-  async getData(clientId: string, key: string): Promise<unknown> {
+  async getData(clientId: string, table: string, key: string): Promise<unknown> {
     const resolvedClientId = this.customClientId ?? clientId;
     const response = await fetch(`${toSocketPath(this.baseUrl)}/api/cache/getdata`, {
       method: "POST",
@@ -358,7 +358,7 @@ export class PhoenixTransport implements Transport {
         "content-type": "application/json",
         ...(this.authToken ? { authorization: `Bearer ${this.authToken}` } : {}),
       },
-      body: JSON.stringify({ key, client_id: resolvedClientId }),
+      body: JSON.stringify({ table, key, client_id: resolvedClientId }),
     });
 
     if (!response.ok) {
