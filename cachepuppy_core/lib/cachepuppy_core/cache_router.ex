@@ -2,11 +2,7 @@ defmodule CachePuppyCore.CacheRouter do
   @moduledoc false
 
   require Logger
-
-  @default_shard_count 64
-  @default_rpc_timeout_ms 5_000
-  @default_flush_interval_ms 5_000
-  @default_storage_dir "tmp/cache_shards"
+  alias CachePuppyCore.CacheConfig
 
   def setdata(table, key, value) when is_binary(table) and is_binary(key) do
     with {:ok, shard_id} <- shard_id_for_entry(table, key),
@@ -37,7 +33,7 @@ defmodule CachePuppyCore.CacheRouter do
   def getdata(_table, _key), do: {:error, :invalid_table_or_key}
 
   def shard_id_for_key(key) when is_binary(key) do
-    shard_count = Application.get_env(:cachepuppy_core, :cache_shard_count, @default_shard_count)
+    shard_count = CacheConfig.shard_count()
 
     if shard_count > 0 do
       {:ok, :erlang.phash2(key, shard_count)}
@@ -47,7 +43,7 @@ defmodule CachePuppyCore.CacheRouter do
   end
 
   def shard_id_for_entry(table, key) when is_binary(table) and is_binary(key) do
-    shard_count = Application.get_env(:cachepuppy_core, :cache_shard_count, @default_shard_count)
+    shard_count = CacheConfig.shard_count()
 
     if shard_count > 0 do
       {:ok, :erlang.phash2({table, key}, shard_count)}
@@ -81,8 +77,11 @@ defmodule CachePuppyCore.CacheRouter do
   end
 
   defp dispatch_set(owner_node, pid, shard_id, table, key, value) do
-    rpc_timeout_ms = Application.get_env(:cachepuppy_core, :cache_rpc_timeout_ms, @default_rpc_timeout_ms)
-    Logger.info("cache_set rpc_execute shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node}")
+    rpc_timeout_ms = CacheConfig.rpc_timeout_ms()
+
+    Logger.info(
+      "cache_set rpc_execute shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node}"
+    )
 
     case :rpc.call(
            owner_node,
@@ -98,7 +97,8 @@ defmodule CachePuppyCore.CacheRouter do
 
         {:error, {:rpc_failed, reason}}
 
-      result -> result
+      result ->
+        result
     end
   end
 
@@ -108,8 +108,11 @@ defmodule CachePuppyCore.CacheRouter do
   end
 
   defp dispatch_get(owner_node, pid, shard_id, table, key) do
-    rpc_timeout_ms = Application.get_env(:cachepuppy_core, :cache_rpc_timeout_ms, @default_rpc_timeout_ms)
-    Logger.info("cache_get rpc_execute shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node}")
+    rpc_timeout_ms = CacheConfig.rpc_timeout_ms()
+
+    Logger.info(
+      "cache_get rpc_execute shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node}"
+    )
 
     case :rpc.call(owner_node, __MODULE__, :remote_getdata, [pid, table, key], rpc_timeout_ms) do
       {:badrpc, reason} ->
@@ -119,7 +122,8 @@ defmodule CachePuppyCore.CacheRouter do
 
         {:error, {:rpc_failed, reason}}
 
-      result -> result
+      result ->
+        result
     end
   end
 
@@ -130,12 +134,7 @@ defmodule CachePuppyCore.CacheRouter do
   end
 
   defp start_shard(shard_id) do
-    child_spec = [
-      shard_id: shard_id,
-      flush_interval_ms:
-        Application.get_env(:cachepuppy_core, :cache_flush_interval_ms, @default_flush_interval_ms),
-      storage_dir: Application.get_env(:cachepuppy_core, :cache_storage_dir, @default_storage_dir)
-    ]
+    child_spec = CacheConfig.shard_process_opts(shard_id)
 
     case Horde.DynamicSupervisor.start_child(
            CachePuppyCore.CacheShardSupervisor,

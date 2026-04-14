@@ -1,94 +1,119 @@
 defmodule CachePuppyCore.CacheShardProcessTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
+  alias CachePuppyCore.Persistence.CacheFlushEngine
   alias CachePuppyCore.CacheShardProcess
 
-  test "rehydrates from snapshot file on startup" do
+  test "rehydrates from snapshot and WAL on startup" do
     shard_id = 7
     storage_dir = unique_storage_dir("rehydrate")
-    snapshot = Path.join(storage_dir, "shard_#{shard_id}.ets")
     meta = Path.join(storage_dir, "shard_#{shard_id}.meta")
-    File.mkdir_p!(storage_dir)
 
-    table = :ets.new(:rehydrate_seed, [:set, :protected])
-    true = :ets.insert(table, {{"users", "name"}, "beamline"})
-    :ok = :ets.tab2file(table, String.to_charlist(snapshot), sync: true)
-    :ets.delete(table)
-    File.write!(meta, :erlang.term_to_binary(%{"epoch" => 1, "owner_node" => "seed", "rehydrating" => false}))
+    with_cache_config(storage_dir, 1024, 0, 1_000, fn ->
+      File.mkdir_p!(storage_dir)
 
-    pid =
-      start_supervised!({
-        CacheShardProcess,
-        shard_id: shard_id,
-        flush_interval_ms: 1_000,
-        storage_dir: storage_dir,
-        name: nil
-      })
+      table = :ets.new(:rehydrate_seed, [:set, :protected])
+      true = :ets.insert(table, {{"users", "name"}, "beamline"})
+      :ok = CacheFlushEngine.write_snapshot(table, shard_id)
+      :ets.delete(table)
 
-    _ = :sys.get_state(pid)
-    assert {:ok, "beamline"} = GenServer.call(pid, {:get, "users", "name"})
+      File.write!(
+        meta,
+        :erlang.term_to_binary(%{"epoch" => 1, "owner_node" => "seed", "rehydrating" => false})
+      )
+
+      {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
+      {:ok, engine} = CacheFlushEngine.append_set(engine, "users", "city", "blr")
+      {:ok, engine} = CacheFlushEngine.maybe_sync(engine)
+      _ = CacheFlushEngine.close(engine)
+
+      pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
+
+      _ = :sys.get_state(pid)
+      assert {:ok, "beamline"} = GenServer.call(pid, {:get, "users", "name"})
+      assert {:ok, "blr"} = GenServer.call(pid, {:get, "users", "city"})
+    end)
   end
 
-  test "flush_tick writes only when shard is dirty" do
+  test "set appends WAL record for shard" do
     shard_id = 9
-    storage_dir = unique_storage_dir("flush")
-    snapshot = Path.join(storage_dir, "shard_#{shard_id}.ets")
+    storage_dir = unique_storage_dir("wal")
 
-    pid =
-      start_supervised!({
-        CacheShardProcess,
-        shard_id: shard_id,
-        flush_interval_ms: 10_000,
-        storage_dir: storage_dir,
-        name: nil
-      })
+    with_cache_config(storage_dir, 1_048_576, 0, 100_000, fn ->
+      pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
 
-    send(pid, :flush_tick)
-    _ = :sys.get_state(pid)
-    refute File.exists?(snapshot)
+      _ = :sys.get_state(pid)
+      assert {:ok, 42} = GenServer.call(pid, {:set, "users", "answer", 42})
+      _ = :sys.get_state(pid)
 
-    assert {:ok, 42} = GenServer.call(pid, {:set, "users", "answer", 42})
-    send(pid, :flush_tick)
-    _ = :sys.get_state(pid)
-    assert File.exists?(snapshot)
+      wal_files =
+        storage_dir
+        |> File.ls!()
+        |> Enum.filter(&String.starts_with?(&1, "shard_#{shard_id}.wal."))
 
-    assert {:ok, restored} = :ets.file2tab(String.to_charlist(snapshot))
-    assert [{{"users", "answer"}, 42}] = :ets.lookup(restored, {"users", "answer"})
-    :ets.delete(restored)
+      assert wal_files != []
+      wal_path = Path.join(storage_dir, hd(wal_files))
+      assert File.stat!(wal_path).size > 0
+    end)
   end
 
-  test "flush is skipped when metadata owner/epoch no longer matches process" do
+  test "set is rejected after periodic ownership revalidation detects stale metadata" do
     shard_id = 12
     storage_dir = unique_storage_dir("stale_owner")
-    snapshot = Path.join(storage_dir, "shard_#{shard_id}.ets")
     metadata = Path.join(storage_dir, "shard_#{shard_id}.meta")
 
-    pid =
-      start_supervised!({
-        CacheShardProcess,
-        shard_id: shard_id,
-        flush_interval_ms: 10_000,
-        storage_dir: storage_dir,
-        name: nil
-      })
+    with_cache_config(storage_dir, 1_048_576, 100, 10_000, fn ->
+      pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
 
-    assert {:ok, "value"} = GenServer.call(pid, {:set, "users", "key", "value"})
+      stale_meta = %{
+        "epoch" => 999,
+        "owner_node" => "other@node",
+        "rehydrating" => false,
+        "updated_at_ms" => System.system_time(:millisecond)
+      }
 
-    stale_meta = %{
-      "epoch" => 999,
-      "owner_node" => "other@node",
-      "rehydrating" => false,
-      "updated_at_ms" => System.system_time(:millisecond)
-    }
+      File.write!(metadata, :erlang.term_to_binary(stale_meta))
 
-    File.write!(metadata, :erlang.term_to_binary(stale_meta))
-
-    send(pid, :flush_tick)
-    _ = :sys.get_state(pid)
-    refute File.exists?(snapshot)
+      send(pid, :flush_tick)
+      _ = :sys.get_state(pid)
+      assert {:error, :stale_owner} = GenServer.call(pid, {:set, "users", "key", "value"})
+    end)
   end
 
+  defp with_cache_config(
+         storage_dir,
+         wal_segment_max_bytes,
+         wal_sync_interval_ms,
+         flush_interval_ms,
+         fun
+       ) do
+    old_storage = Application.get_env(:cachepuppy_core, :cache_storage_dir)
+    old_wal_bytes = Application.get_env(:cachepuppy_core, :cache_wal_segment_max_bytes)
+    old_sync = Application.get_env(:cachepuppy_core, :cache_wal_sync_interval_ms)
+    old_flush = Application.get_env(:cachepuppy_core, :cache_flush_interval_ms)
+
+    Application.put_env(:cachepuppy_core, :cache_storage_dir, storage_dir)
+    Application.put_env(:cachepuppy_core, :cache_wal_segment_max_bytes, wal_segment_max_bytes)
+    Application.put_env(:cachepuppy_core, :cache_wal_sync_interval_ms, wal_sync_interval_ms)
+    Application.put_env(:cachepuppy_core, :cache_flush_interval_ms, flush_interval_ms)
+
+    try do
+      fun.()
+    after
+      restore_env(:cache_storage_dir, old_storage)
+      restore_env(:cache_wal_segment_max_bytes, old_wal_bytes)
+      restore_env(:cache_wal_sync_interval_ms, old_sync)
+      restore_env(:cache_flush_interval_ms, old_flush)
+    end
+  end
+
+  defp restore_env(key, nil), do: Application.delete_env(:cachepuppy_core, key)
+  defp restore_env(key, value), do: Application.put_env(:cachepuppy_core, key, value)
+
   defp unique_storage_dir(label) do
-    Path.join(System.tmp_dir!(), "cache_shard_process_#{label}_#{System.unique_integer([:positive])}")
+    Path.join(
+      System.tmp_dir!(),
+      "cache_shard_process_#{label}_#{System.unique_integer([:positive])}"
+    )
   end
 end
