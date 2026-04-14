@@ -33,7 +33,7 @@ services:
     ports:
       - "4001:4000"
     volumes:
-      - ./cache_data:/app/tmp/cache_shards
+      - cache_shards_data:/app/tmp/cache_shards
     networks:
       default:
         aliases:
@@ -63,7 +63,7 @@ services:
     ports:
       - "4002:4000"
     volumes:
-      - ./cache_data:/app/tmp/cache_shards
+      - cache_shards_data:/app/tmp/cache_shards
     networks:
       default:
         aliases:
@@ -93,7 +93,7 @@ services:
     ports:
       - "4003:4000"
     volumes:
-      - ./cache_data:/app/tmp/cache_shards
+      - cache_shards_data:/app/tmp/cache_shards
     networks:
       default:
         aliases:
@@ -104,3 +104,7 @@ services:
       timeout: 3s
       retries: 12
       start_period: 40s
+
+volumes:
+  cache_shards_data:
+    name: cachepuppy_cache_shards_data
