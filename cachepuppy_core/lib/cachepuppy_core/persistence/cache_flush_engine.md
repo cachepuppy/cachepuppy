@@ -26,7 +26,7 @@ The engine struct stores runtime state such as current WAL segment, open file de
 
 ### `init/1`
 - Reads dynamic option: `:shard_id`.
-- Reads static settings from `CacheConfig` (storage dir, WAL segment size, sync interval).
+- Reads static settings from `CacheConfig` (storage dir, WAL segment size).
 - Ensures the storage directory exists.
 - Detects the latest WAL segment and byte size.
 - Opens that segment in append mode and initializes engine state.
@@ -48,7 +48,7 @@ The engine struct stores runtime state such as current WAL segment, open file de
 
 ### `maybe_sync/1`
 - No-op when `pending_sync_bytes` is `0`.
-- If enough time has passed since last sync (from `CacheConfig.wal_sync_interval_ms/0`), calls `:file.sync/1`.
+- Calls `:file.sync/1` whenever there are pending WAL bytes.
 - Resets pending-sync counters on success.
 - Returns `{:ok, engine}` or `{:error, reason}`.
 

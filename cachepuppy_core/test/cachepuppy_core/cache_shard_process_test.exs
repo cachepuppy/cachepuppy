@@ -9,7 +9,7 @@ defmodule CachePuppyCore.CacheShardProcessTest do
     storage_dir = unique_storage_dir("rehydrate")
     meta = Path.join(storage_dir, "shard_#{shard_id}.meta")
 
-    with_cache_config(storage_dir, 1024, 0, 1_000, fn ->
+    with_cache_config(storage_dir, 1024, 1_000, fn ->
       File.mkdir_p!(storage_dir)
 
       table = :ets.new(:rehydrate_seed, [:set, :protected])
@@ -39,7 +39,7 @@ defmodule CachePuppyCore.CacheShardProcessTest do
     shard_id = 9
     storage_dir = unique_storage_dir("wal")
 
-    with_cache_config(storage_dir, 1_048_576, 0, 100_000, fn ->
+    with_cache_config(storage_dir, 1_048_576, 100_000, fn ->
       pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
 
       _ = :sys.get_state(pid)
@@ -62,7 +62,7 @@ defmodule CachePuppyCore.CacheShardProcessTest do
     storage_dir = unique_storage_dir("stale_owner")
     metadata = Path.join(storage_dir, "shard_#{shard_id}.meta")
 
-    with_cache_config(storage_dir, 1_048_576, 100, 10_000, fn ->
+    with_cache_config(storage_dir, 1_048_576, 10_000, fn ->
       pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
 
       stale_meta = %{
@@ -80,21 +80,13 @@ defmodule CachePuppyCore.CacheShardProcessTest do
     end)
   end
 
-  defp with_cache_config(
-         storage_dir,
-         wal_segment_max_bytes,
-         wal_sync_interval_ms,
-         flush_interval_ms,
-         fun
-       ) do
+  defp with_cache_config(storage_dir, wal_segment_max_bytes, flush_interval_ms, fun) do
     old_storage = Application.get_env(:cachepuppy_core, :cache_storage_dir)
     old_wal_bytes = Application.get_env(:cachepuppy_core, :cache_wal_segment_max_bytes)
-    old_sync = Application.get_env(:cachepuppy_core, :cache_wal_sync_interval_ms)
     old_flush = Application.get_env(:cachepuppy_core, :cache_flush_interval_ms)
 
     Application.put_env(:cachepuppy_core, :cache_storage_dir, storage_dir)
     Application.put_env(:cachepuppy_core, :cache_wal_segment_max_bytes, wal_segment_max_bytes)
-    Application.put_env(:cachepuppy_core, :cache_wal_sync_interval_ms, wal_sync_interval_ms)
     Application.put_env(:cachepuppy_core, :cache_flush_interval_ms, flush_interval_ms)
 
     try do
@@ -102,7 +94,6 @@ defmodule CachePuppyCore.CacheShardProcessTest do
     after
       restore_env(:cache_storage_dir, old_storage)
       restore_env(:cache_wal_segment_max_bytes, old_wal_bytes)
-      restore_env(:cache_wal_sync_interval_ms, old_sync)
       restore_env(:cache_flush_interval_ms, old_flush)
     end
   end

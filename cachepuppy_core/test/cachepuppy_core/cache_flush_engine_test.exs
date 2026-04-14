@@ -8,7 +8,7 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
     shard_id = 1
     storage_dir = unique_storage_dir("init_cold")
 
-    with_cache_config(storage_dir, 1024, 0, fn ->
+    with_cache_config(storage_dir, 1024, fn ->
       {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
       assert engine.current_seq == 1
       assert engine.current_wal_bytes == 0
@@ -21,7 +21,7 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
     shard_id = 2
     storage_dir = unique_storage_dir("init_resume")
 
-    with_cache_config(storage_dir, 1024, 0, fn ->
+    with_cache_config(storage_dir, 1024, fn ->
       File.mkdir_p!(storage_dir)
       File.write!(CacheUtils.wal_path(storage_dir, shard_id, 1), "abc")
       File.write!(CacheUtils.wal_path(storage_dir, shard_id, 2), "abcdef")
@@ -37,7 +37,7 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
     shard_id = 3
     storage_dir = unique_storage_dir("close")
 
-    with_cache_config(storage_dir, 1024, 0, fn ->
+    with_cache_config(storage_dir, 1024, fn ->
       {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
       closed = CacheFlushEngine.close(engine)
       assert closed.current_wal_fd == nil
@@ -48,7 +48,7 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
     shard_id = 4
     storage_dir = unique_storage_dir("append")
 
-    with_cache_config(storage_dir, 1024, 0, fn ->
+    with_cache_config(storage_dir, 1024, fn ->
       {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
       assert {:ok, engine} = CacheFlushEngine.append_set(engine, "users", "k1", "v1")
       assert engine.current_wal_bytes > 0
@@ -62,7 +62,7 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
     shard_id = 5
     storage_dir = unique_storage_dir("sync_noop")
 
-    with_cache_config(storage_dir, 1024, 0, fn ->
+    with_cache_config(storage_dir, 1024, fn ->
       {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
       assert {:ok, synced} = CacheFlushEngine.maybe_sync(engine)
       assert synced.pending_sync_bytes == 0
@@ -74,7 +74,7 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
     shard_id = 6
     storage_dir = unique_storage_dir("sync_flush")
 
-    with_cache_config(storage_dir, 1024, 0, fn ->
+    with_cache_config(storage_dir, 1024, fn ->
       {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
       {:ok, engine} = CacheFlushEngine.append_set(engine, "users", "k1", "v1")
       assert {:ok, synced} = CacheFlushEngine.maybe_sync(engine)
@@ -83,16 +83,16 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
     end)
   end
 
-  test "maybe_sync does not flush before sync interval" do
+  test "maybe_sync updates last_sync timestamp on successful sync" do
     shard_id = 7
-    storage_dir = unique_storage_dir("sync_interval")
+    storage_dir = unique_storage_dir("sync_timestamp")
 
-    with_cache_config(storage_dir, 1024, 60_000, fn ->
+    with_cache_config(storage_dir, 1024, fn ->
       {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
       {:ok, engine} = CacheFlushEngine.append_set(engine, "users", "k1", "v1")
-      assert {:ok, same_engine} = CacheFlushEngine.maybe_sync(engine)
-      assert same_engine.pending_sync_bytes > 0
-      _ = CacheFlushEngine.close(same_engine)
+      assert {:ok, synced} = CacheFlushEngine.maybe_sync(engine)
+      assert synced.last_sync_at_ms >= engine.last_sync_at_ms
+      _ = CacheFlushEngine.close(synced)
     end)
   end
 
@@ -100,7 +100,7 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
     shard_id = 8
     storage_dir = unique_storage_dir("rotate_noop")
 
-    with_cache_config(storage_dir, 1_048_576, 0, fn ->
+    with_cache_config(storage_dir, 1_048_576, fn ->
       {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
       {:ok, engine} = CacheFlushEngine.append_set(engine, "users", "k1", "v1")
       assert {:ok, same_engine} = CacheFlushEngine.maybe_rotate(engine)
@@ -113,7 +113,7 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
     shard_id = 9
     storage_dir = unique_storage_dir("rotate")
 
-    with_cache_config(storage_dir, 64, 0, fn ->
+    with_cache_config(storage_dir, 64, fn ->
       {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
 
       {:ok, engine} =
@@ -167,7 +167,7 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
     shard_id = 12
     storage_dir = unique_storage_dir("finalize")
 
-    with_cache_config(storage_dir, 1024, 0, fn ->
+    with_cache_config(storage_dir, 1024, fn ->
       File.mkdir_p!(storage_dir)
       File.write!(CacheUtils.wal_path(storage_dir, shard_id, 1), "old")
       File.write!(CacheUtils.wal_path(storage_dir, shard_id, 2), "new")
@@ -188,7 +188,7 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
     shard_id = 13
     storage_dir = unique_storage_dir("write_snapshot")
 
-    with_cache_config(storage_dir, 1024, 0, fn ->
+    with_cache_config(storage_dir, 1024, fn ->
       File.mkdir_p!(storage_dir)
       table = :ets.new(:flush_snapshot_seed, [:set, :protected])
       true = :ets.insert(table, {{"users", "name"}, "beamline"})
@@ -205,21 +205,18 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
     end)
   end
 
-  defp with_cache_config(storage_dir, wal_segment_max_bytes, wal_sync_interval_ms, fun) do
+  defp with_cache_config(storage_dir, wal_segment_max_bytes, fun) do
     old_storage = Application.get_env(:cachepuppy_core, :cache_storage_dir)
     old_wal_bytes = Application.get_env(:cachepuppy_core, :cache_wal_segment_max_bytes)
-    old_sync = Application.get_env(:cachepuppy_core, :cache_wal_sync_interval_ms)
 
     Application.put_env(:cachepuppy_core, :cache_storage_dir, storage_dir)
     Application.put_env(:cachepuppy_core, :cache_wal_segment_max_bytes, wal_segment_max_bytes)
-    Application.put_env(:cachepuppy_core, :cache_wal_sync_interval_ms, wal_sync_interval_ms)
 
     try do
       fun.()
     after
       restore_env(:cache_storage_dir, old_storage)
       restore_env(:cache_wal_segment_max_bytes, old_wal_bytes)
-      restore_env(:cache_wal_sync_interval_ms, old_sync)
     end
   end
 

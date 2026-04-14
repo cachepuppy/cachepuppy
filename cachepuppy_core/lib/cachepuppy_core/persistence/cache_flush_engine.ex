@@ -76,19 +76,13 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
   def maybe_sync(%__MODULE__{pending_sync_bytes: 0} = engine), do: {:ok, engine}
 
   def maybe_sync(%__MODULE__{} = engine) do
-    now_ms = System.system_time(:millisecond)
-    wal_sync_interval_ms = CacheConfig.wal_sync_interval_ms()
+    case :file.sync(engine.current_wal_fd) do
+      :ok ->
+        {:ok,
+         %{engine | pending_sync_bytes: 0, last_sync_at_ms: System.system_time(:millisecond)}}
 
-    if now_ms - engine.last_sync_at_ms >= wal_sync_interval_ms do
-      case :file.sync(engine.current_wal_fd) do
-        :ok ->
-          {:ok, %{engine | pending_sync_bytes: 0, last_sync_at_ms: now_ms}}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
-    else
-      {:ok, engine}
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

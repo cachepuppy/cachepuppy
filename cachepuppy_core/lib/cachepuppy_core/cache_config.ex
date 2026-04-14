@@ -6,7 +6,6 @@ defmodule CachePuppyCore.CacheConfig do
   @default_flush_interval_ms 5_000
   @default_storage_dir "tmp/cache_shards"
   @default_wal_segment_max_bytes 1_048_576
-  @default_wal_sync_interval_ms 100
   @default_snapshot_interval_ms 60_000
   @default_snapshot_min_wal_bytes 262_144
   @default_recovery_max_segments 1_024
@@ -36,14 +35,6 @@ defmodule CachePuppyCore.CacheConfig do
       :cachepuppy_core,
       :cache_wal_segment_max_bytes,
       @default_wal_segment_max_bytes
-    )
-  end
-
-  def wal_sync_interval_ms do
-    Application.get_env(
-      :cachepuppy_core,
-      :cache_wal_sync_interval_ms,
-      @default_wal_sync_interval_ms
     )
   end
 

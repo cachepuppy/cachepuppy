@@ -16,7 +16,6 @@ config :cachepuppy_core,
   cache_rpc_timeout_ms: 5_000,
   cache_storage_dir: "tmp/cache_shards",
   cache_wal_segment_max_bytes: 1_048_576,
-  cache_wal_sync_interval_ms: 100,
   cache_snapshot_interval_ms: 60_000,
   cache_snapshot_min_wal_bytes: 262_144,
   cache_recovery_max_segments: 1_024
