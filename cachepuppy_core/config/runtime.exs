@@ -23,6 +23,13 @@ end
 config :cachepuppy_core, CachePuppyCoreWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+if String.downcase(System.get_env("CACHE_PERSISTENCE_TEST_MODE", "false")) == "true" do
+  config :cachepuppy_core,
+    cache_wal_segment_max_bytes: 200,
+    cache_snapshot_min_wal_bytes: 2_000,
+    cache_snapshot_interval_ms: 30_000
+end
+
 if config_env() == :prod do
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
