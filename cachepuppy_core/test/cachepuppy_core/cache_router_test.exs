@@ -15,7 +15,8 @@ defmodule CachePuppyCore.CacheRouterTest do
   end
 
   test "setdata and getdata roundtrip through shard routing" do
-    storage_dir = Path.join(System.tmp_dir!(), "cache_router_#{System.unique_integer([:positive])}")
+    storage_dir =
+      Path.join(System.tmp_dir!(), "cache_router_#{System.unique_integer([:positive])}")
 
     Application.put_env(:cachepuppy_core, :cache_shard_count, 16)
     Application.put_env(:cachepuppy_core, :cache_flush_interval_ms, 30_000)
