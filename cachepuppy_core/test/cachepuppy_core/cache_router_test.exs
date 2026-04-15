@@ -33,13 +33,38 @@ defmodule CachePuppyCore.CacheRouterTest do
 
     table = "users"
 
-    assert {:ok, ^value} = CacheRouter.setdata(table, key, value)
-    assert {:ok, ^value} = CacheRouter.getdata(table, key)
-    assert {:ok, nil} = CacheRouter.getdata(table, "#{key}_missing")
+    assert_eventually_ok(fn -> CacheRouter.setdata(table, key, value) end, value)
+    assert_eventually_ok(fn -> CacheRouter.getdata(table, key) end, value)
+    assert_eventually_ok(fn -> CacheRouter.getdata(table, "#{key}_missing") end, nil)
   end
 
   test "single-node cluster resolves owner to current node via horde placement" do
     assert {:ok, owner} = CacheRouter.owner_node_for_shard(5)
     assert owner == node()
+  end
+
+  defp assert_eventually_ok(fun, expected, attempts \\ 100)
+  defp assert_eventually_ok(_fun, _expected, 0), do: flunk("operation stayed in rehydrating")
+
+  defp assert_eventually_ok(fun, expected, attempts) do
+    case fun.() do
+      {:ok, ^expected} ->
+        :ok
+
+      {:error, :rehydrating} ->
+        receive do
+        after
+          10 -> assert_eventually_ok(fun, expected, attempts - 1)
+        end
+
+      {:error, :stale_owner} ->
+        receive do
+        after
+          10 -> assert_eventually_ok(fun, expected, attempts - 1)
+        end
+
+      other ->
+        flunk("unexpected response: #{inspect(other)}")
+    end
   end
 end

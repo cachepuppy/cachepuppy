@@ -4,20 +4,22 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
   alias CachePuppyCore.Persistence.CacheFlushEngine
   alias CachePuppyCore.Persistence.CacheUtils
 
-  test "init creates first WAL segment on cold start" do
+  test "start_link creates first WAL segment on cold start" do
     shard_id = 1
     storage_dir = unique_storage_dir("init_cold")
 
     with_cache_config(storage_dir, 1024, fn ->
-      {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
-      assert engine.current_seq == 1
-      assert engine.current_wal_bytes == 0
+      write_owner_meta(storage_dir, shard_id, 1)
+      table = :ets.new(:engine_init_cold, [:set, :protected])
+      pid = start_engine(shard_id, table, 1)
+      state = :sys.get_state(pid)
+      assert state.engine.current_seq == 1
+      assert state.engine.current_wal_bytes == 0
       assert File.exists?(CacheUtils.wal_path(storage_dir, shard_id, 1))
-      _ = CacheFlushEngine.close(engine)
     end)
   end
 
-  test "init resumes latest WAL segment and size" do
+  test "start_link resumes latest WAL segment and size" do
     shard_id = 2
     storage_dir = unique_storage_dir("init_resume")
 
@@ -25,183 +27,190 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
       File.mkdir_p!(storage_dir)
       File.write!(CacheUtils.wal_path(storage_dir, shard_id, 1), "abc")
       File.write!(CacheUtils.wal_path(storage_dir, shard_id, 2), "abcdef")
+      write_owner_meta(storage_dir, shard_id, 1)
+      table = :ets.new(:engine_init_resume, [:set, :protected])
+      pid = start_engine(shard_id, table, 1)
 
-      {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
-      assert engine.current_seq == 2
-      assert engine.current_wal_bytes == 6
-      _ = CacheFlushEngine.close(engine)
+      state = :sys.get_state(pid)
+      assert state.engine.current_seq == 2
+      assert state.engine.current_wal_bytes == 6
     end)
   end
 
-  test "close returns engine with nil file descriptor" do
+  test "persist_set appends WAL record when owner is valid" do
     shard_id = 3
-    storage_dir = unique_storage_dir("close")
+    storage_dir = unique_storage_dir("persist_valid")
 
     with_cache_config(storage_dir, 1024, fn ->
-      {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
-      closed = CacheFlushEngine.close(engine)
-      assert closed.current_wal_fd == nil
+      write_owner_meta(storage_dir, shard_id, 11)
+      table = :ets.new(:engine_persist_valid, [:set, :protected])
+      pid = start_engine(shard_id, table, 11)
+      CacheFlushEngine.persist_set(pid, "users", "k1", "v1")
+      state = :sys.get_state(pid)
+      assert state.engine.current_wal_bytes > 0
+      assert state.engine.pending_sync_bytes > 0
+      assert File.stat!(CacheUtils.wal_path(storage_dir, shard_id, 1)).size > 0
     end)
   end
 
-  test "append_set increases WAL and pending counters" do
+  test "persist_set is ignored when owner metadata is stale" do
     shard_id = 4
-    storage_dir = unique_storage_dir("append")
+    storage_dir = unique_storage_dir("persist_stale")
 
     with_cache_config(storage_dir, 1024, fn ->
-      {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
-      assert {:ok, engine} = CacheFlushEngine.append_set(engine, "users", "k1", "v1")
-      assert engine.current_wal_bytes > 0
-      assert engine.pending_sync_bytes > 0
-      assert engine.wal_bytes_since_snapshot > 0
-      _ = CacheFlushEngine.close(engine)
+      write_owner_meta(storage_dir, shard_id, 11)
+      table = :ets.new(:engine_persist_stale, [:set, :protected])
+      pid = start_engine(shard_id, table, 11)
+
+      File.write!(
+        Path.join(storage_dir, "shard_#{shard_id}.meta"),
+        :erlang.term_to_binary(%{
+          "epoch" => 999,
+          "owner_node" => "other@node",
+          "rehydrating" => false,
+          "updated_at_ms" => System.system_time(:millisecond)
+        })
+      )
+
+      CacheFlushEngine.persist_set(pid, "users", "k1", "v1")
+      _ = :sys.get_state(pid)
+      assert File.stat!(CacheUtils.wal_path(storage_dir, shard_id, 1)).size == 0
     end)
   end
 
-  test "maybe_sync is no-op when no pending bytes" do
+  test "flush tick syncs pending WAL bytes" do
     shard_id = 5
-    storage_dir = unique_storage_dir("sync_noop")
+    storage_dir = unique_storage_dir("sync")
 
     with_cache_config(storage_dir, 1024, fn ->
-      {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
-      assert {:ok, synced} = CacheFlushEngine.maybe_sync(engine)
-      assert synced.pending_sync_bytes == 0
-      _ = CacheFlushEngine.close(synced)
+      write_owner_meta(storage_dir, shard_id, 11)
+      table = :ets.new(:engine_sync, [:set, :protected])
+      pid = start_engine(shard_id, table, 11)
+
+      CacheFlushEngine.persist_set(pid, "users", "k1", "v1")
+      state_before = :sys.get_state(pid)
+      assert state_before.engine.pending_sync_bytes > 0
+
+      send(pid, :flush_tick)
+      state_after = :sys.get_state(pid)
+      assert state_after.engine.pending_sync_bytes == 0
     end)
   end
 
-  test "maybe_sync flushes pending bytes when interval elapsed" do
+  test "flush tick rotates WAL when size threshold exceeded" do
     shard_id = 6
-    storage_dir = unique_storage_dir("sync_flush")
-
-    with_cache_config(storage_dir, 1024, fn ->
-      {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
-      {:ok, engine} = CacheFlushEngine.append_set(engine, "users", "k1", "v1")
-      assert {:ok, synced} = CacheFlushEngine.maybe_sync(engine)
-      assert synced.pending_sync_bytes == 0
-      _ = CacheFlushEngine.close(synced)
-    end)
-  end
-
-  test "maybe_sync updates last_sync timestamp on successful sync" do
-    shard_id = 7
-    storage_dir = unique_storage_dir("sync_timestamp")
-
-    with_cache_config(storage_dir, 1024, fn ->
-      {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
-      {:ok, engine} = CacheFlushEngine.append_set(engine, "users", "k1", "v1")
-      assert {:ok, synced} = CacheFlushEngine.maybe_sync(engine)
-      assert synced.last_sync_at_ms >= engine.last_sync_at_ms
-      _ = CacheFlushEngine.close(synced)
-    end)
-  end
-
-  test "maybe_rotate is no-op below configured segment size" do
-    shard_id = 8
-    storage_dir = unique_storage_dir("rotate_noop")
-
-    with_cache_config(storage_dir, 1_048_576, fn ->
-      {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
-      {:ok, engine} = CacheFlushEngine.append_set(engine, "users", "k1", "v1")
-      assert {:ok, same_engine} = CacheFlushEngine.maybe_rotate(engine)
-      assert same_engine.current_seq == 1
-      _ = CacheFlushEngine.close(same_engine)
-    end)
-  end
-
-  test "maybe_rotate rotates to next segment when threshold exceeded" do
-    shard_id = 9
     storage_dir = unique_storage_dir("rotate")
 
     with_cache_config(storage_dir, 64, fn ->
-      {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
-
-      {:ok, engine} =
-        CacheFlushEngine.append_set(engine, "users", "k1", String.duplicate("a", 80))
-
-      assert {:ok, rotated} = CacheFlushEngine.maybe_rotate(engine)
-      assert rotated.current_seq == 2
-      assert rotated.current_wal_bytes == 0
+      write_owner_meta(storage_dir, shard_id, 11)
+      table = :ets.new(:engine_rotate, [:set, :protected])
+      pid = start_engine(shard_id, table, 11)
+      CacheFlushEngine.persist_set(pid, "users", "k1", String.duplicate("a", 80))
+      send(pid, :flush_tick)
+      state = :sys.get_state(pid)
+      assert state.engine.current_seq == 2
       assert File.exists?(CacheUtils.wal_path(storage_dir, shard_id, 2))
-      _ = CacheFlushEngine.close(rotated)
     end)
   end
 
-  test "snapshot decision requires wal bytes and interval" do
-    engine = %CacheFlushEngine{
-      shard_id: 10,
-      current_seq: 1,
-      current_wal_fd: nil,
-      current_wal_bytes: 0,
-      pending_sync_bytes: 0,
-      wal_bytes_since_snapshot: 100,
-      last_sync_at_ms: System.system_time(:millisecond),
-      last_snapshot_at_ms: System.system_time(:millisecond) - 10_000
-    }
+  test "flush tick writes snapshot and checkpoint when thresholds are met" do
+    shard_id = 7
+    storage_dir = unique_storage_dir("snapshot")
 
-    assert CacheFlushEngine.should_snapshot?(engine, 1_000, 50)
-    refute CacheFlushEngine.should_snapshot?(engine, 60_000, 50)
-    refute CacheFlushEngine.should_snapshot?(%{engine | wal_bytes_since_snapshot: 10}, 1_000, 50)
-  end
-
-  test "mark_snapshot_started updates timestamp and cutoff sequence mirrors current seq" do
-    before = System.system_time(:millisecond) - 100
-
-    engine = %CacheFlushEngine{
-      shard_id: 11,
-      current_seq: 4,
-      current_wal_fd: nil,
-      current_wal_bytes: 0,
-      pending_sync_bytes: 0,
-      wal_bytes_since_snapshot: 0,
-      last_sync_at_ms: before,
-      last_snapshot_at_ms: before
-    }
-
-    updated = CacheFlushEngine.mark_snapshot_started(engine)
-    assert updated.last_snapshot_at_ms >= before
-    assert CacheFlushEngine.snapshot_cutoff_seq(updated) == 4
-  end
-
-  test "finalize_snapshot writes checkpoint, prunes older segments, and resets WAL snapshot bytes" do
-    shard_id = 12
-    storage_dir = unique_storage_dir("finalize")
-
-    with_cache_config(storage_dir, 1024, fn ->
-      File.mkdir_p!(storage_dir)
-      File.write!(CacheUtils.wal_path(storage_dir, shard_id, 1), "old")
-      File.write!(CacheUtils.wal_path(storage_dir, shard_id, 2), "new")
-
-      {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
-      engine = %{engine | wal_bytes_since_snapshot: 123}
-      {:ok, finalized} = CacheFlushEngine.finalize_snapshot(engine, 2)
-
-      assert finalized.wal_bytes_since_snapshot == 0
-      assert File.exists?(CacheUtils.checkpoint_path(storage_dir, shard_id))
-      refute File.exists?(CacheUtils.wal_path(storage_dir, shard_id, 1))
-      assert File.exists?(CacheUtils.wal_path(storage_dir, shard_id, 2))
-      _ = CacheFlushEngine.close(finalized)
-    end)
-  end
-
-  test "write_snapshot persists ETS table to snapshot path" do
-    shard_id = 13
-    storage_dir = unique_storage_dir("write_snapshot")
-
-    with_cache_config(storage_dir, 1024, fn ->
-      File.mkdir_p!(storage_dir)
-      table = :ets.new(:flush_snapshot_seed, [:set, :protected])
+    with_cache_config(storage_dir, 1_048_576, fn ->
+      write_owner_meta(storage_dir, shard_id, 11)
+      table = :ets.new(:engine_snapshot, [:set, :protected])
       true = :ets.insert(table, {{"users", "name"}, "beamline"})
-      assert :ok = CacheFlushEngine.write_snapshot(table, shard_id)
-      :ets.delete(table)
 
-      assert File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id))
+      pid =
+        start_supervised!(
+          {CacheFlushEngine,
+           shard_id: shard_id,
+           table: table,
+           owner_epoch: 11,
+           snapshot_interval_ms: 0,
+           snapshot_min_wal_bytes: 1}
+        )
 
-      assert {:ok, restored} =
-               :ets.file2tab(String.to_charlist(CacheUtils.snapshot_path(storage_dir, shard_id)))
+      CacheFlushEngine.persist_set(pid, "users", "city", "blr")
+      send(pid, :flush_tick)
+      wait_until(fn ->
+        File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id)) and
+          File.exists?(CacheUtils.checkpoint_path(storage_dir, shard_id))
+      end)
+    end)
+  end
 
-      assert [{{"users", "name"}, "beamline"}] = :ets.lookup(restored, {"users", "name"})
-      :ets.delete(restored)
+  test "snapshot finalization prunes older WAL segments" do
+    shard_id = 8
+    storage_dir = unique_storage_dir("prune")
+
+    with_cache_config(storage_dir, 40, fn ->
+      write_owner_meta(storage_dir, shard_id, 11)
+      table = :ets.new(:engine_prune, [:set, :protected])
+
+      pid =
+        start_supervised!(
+          {CacheFlushEngine,
+           shard_id: shard_id,
+           table: table,
+           owner_epoch: 11,
+           snapshot_interval_ms: 0,
+           snapshot_min_wal_bytes: 1}
+        )
+
+      CacheFlushEngine.persist_set(pid, "users", "k1", String.duplicate("a", 80))
+      send(pid, :flush_tick)
+      CacheFlushEngine.persist_set(pid, "users", "k2", String.duplicate("b", 80))
+      send(pid, :flush_tick)
+
+      wait_until(fn ->
+        state = :sys.get_state(pid)
+        state.engine.current_seq >= 3
+      end)
+
+      wait_until(fn ->
+        not File.exists?(CacheUtils.wal_path(storage_dir, shard_id, 1))
+      end)
+    end)
+  end
+
+  test "engine process terminates cleanly" do
+    shard_id = 9
+    storage_dir = unique_storage_dir("terminate")
+
+    with_cache_config(storage_dir, 1_048_576, fn ->
+      write_owner_meta(storage_dir, shard_id, 11)
+      table = :ets.new(:engine_terminate, [:set, :protected])
+      pid = start_engine(shard_id, table, 11)
+      ref = Process.monitor(pid)
+      :ok = GenServer.stop(pid, :normal)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
+    end)
+  end
+
+  test "does not persist writes while metadata is rehydrating" do
+    shard_id = 10
+    storage_dir = unique_storage_dir("rehydrating_block")
+
+    with_cache_config(storage_dir, 1024, fn ->
+      File.mkdir_p!(storage_dir)
+      File.write!(
+        Path.join(storage_dir, "shard_#{shard_id}.meta"),
+        :erlang.term_to_binary(%{
+          "epoch" => 1,
+          "owner_node" => to_string(node()),
+          "rehydrating" => true,
+          "updated_at_ms" => System.system_time(:millisecond)
+        })
+      )
+
+      table = :ets.new(:engine_rehydrating_block, [:set, :protected])
+      pid = start_engine(shard_id, table, 1)
+      CacheFlushEngine.persist_set(pid, "users", "k1", "v1")
+      _ = :sys.get_state(pid)
+
+      assert File.stat!(CacheUtils.wal_path(storage_dir, shard_id, 1)).size == 0
     end)
   end
 
@@ -228,5 +237,44 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
       System.tmp_dir!(),
       "cache_flush_engine_#{label}_#{System.unique_integer([:positive])}"
     )
+  end
+
+  defp start_engine(shard_id, table, owner_epoch) do
+    start_supervised!(
+      {CacheFlushEngine,
+       shard_id: shard_id,
+       table: table,
+       owner_epoch: owner_epoch,
+       snapshot_interval_ms: 60_000,
+       snapshot_min_wal_bytes: 1_000}
+    )
+  end
+
+  defp write_owner_meta(storage_dir, shard_id, epoch) do
+    File.mkdir_p!(storage_dir)
+
+    File.write!(
+      Path.join(storage_dir, "shard_#{shard_id}.meta"),
+      :erlang.term_to_binary(%{
+        "epoch" => epoch,
+        "owner_node" => to_string(node()),
+        "rehydrating" => false,
+        "updated_at_ms" => System.system_time(:millisecond)
+      })
+    )
+  end
+
+  defp wait_until(fun, attempts \\ 100)
+  defp wait_until(_fun, 0), do: flunk("condition not met")
+
+  defp wait_until(fun, attempts) do
+    if fun.() do
+      :ok
+    else
+      receive do
+      after
+        10 -> wait_until(fun, attempts - 1)
+      end
+    end
   end
 end
