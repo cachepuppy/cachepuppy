@@ -12,6 +12,7 @@ defmodule CachePuppyCore.Application do
     children = [
       CachePuppyCoreWeb.Telemetry,
       {Finch, name: CachePuppyCore.Finch},
+      {Task.Supervisor, name: CachePuppyCore.FlushTaskSupervisor},
       {Cluster.Supervisor, [topologies, [name: CachePuppyCore.ClusterSupervisor]]},
       {Phoenix.PubSub, name: CachePuppyCore.PubSub},
       {Horde.Registry, [name: CachePuppyCore.TopicRegistry, keys: :unique, members: :auto]},
