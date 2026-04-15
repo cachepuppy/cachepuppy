@@ -236,23 +236,6 @@ export class PhoenixTransport implements Transport {
       return;
     }
 
-    if (message.type === "publish_to" && message.topic) {
-      const rawIds = message.meta?.clientIds;
-      const clientIds = Array.isArray(rawIds) ? rawIds.filter((id): id is string => typeof id === "string") : [];
-      const channel = await this.ensureChannel(clientId, message.topic);
-      await new Promise<void>((resolve, reject) => {
-        channel
-          .push("publish_to", {
-            event: message.event,
-            payload: message.payload,
-            client_ids: clientIds,
-          })
-          .receive("ok", () => resolve())
-          .receive("error", () => reject(new Error("Failed to publish_to message")))
-          .receive("timeout", () => reject(new Error("Timed out while publishing to subset")));
-      });
-      return;
-    }
   }
 
   onEnvelope(clientId: string, handler: EnvelopeHandler): () => void {

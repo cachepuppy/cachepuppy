@@ -3,7 +3,7 @@ defmodule CachePuppyCoreWeb.EventChannel do
   alias CachePuppyCore.TopicManager
   alias CachePuppyCoreWeb.Presence
 
-  intercept ["cachepuppy_targeted", "message"]
+  intercept ["message"]
 
   @impl true
   def join("events:" <> topic, _payload, %{assigns: %{client_id: client_id}} = socket) do
@@ -46,23 +46,6 @@ defmodule CachePuppyCoreWeb.EventChannel do
 
     message = build_publish(socket.assigns.topic, event, payload, client_id)
     broadcast!(socket, "message", message)
-    {:reply, :ok, socket}
-  end
-
-  @impl true
-  def handle_in(
-        "publish_to",
-        %{"event" => event, "payload" => payload, "client_ids" => ids},
-        %{assigns: %{topic: topic, client_id: client_id}} = socket
-      )
-      when is_list(ids) do
-    target_ids = for id <- ids, is_binary(id), do: id
-
-    broadcast_payload =
-      build_publish(topic, event, payload, client_id)
-      |> Map.put("_target_client_ids", target_ids)
-
-    broadcast!(socket, "cachepuppy_targeted", broadcast_payload)
     {:reply, :ok, socket}
   end
 
@@ -153,19 +136,6 @@ defmodule CachePuppyCoreWeb.EventChannel do
   @impl true
   def handle_out("message", payload, socket) do
     push(socket, "message", put_served_by_node(payload))
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_out("cachepuppy_targeted", payload, socket) do
-    target_ids = Map.get(payload, "_target_client_ids", [])
-    my_id = socket.assigns.client_id
-
-    if my_id in target_ids do
-      clean = Map.drop(payload, ["_target_client_ids"])
-      push(socket, "message", put_served_by_node(clean))
-    end
-
     {:noreply, socket}
   end
 

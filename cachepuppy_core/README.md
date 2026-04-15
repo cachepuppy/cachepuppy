@@ -26,7 +26,6 @@ With `mix phx.server`, the app runs on `http://localhost:4000`. With Docker Comp
 Supported inbound events on **`events:<topic_name>`**:
 
 - `"publish"` with payload `%{"event" => "...", "payload" => ...}`
-- `"publish_to"` with payload `%{"event" => "...", "payload" => ..., "client_ids" => [...]}` (only those Presence keys receive the outbound `message`)
 - `"message"` envelope with `%{"type" => "publish", "event" => "...", "payload" => ...}`
 - `"client_count"` returns `%{"client_count" => integer}` for the current topic (Presence member count).
 - `"set_state"` with payload `%{"payload" => map}` updates topic shared state. If the map equals the stored state, the reply is still `ok` but no `state_updated` broadcast is sent.
@@ -117,7 +116,7 @@ From the repository root, with the stack running (build the JS SDK first if you 
 (cd sdk/javascript && npm ci && npm run build) && (cd example/javascript_demo/frontend && npm ci && npm run build && npm start)
 ```
 
-The demo uses `http://localhost:4000` and `ws://localhost:4000` by default (nginx). It runs HTTP probes first (to show LB distribution), then opens five WebSocket clients and runs the same publish / `publishTo` checks as before.
+The demo uses `http://localhost:4000` and `ws://localhost:4000` by default (nginx). It runs HTTP probes first (to show LB distribution), then opens five WebSocket clients and runs publish/presence/topic-state checks.
 
 ### Churn test workflow
 

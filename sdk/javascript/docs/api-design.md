@@ -43,7 +43,6 @@ States: `idle | connecting | connected | reconnecting | disconnected | destroyed
 - `subscribe(topic: string, handler: TopicHandler): Promise<Unsubscribe>`
 - `unsubscribe(topic: string, handler?: TopicHandler): Promise<void>`
 - `publish(topic: string, event: string, payload: unknown): Promise<void>`
-- `publishTo(topic: string, event: string, payload: unknown, clientIds: string[]): Promise<void>`
 - `clientCount(topic: string): Promise<number>`
 
 ### Topic shared state vs connection session state
@@ -80,7 +79,6 @@ Required fields by message type:
 - `subscribe`: `topic`
 - `unsubscribe`: `topic`
 - `publish`: `topic`, `event`, `payload`
-- `publish_to`: `topic`, `event`, `payload`, `meta.clientIds` (string array)
 
 ## Error taxonomy
 
