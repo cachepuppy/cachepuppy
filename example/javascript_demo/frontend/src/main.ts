@@ -132,21 +132,6 @@ async function runFrontendDemo(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 400));
 
   console.log(
-    "[alice] publishes to only carol — expect only carol to receive:",
-  );
-  await alice.publishTo(
-    TOPIC,
-    "direct_to_one",
-    { text: "Private line to carol", ts: Date.now() },
-    ["carol"],
-  );
-
-  //-------------------------------------------------------------------
-  //-------------------------------------------------------------------
-
-  await new Promise((resolve) => setTimeout(resolve, 400));
-
-  console.log(
     "[alice] configureTopicWebhook — each tick posts if state changed since last post (see webhook-server):",
   );
   await alice.configureTopicWebhook(TOPIC, {

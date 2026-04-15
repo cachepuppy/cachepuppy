@@ -52,11 +52,10 @@ Optional: copy `.env.example` to `.env` and set `VITE_WS_URL` if your websocket 
 2. Five clients connect via **the same WS URL** (typically `ws://127.0.0.1:4000/socket/websocket` when using Docker Compose + nginx) and subscribe to topic `demo_room`. Live presence is logged for all five.
 3. `eve` calls `unsubscribe(demo_room)` — leaves the topic (Phoenix channel leave); the room stays open for the other four. Presence on the remaining clients should move to four members.
 4. `alice` calls `publish` — only the four remaining members should log `room_broadcast` (`eve` must not).
-5. `alice` calls `publishTo` with `["carol"]` — only `carol` should log `direct_to_one`.
-6. `alice` calls `configureTopicWebhook` with `flush: true`, `url` to the webhook server, and `frequency: 1` — starts a 1s tick. She calls `setTopicState` — marks state dirty; after the next tick the webhook terminal logs a POST. Repeating the **same** payload is idempotent (no extra `state_updated`). After waiting for a tick, a **changed** `setTopicState` updates subscribers; the following tick posts again.
-7. `bob` calls `getTopicStateWithMeta` — returns the shared topic state map plus node metadata.
-8. `alice` reports `clientCount` for `demo_room` (expect four), then calls `clearTopicState` on `demo_room` — server-side topic process shutdown. `bob` calling `getTopicState` afterward should fail with `topic_not_found`.
-9. All clients `disconnect`.
+5. `alice` calls `configureTopicWebhook` with `flush: true`, `url` to the webhook server, and `frequency: 1` — starts a 1s tick. She calls `setTopicState` — marks state dirty; after the next tick the webhook terminal logs a POST. Repeating the **same** payload is idempotent (no extra `state_updated`). After waiting for a tick, a **changed** `setTopicState` updates subscribers; the following tick posts again.
+6. `bob` calls `getTopicStateWithMeta` — returns the shared topic state map plus node metadata.
+7. `alice` reports `clientCount` for `demo_room` (expect four), then calls `clearTopicState` on `demo_room` — server-side topic process shutdown. `bob` calling `getTopicState` afterward should fail with `topic_not_found`.
+8. All clients `disconnect`.
 
 ## Run
 

@@ -10,7 +10,6 @@ export type MessageType =
   | "subscribe"
   | "unsubscribe"
   | "publish"
-  | "publish_to"
   | "set_state"
   | "get_state"
   | "close_topic"
