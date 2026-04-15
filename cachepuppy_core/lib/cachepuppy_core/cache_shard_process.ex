@@ -5,6 +5,7 @@ defmodule CachePuppyCore.CacheShardProcess do
   require Logger
   alias CachePuppyCore.CacheConfig
   alias CachePuppyCore.Persistence.CacheFlushEngine
+  alias CachePuppyCore.Persistence.CacheOwnerMeta
   alias CachePuppyCore.Persistence.CacheRecoveryEngine
 
   defmodule State do
@@ -66,7 +67,7 @@ defmodule CachePuppyCore.CacheShardProcess do
     storage_dir = CacheConfig.storage_dir()
 
     _ = File.mkdir_p(storage_dir)
-    owner_epoch = claim_ownership(shard_id, storage_dir)
+    owner_epoch = CacheOwnerMeta.claim_ownership(storage_dir, shard_id, to_string(node()))
     table = :ets.new(__MODULE__, [:set, :protected])
 
     {:ok, flush_pid} =
@@ -78,7 +79,8 @@ defmodule CachePuppyCore.CacheShardProcess do
         snapshot_min_wal_bytes: snapshot_min_wal_bytes
       )
 
-    owner_valid? = owner_valid?(storage_dir, shard_id, owner_epoch)
+    owner_valid? =
+      CacheOwnerMeta.owner_valid?(storage_dir, shard_id, owner_epoch, to_string(node()))
 
     ref = make_ref()
     caller = self()
@@ -203,73 +205,20 @@ defmodule CachePuppyCore.CacheShardProcess do
     :ok
   end
 
-  defp claim_ownership(shard_id, storage_dir) do
-    meta = read_meta(storage_dir, shard_id)
-    epoch = Map.get(meta, "epoch", 0) + 1
-    persisted = base_meta(epoch, true)
-    write_meta!(storage_dir, shard_id, persisted)
-    epoch
-  end
-
   defp mark_rehydration_done(%State{shard_id: shard_id, owner_epoch: epoch} = state) do
     storage_dir = CacheConfig.storage_dir()
-    meta = read_meta(storage_dir, shard_id)
-
-    if Map.get(meta, "epoch") == epoch and Map.get(meta, "owner_node") == to_string(node()) do
-      write_meta!(storage_dir, shard_id, base_meta(epoch, false))
-    end
+    _ = CacheOwnerMeta.mark_rehydration_done(storage_dir, shard_id, epoch, to_string(node()))
 
     state
   end
 
   defp owner_valid?(storage_dir, shard_id, epoch) do
-    meta = read_meta(storage_dir, shard_id)
-
-    Map.get(meta, "epoch") == epoch and
-      Map.get(meta, "owner_node") == to_string(node()) and
-      Map.get(meta, "rehydrating") == false
+    CacheOwnerMeta.owner_valid?(storage_dir, shard_id, epoch, to_string(node()))
   end
 
   defp refresh_owner_validity(%State{shard_id: shard_id, owner_epoch: epoch} = state) do
     storage_dir = CacheConfig.storage_dir()
     %{state | owner_valid?: owner_valid?(storage_dir, shard_id, epoch)}
-  end
-
-  defp base_meta(epoch, rehydrating) do
-    %{
-      "epoch" => epoch,
-      "owner_node" => to_string(node()),
-      "rehydrating" => rehydrating,
-      "updated_at_ms" => System.system_time(:millisecond)
-    }
-  end
-
-  defp read_meta(storage_dir, shard_id) do
-    path = metadata_path(storage_dir, shard_id)
-
-    case File.read(path) do
-      {:ok, binary} ->
-        case :erlang.binary_to_term(binary) do
-          meta when is_map(meta) -> meta
-          _ -> %{}
-        end
-
-      _ ->
-        %{}
-    end
-  rescue
-    _ -> %{}
-  end
-
-  defp write_meta!(storage_dir, shard_id, meta) do
-    path = metadata_path(storage_dir, shard_id)
-    tmp_path = path <> ".tmp"
-    :ok = File.write(tmp_path, :erlang.term_to_binary(meta))
-    :ok = File.rename(tmp_path, path)
-  end
-
-  defp metadata_path(storage_dir, shard_id) do
-    Path.join(storage_dir, "shard_#{shard_id}.meta")
   end
 
   defp schedule_owner_check(state) do

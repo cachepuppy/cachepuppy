@@ -13,8 +13,8 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
       table = :ets.new(:engine_init_cold, [:set, :protected])
       pid = start_engine(shard_id, table, 1)
       state = :sys.get_state(pid)
-      assert state.engine.current_seq == 1
-      assert state.engine.current_wal_bytes == 0
+      assert state.current_seq == 1
+      assert state.current_wal_bytes == 0
       assert File.exists?(CacheUtils.wal_path(storage_dir, shard_id, 1))
     end)
   end
@@ -32,8 +32,8 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
       pid = start_engine(shard_id, table, 1)
 
       state = :sys.get_state(pid)
-      assert state.engine.current_seq == 2
-      assert state.engine.current_wal_bytes == 6
+      assert state.current_seq == 2
+      assert state.current_wal_bytes == 6
     end)
   end
 
@@ -47,8 +47,8 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
       pid = start_engine(shard_id, table, 11)
       CacheFlushEngine.persist_set(pid, "users", "k1", "v1")
       state = :sys.get_state(pid)
-      assert state.engine.current_wal_bytes > 0
-      assert state.engine.pending_sync_bytes > 0
+      assert state.current_wal_bytes > 0
+      assert state.pending_sync_bytes > 0
       assert File.stat!(CacheUtils.wal_path(storage_dir, shard_id, 1)).size > 0
     end)
   end
@@ -89,11 +89,11 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
 
       CacheFlushEngine.persist_set(pid, "users", "k1", "v1")
       state_before = :sys.get_state(pid)
-      assert state_before.engine.pending_sync_bytes > 0
+      assert state_before.pending_sync_bytes > 0
 
       send(pid, :flush_tick)
       state_after = :sys.get_state(pid)
-      assert state_after.engine.pending_sync_bytes == 0
+      assert state_after.pending_sync_bytes == 0
     end)
   end
 
@@ -108,7 +108,7 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
       CacheFlushEngine.persist_set(pid, "users", "k1", String.duplicate("a", 80))
       send(pid, :flush_tick)
       state = :sys.get_state(pid)
-      assert state.engine.current_seq == 2
+      assert state.current_seq == 2
       assert File.exists?(CacheUtils.wal_path(storage_dir, shard_id, 2))
     end)
   end
@@ -166,7 +166,7 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
 
       wait_until(fn ->
         state = :sys.get_state(pid)
-        state.engine.current_seq >= 3
+        state.current_seq >= 3
       end)
 
       wait_until(fn ->
