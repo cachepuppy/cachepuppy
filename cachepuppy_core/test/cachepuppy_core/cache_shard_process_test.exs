@@ -2,6 +2,7 @@ defmodule CachePuppyCore.CacheShardProcessTest do
   use ExUnit.Case, async: false
 
   alias CachePuppyCore.Persistence.CacheFlushEngine
+  alias CachePuppyCore.Persistence.CacheUtils
   alias CachePuppyCore.CacheShardProcess
 
   test "rehydrates from snapshot and WAL on startup" do
@@ -14,22 +15,36 @@ defmodule CachePuppyCore.CacheShardProcessTest do
 
       table = :ets.new(:rehydrate_seed, [:set, :protected])
       true = :ets.insert(table, {{"users", "name"}, "beamline"})
-      :ok = CacheFlushEngine.write_snapshot(table, shard_id)
+      snapshot_path = CacheUtils.snapshot_path(storage_dir, shard_id)
+      snapshot_tmp = CacheUtils.snapshot_temp_path(storage_dir, shard_id)
+      :ok = :ets.tab2file(table, String.to_charlist(snapshot_tmp), sync: true)
+      :ok = File.rename(snapshot_tmp, snapshot_path)
       :ets.delete(table)
 
       File.write!(
         meta,
-        :erlang.term_to_binary(%{"epoch" => 1, "owner_node" => "seed", "rehydrating" => false})
+        :erlang.term_to_binary(%{
+          "epoch" => 1,
+          "owner_node" => to_string(node()),
+          "rehydrating" => false
+        })
       )
 
-      {:ok, engine} = CacheFlushEngine.init(shard_id: shard_id)
-      {:ok, engine} = CacheFlushEngine.append_set(engine, "users", "city", "blr")
-      {:ok, engine} = CacheFlushEngine.maybe_sync(engine)
-      _ = CacheFlushEngine.close(engine)
+      flush_pid =
+        start_supervised!(
+          {CacheFlushEngine,
+           shard_id: shard_id,
+           table: :ets.new(:rehydrate_flush, [:set, :protected]),
+           owner_epoch: 1,
+           snapshot_interval_ms: 60_000,
+           snapshot_min_wal_bytes: 1_000}
+        )
+
+      CacheFlushEngine.persist_set(flush_pid, "users", "city", "blr")
+      _ = :sys.get_state(flush_pid)
 
       pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
-
-      _ = :sys.get_state(pid)
+      wait_until_ready(pid)
       assert {:ok, "beamline"} = GenServer.call(pid, {:get, "users", "name"})
       assert {:ok, "blr"} = GenServer.call(pid, {:get, "users", "city"})
     end)
@@ -41,10 +56,10 @@ defmodule CachePuppyCore.CacheShardProcessTest do
 
     with_cache_config(storage_dir, 1_048_576, 100_000, fn ->
       pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
-
-      _ = :sys.get_state(pid)
+      wait_until_ready(pid)
       assert {:ok, 42} = GenServer.call(pid, {:set, "users", "answer", 42})
-      _ = :sys.get_state(pid)
+      flush_pid = :sys.get_state(pid).flush_pid
+      _ = :sys.get_state(flush_pid)
 
       wal_files =
         storage_dir
@@ -64,6 +79,7 @@ defmodule CachePuppyCore.CacheShardProcessTest do
 
     with_cache_config(storage_dir, 1_048_576, 10_000, fn ->
       pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
+      wait_until_ready(pid)
 
       stale_meta = %{
         "epoch" => 999,
@@ -74,7 +90,7 @@ defmodule CachePuppyCore.CacheShardProcessTest do
 
       File.write!(metadata, :erlang.term_to_binary(stale_meta))
 
-      send(pid, :flush_tick)
+      send(pid, :owner_check_tick)
       _ = :sys.get_state(pid)
       assert {:error, :stale_owner} = GenServer.call(pid, {:set, "users", "key", "value"})
     end)
@@ -106,5 +122,21 @@ defmodule CachePuppyCore.CacheShardProcessTest do
       System.tmp_dir!(),
       "cache_shard_process_#{label}_#{System.unique_integer([:positive])}"
     )
+  end
+
+  defp wait_until_ready(pid, attempts \\ 200)
+  defp wait_until_ready(_pid, 0), do: flunk("shard did not become ready in time")
+
+  defp wait_until_ready(pid, attempts) do
+    state = :sys.get_state(pid)
+
+    if state.ready? do
+      :ok
+    else
+      receive do
+      after
+        10 -> wait_until_ready(pid, attempts - 1)
+      end
+    end
   end
 end
