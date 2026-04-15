@@ -16,7 +16,6 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
               snapshot_interval_ms: 60_000,
               snapshot_min_wal_bytes: 262_144,
               flush_ref: nil,
-              snapshot_pid: nil,
               snapshot_task_ref: nil,
               current_seq: 1,
               current_wal_fd: nil,
@@ -90,14 +89,7 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
       "cache_snapshot task_down shard_id=#{state.shard_id} node=#{node()} reason=#{inspect(reason)}"
     )
 
-    {:noreply, %{state | snapshot_task_ref: nil, snapshot_pid: nil}}
-  end
-
-  def handle_info(
-        {:snapshot_done, ref, result},
-        %ProcessState{snapshot_task_ref: ref} = state
-      ) do
-    {:noreply, handle_snapshot_done(state, result)}
+    {:noreply, %{state | snapshot_task_ref: nil}}
   end
 
   def handle_info(_message, state) do
@@ -260,8 +252,13 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
       started_state = %{state | last_snapshot_at_ms: System.system_time(:millisecond)}
       table = state.table
       shard_id = state.shard_id
-      task = Task.async(fn -> {:snapshot_done, write_snapshot(table, shard_id), cutoff_seq} end)
-      %{started_state | snapshot_task_ref: task.ref, snapshot_pid: task.pid}
+
+      task =
+        Task.Supervisor.async_nolink(CachePuppyCore.FlushTaskSupervisor, fn ->
+          {:snapshot_done, write_snapshot(table, shard_id), cutoff_seq}
+        end)
+
+      %{started_state | snapshot_task_ref: task.ref}
     else
       state
     end
@@ -297,7 +294,7 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
   end
 
   defp clear_snapshot_task(state) do
-    %{state | snapshot_task_ref: nil, snapshot_pid: nil}
+    %{state | snapshot_task_ref: nil}
   end
 
   defp with_valid_owner(state, fun) do
