@@ -84,22 +84,15 @@ defmodule CachePuppyCore.CacheRouter do
       "cache_set rpc_execute shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node}"
     )
 
-    case :rpc.call(
-           owner_node,
-           __MODULE__,
-           :remote_setdata,
-           [pid, table, key, value],
-           rpc_timeout_ms
-         ) do
-      {:badrpc, reason} ->
+    try do
+      :erpc.call(owner_node, __MODULE__, :remote_setdata, [pid, table, key, value], rpc_timeout_ms)
+    catch
+      kind, reason ->
         Logger.warning(
-          "cache_set rpc_failed shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node} reason=#{inspect(reason)}"
+          "cache_set rpc_failed shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node} kind=#{inspect(kind)} reason=#{inspect(reason)}"
         )
 
-        {:error, {:rpc_failed, reason}}
-
-      result ->
-        result
+        {:error, {:rpc_failed, {kind, reason}}}
     end
   end
 
@@ -115,16 +108,15 @@ defmodule CachePuppyCore.CacheRouter do
       "cache_get rpc_execute shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node}"
     )
 
-    case :rpc.call(owner_node, __MODULE__, :remote_getdata, [shard_id, table, key], rpc_timeout_ms) do
-      {:badrpc, reason} ->
+    try do
+      :erpc.call(owner_node, __MODULE__, :remote_getdata, [shard_id, table, key], rpc_timeout_ms)
+    catch
+      kind, reason ->
         Logger.warning(
-          "cache_get rpc_failed shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node} reason=#{inspect(reason)}"
+          "cache_get rpc_failed shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node} kind=#{inspect(kind)} reason=#{inspect(reason)}"
         )
 
-        {:error, {:rpc_failed, reason}}
-
-      result ->
-        result
+        {:error, {:rpc_failed, {kind, reason}}}
     end
   end
 
