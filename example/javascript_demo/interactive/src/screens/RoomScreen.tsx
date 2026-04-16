@@ -1,10 +1,11 @@
-import { useRef, useState } from "react";
-import { useCachePuppyClient } from "@cachepuppy/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useCachePuppyClient, usePresence, useTopic, useTopicState } from "@cachepuppy/react";
+import type { CachePuppyEnvelope } from "cachepuppy-js-sdk";
 import { TOPIC } from "../constants";
-import { useRoomChannel } from "../hooks/useRoomChannel";
 import type { DemoSession, StickyNote } from "../types";
 import { notesFromState } from "../types";
-import type { PeerCursor } from "../utils/cursorTopicUtils";
+import { attachBoardCursorTracking } from "../utils/boardCursorPublish";
+import { applyTopicMessageToPeerCursors, type PeerCursor } from "../utils/cursorTopicUtils";
 
 interface RoomScreenProps {
   session: DemoSession;
@@ -34,16 +35,42 @@ export function RoomScreen({ session, onLeave }: RoomScreenProps) {
   const [getBusy, setGetBusy] = useState(false);
   const [getResult, setGetResult] = useState<string | null>(null);
   const [getError, setGetError] = useState<string | null>(null);
+  const topicEnabled = connectionState === "connected";
 
-  useRoomChannel({
-    topic: TOPIC,
-    clientId,
-    colour,
-    boardRef,
-    setHowManyPeople,
-    setNotes,
-    setPeerCursors,
-  });
+  const onTopicMessage = useCallback(
+    (message: CachePuppyEnvelope) => {
+      setPeerCursors((prev) => applyTopicMessageToPeerCursors(prev, message, clientId));
+    },
+    [clientId],
+  );
+
+  useTopic(TOPIC, { enabled: topicEnabled, onMessage: onTopicMessage });
+  const { clientCount } = usePresence(TOPIC, topicEnabled);
+  const { state: topicState } = useTopicState(TOPIC, topicEnabled);
+
+  useEffect(() => {
+    setHowManyPeople(clientCount);
+  }, [clientCount]);
+
+  useEffect(() => {
+    setNotes(notesFromState(topicState));
+  }, [topicState]);
+
+  useEffect(() => {
+    if (!topicEnabled) {
+      return;
+    }
+    const el = boardRef.current;
+    if (!el) {
+      return;
+    }
+    return attachBoardCursorTracking(el, {
+      isActive: () => true,
+      publish: (xPct, yPct) => {
+        void client.publish(TOPIC, "cursor_tracked", { xPct, yPct, colour });
+      },
+    });
+  }, [client, colour, topicEnabled]);
 
   async function postNote(e: React.FormEvent) {
     e.preventDefault();
