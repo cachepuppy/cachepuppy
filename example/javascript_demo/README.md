@@ -12,7 +12,7 @@ Interactive React demo for validating CachePuppy SDK usage against the managed E
 ## Structure
 
 - `webhook-server`: Minimal Node server that logs `POST /topic-state` JSON bodies (run this when demoing server-side webhook flush).
-- `interactive`: Vite + React browser app — uses `@cachepuppy/react` (backed by `cachepuppy-js-sdk`) to join `sticky_notes_room`, share ephemeral `cursor_tracked` publishes (notes board only), and collaborative sticky notes in topic state.
+- `interactive`: Vite + React browser app — uses `@cachepuppy/react` (backed by `@cachepuppy/core`) to join `sticky_notes_room`, share ephemeral `cursor_tracked` publishes (notes board only), and collaborative sticky notes in topic state.
 
 ## Interactive React demo (Sticky Notes Room)
 

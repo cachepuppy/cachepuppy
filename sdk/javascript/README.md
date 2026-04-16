@@ -1,4 +1,4 @@
-# cachepuppy-js-sdk
+# @cachepuppy/core
 
 TypeScript SDK that gives JavaScript developers access to CachePuppy websocket capabilities.
 
