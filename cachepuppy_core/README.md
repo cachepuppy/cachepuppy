@@ -108,15 +108,15 @@ Check node visibility:
 
 Expected steady-state: each response reports `cluster_size: 3`. Via nginx, `node` may vary per request.
 
-### Demo frontend (multi-client, behind LB)
+### Interactive demo (React, behind LB)
 
-From the repository root, with the stack running (build the JS SDK first if you have not already):
+From the repository root, with the stack running (build the SDK packages first if you have not already):
 
 ```bash
-(cd sdk/javascript && npm ci && npm run build) && (cd example/javascript_demo/frontend && npm ci && npm run build && npm start)
+(cd sdk/javascript && npm ci && npm run build) && (cd sdk/react && npm ci && npm run build) && (cd example/javascript_demo/interactive && npm ci && npm run dev)
 ```
 
-The demo uses `http://localhost:4000` and `ws://localhost:4000` by default (nginx). It runs HTTP probes first (to show LB distribution), then opens five WebSocket clients and runs publish/presence/topic-state checks.
+The interactive demo uses `ws://localhost:4000/socket/websocket` by default (nginx via `VITE_WS_URL` override) and exercises publish/presence/topic-state interactions between multiple browser windows.
 
 ### Churn test workflow
 

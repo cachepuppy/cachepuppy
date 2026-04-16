@@ -6,14 +6,15 @@ This repository contains the API-first scaffold for Beamline.
 
 - `cachepuppy_core`: Future Elixir/Phoenix backend (design docs only in this phase).
 - `sdk/javascript` (`cachepuppy-js-sdk`): TypeScript SDK for Node.js and browser clients.
-- `example/javascript_demo`: Frontend-only demo app that uses the SDK.
+- `sdk/react` (`@cachepuppy/react`): React hooks/provider wrapper over the core JavaScript SDK.
+- `example/javascript_demo`: Interactive React demo app that uses the SDK packages.
 
 ## JavaScript (SDK + demo)
 
 There is no npm workspace at the repository root. Build and run from each package directory (use `npm ci` in CI, `npm install` locally).
 
-1. SDK: `cd sdk/javascript && npm ci && npm run build`
-2. Demo: `cd example/javascript_demo/frontend && npm ci && npm run build && npm start` (requires Phoenix running; see `example/javascript_demo/README.md`)
+1. SDKs: `cd sdk/javascript && npm ci && npm run build` and `cd sdk/react && npm ci && npm run build`
+2. Demo: `cd example/javascript_demo/interactive && npm ci && npm run dev` (requires Phoenix running; see `example/javascript_demo/README.md`)
 
 ## Build Order
 
