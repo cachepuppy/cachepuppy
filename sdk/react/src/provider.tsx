@@ -1,4 +1,4 @@
-import { createClient, type CachePuppyClient, type ClientOptions, type ConnectionState } from "cachepuppy-js-sdk";
+import { createClient, type CachePuppyClient, type ClientOptions, type ConnectionState } from "@cachepuppy/core";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 type ProviderValue = {

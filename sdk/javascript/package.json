@@ -1,5 +1,5 @@
 {
-  "name": "cachepuppy-js-sdk",
+  "name": "@cachepuppy/core",
   "version": "0.1.0",
   "private": true,
   "type": "module",

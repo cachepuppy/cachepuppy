@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { CachePuppyEnvelope } from "cachepuppy-js-sdk";
+import type { CachePuppyEnvelope } from "@cachepuppy/core";
 import { useCachePuppyClient } from "./useCachePuppyClient.js";
 
 export interface UseTopicOptions {

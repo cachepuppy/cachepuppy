@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useCachePuppyClient, usePresence, useTopic, useTopicState } from "@cachepuppy/react";
-import type { CachePuppyEnvelope } from "cachepuppy-js-sdk";
+import type { CachePuppyEnvelope } from "@cachepuppy/core";
 import { TOPIC } from "../constants";
 import { GetDataModal } from "./components/GetDataModal";
 import { InsertDataModal } from "./components/InsertDataModal";
