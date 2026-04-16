@@ -3,6 +3,7 @@ defmodule CachePuppyCore.CacheRouter do
 
   require Logger
   alias CachePuppyCore.CacheConfig
+  alias CachePuppyCore.CacheShardRead
 
   def setdata(table, key, value) when is_binary(table) and is_binary(key) do
     with {:ok, shard_id} <- shard_id_for_entry(table, key),
@@ -69,7 +70,7 @@ defmodule CachePuppyCore.CacheRouter do
   end
 
   def remote_setdata(pid, table, key, value), do: call_shard(pid, {:set, table, key, value})
-  def remote_getdata(pid, table, key), do: call_shard(pid, {:get, table, key})
+  def remote_getdata(shard_id, table, key), do: CacheShardRead.fast_get(shard_id, table, key)
 
   defp dispatch_set(owner_node, pid, shard_id, table, key, value) when owner_node == node() do
     Logger.info("cache_set local_execute shard_id=#{shard_id} node=#{node()}")
@@ -102,19 +103,19 @@ defmodule CachePuppyCore.CacheRouter do
     end
   end
 
-  defp dispatch_get(owner_node, pid, shard_id, table, key) when owner_node == node() do
+  defp dispatch_get(owner_node, _pid, shard_id, table, key) when owner_node == node() do
     Logger.info("cache_get local_execute shard_id=#{shard_id} node=#{node()}")
-    call_shard(pid, {:get, table, key})
+    CacheShardRead.fast_get(shard_id, table, key)
   end
 
-  defp dispatch_get(owner_node, pid, shard_id, table, key) do
+  defp dispatch_get(owner_node, _pid, shard_id, table, key) do
     rpc_timeout_ms = CacheConfig.rpc_timeout_ms()
 
     Logger.info(
       "cache_get rpc_execute shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node}"
     )
 
-    case :rpc.call(owner_node, __MODULE__, :remote_getdata, [pid, table, key], rpc_timeout_ms) do
+    case :rpc.call(owner_node, __MODULE__, :remote_getdata, [shard_id, table, key], rpc_timeout_ms) do
       {:badrpc, reason} ->
         Logger.warning(
           "cache_get rpc_failed shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node} reason=#{inspect(reason)}"

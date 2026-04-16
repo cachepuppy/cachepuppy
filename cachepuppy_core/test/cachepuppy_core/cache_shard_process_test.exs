@@ -3,6 +3,7 @@ defmodule CachePuppyCore.CacheShardProcessTest do
 
   alias CachePuppyCore.Persistence.CacheFlushEngine
   alias CachePuppyCore.Persistence.CacheUtils
+  alias CachePuppyCore.CacheShardRead
   alias CachePuppyCore.CacheShardProcess
 
   test "rehydrates from snapshot and WAL on startup" do
@@ -45,8 +46,8 @@ defmodule CachePuppyCore.CacheShardProcessTest do
 
       pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
       wait_until_ready(pid)
-      assert {:ok, "beamline"} = GenServer.call(pid, {:get, "users", "name"})
-      assert {:ok, "blr"} = GenServer.call(pid, {:get, "users", "city"})
+      assert {:ok, "beamline"} = CacheShardRead.fast_get(shard_id, "users", "name")
+      assert {:ok, "blr"} = CacheShardRead.fast_get(shard_id, "users", "city")
     end)
   end
 

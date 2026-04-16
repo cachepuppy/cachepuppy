@@ -4,6 +4,7 @@ defmodule CachePuppyCore.CacheShardProcess do
   use GenServer
   require Logger
   alias CachePuppyCore.CacheConfig
+  alias CachePuppyCore.CacheShardRead
   alias CachePuppyCore.Persistence.CacheFlushEngine
   alias CachePuppyCore.Persistence.CacheOwnerMeta
   alias CachePuppyCore.Persistence.CacheRecoveryEngine
@@ -55,10 +56,6 @@ defmodule CachePuppyCore.CacheShardProcess do
     GenServer.call(via_shard(shard_id), {:set, table, key, value})
   end
 
-  def get(shard_id, table, key) when is_integer(shard_id) do
-    GenServer.call(via_shard(shard_id), {:get, table, key})
-  end
-
   @impl true
   def init(opts) do
     shard_id = Keyword.fetch!(opts, :shard_id)
@@ -69,6 +66,7 @@ defmodule CachePuppyCore.CacheShardProcess do
     _ = File.mkdir_p(storage_dir)
     owner_epoch = CacheOwnerMeta.claim_ownership(storage_dir, shard_id, to_string(node()))
     table = :ets.new(__MODULE__, [:set, :protected])
+    CacheShardRead.publish_rehydrating(shard_id, table, owner_epoch)
 
     {:ok, flush_pid} =
       CacheFlushEngine.start_link(
@@ -142,31 +140,6 @@ defmodule CachePuppyCore.CacheShardProcess do
   end
 
   @impl true
-  def handle_call({:get, table, key}, _from, state) when is_binary(table) and is_binary(key) do
-    if state.ready? do
-      storage_key = {table, key}
-
-      value =
-        case :ets.lookup(state.table, storage_key) do
-          [{^storage_key, found}] -> found
-          [] -> nil
-        end
-
-      Logger.debug(
-        "cache_get execute shard_id=#{state.shard_id} node=#{node()} table=#{inspect(table)} key=#{inspect(key)}"
-      )
-
-      {:reply, {:ok, value}, state}
-    else
-      {:reply, {:error, :rehydrating}, state}
-    end
-  end
-
-  def handle_call({:get, _table, _key}, _from, state) do
-    {:reply, {:error, :invalid_table_or_key}, state}
-  end
-
-  @impl true
   def handle_info({:recovery_done, ref, {:ok, entries}}, %State{recovery_task_ref: ref} = state) do
     if entries != [] do
       :ets.insert(state.table, entries)
@@ -174,6 +147,7 @@ defmodule CachePuppyCore.CacheShardProcess do
 
     state = mark_rehydration_done(state)
     state = refresh_owner_validity(%{state | recovery_task_ref: nil, ready?: true})
+    CacheShardRead.publish_ready(state.shard_id, state.table, state.owner_epoch)
 
     Logger.info(
       "cache_shard ready shard_id=#{state.shard_id} node=#{node()} recovered_entries=#{length(entries)}"
@@ -187,6 +161,7 @@ defmodule CachePuppyCore.CacheShardProcess do
       "cache_rehydrate failed shard_id=#{state.shard_id} node=#{node()} reason=#{inspect(reason)}"
     )
 
+    CacheShardRead.publish_rehydrating(state.shard_id, state.table, state.owner_epoch)
     {:noreply, %{state | recovery_task_ref: nil, ready?: false}}
   end
 
@@ -201,6 +176,7 @@ defmodule CachePuppyCore.CacheShardProcess do
 
   @impl true
   def terminate(_reason, %State{flush_pid: flush_pid}) do
+    CacheShardRead.clear(self())
     if is_pid(flush_pid), do: Process.exit(flush_pid, :normal)
     :ok
   end
