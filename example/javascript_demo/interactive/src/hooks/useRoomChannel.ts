@@ -1,5 +1,6 @@
-import type { CachePuppyClient } from "cachepuppy-js-sdk";
-import { useEffect } from "react";
+import { useCachePuppyClient, usePresence, useTopic, useTopicState } from "@cachepuppy/react";
+import { useCallback, useEffect } from "react";
+import type { CachePuppyEnvelope } from "cachepuppy-js-sdk";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import type { StickyNote } from "../types";
 import { notesFromState } from "../types";
@@ -11,7 +12,6 @@ import {
 
 export interface UseRoomChannelParams {
   topic: string;
-  client: CachePuppyClient;
   clientId: string;
   colour: string;
   boardRef: RefObject<HTMLElement | null>;
@@ -25,88 +25,39 @@ export interface UseRoomChannelParams {
  * Tear-down order matches a single user leaving: board listeners first, then channel subscriptions.
  */
 export function useRoomChannel(params: UseRoomChannelParams): void {
-  const {
-    topic,
-    client,
-    clientId,
-    colour,
-    boardRef,
-    setHowManyPeople,
-    setNotes,
-    setPeerCursors,
-  } = params;
+  const { topic, clientId, colour, boardRef, setHowManyPeople, setNotes, setPeerCursors } = params;
+  const { client, state: connectionState } = useCachePuppyClient();
+  const topicEnabled = connectionState === "connected";
+
+  const onMessage = useCallback((message: CachePuppyEnvelope) => {
+    setPeerCursors((prev) => applyTopicMessageToPeerCursors(prev, message, clientId));
+  }, [clientId, setPeerCursors]);
+
+  useTopic(topic, { enabled: topicEnabled, onMessage });
+  const { clientCount } = usePresence(topic, topicEnabled);
+  const { state: topicState } = useTopicState(topic, topicEnabled);
 
   useEffect(() => {
-    let cancelled = false;
-    const isCurrent = () => !cancelled;
+    setHowManyPeople(clientCount);
+  }, [clientCount, setHowManyPeople]);
 
-    let cleanupPresence: (() => void) | undefined;
-    let cleanupSub: (() => void) | undefined;
-    let cleanupUpdates: (() => void) | undefined;
-    let cleanupBoard: (() => void) | undefined;
+  useEffect(() => {
+    setNotes(notesFromState(topicState));
+  }, [setNotes, topicState]);
 
-    const runCleanups = () => {
-      cleanupBoard?.();
-      cleanupPresence?.();
-      cleanupSub?.();
-      cleanupUpdates?.();
-    };
-
-    const run = async () => {
-      try {
-        cleanupPresence = client.onPresenceChange(topic, ({ clientCount }) => {
-          if (isCurrent()) setHowManyPeople(clientCount);
-        });
-
-        cleanupSub = await client.subscribe(topic, (message) => {
-          if (!isCurrent()) return;
-          setPeerCursors((prev) => applyTopicMessageToPeerCursors(prev, message, clientId));
-        });
-
-        if (!isCurrent()) {
-          cleanupSub();
-          return;
-        }
-
-        const headcount = await client.clientCount(topic);
-        if (isCurrent()) setHowManyPeople(headcount);
-
-        let data: Record<string, unknown> = {};
-        try {
-          data = await client.getTopicState(topic);
-        } catch {
-          /* cold topic or error — start with empty notes */
-        }
-        if (isCurrent()) setNotes(notesFromState(data));
-
-        cleanupUpdates = await client.onStateUpdated(topic, (next) => {
-          if (isCurrent()) setNotes(notesFromState(next));
-        });
-
-        if (!isCurrent()) {
-          cleanupUpdates();
-          return;
-        }
-
-        const el = boardRef.current;
-        if (el) {
-          cleanupBoard = attachBoardCursorTracking(el, {
-            isActive: isCurrent,
-            publish: (xPct, yPct) => {
-              void client.publish(topic, "cursor_tracked", { xPct, yPct, colour });
-            },
-          });
-        }
-      } catch {
-        runCleanups();
-      }
-    };
-
-    void run();
-
-    return () => {
-      cancelled = true;
-      runCleanups();
-    };
-  }, [topic, client, clientId, colour, boardRef, setHowManyPeople, setNotes, setPeerCursors]);
+  useEffect(() => {
+    if (!topicEnabled) {
+      return;
+    }
+    const el = boardRef.current;
+    if (!el) {
+      return;
+    }
+    return attachBoardCursorTracking(el, {
+      isActive: () => true,
+      publish: (xPct, yPct) => {
+        void client.publish(topic, "cursor_tracked", { xPct, yPct, colour });
+      },
+    });
+  }, [boardRef, client, colour, topic, topicEnabled]);
 }

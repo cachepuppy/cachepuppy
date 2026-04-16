@@ -1,7 +1,4 @@
-import type { CachePuppyClient } from "cachepuppy-js-sdk";
-
 export interface DemoSession {
-  client: CachePuppyClient;
   clientId: string;
   userName: string;
   colour: string;

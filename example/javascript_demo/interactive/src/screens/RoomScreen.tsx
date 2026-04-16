@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useCachePuppyClient } from "@cachepuppy/react";
 import { TOPIC } from "../constants";
 import { useRoomChannel } from "../hooks/useRoomChannel";
 import type { DemoSession, StickyNote } from "../types";
@@ -11,7 +12,8 @@ interface RoomScreenProps {
 }
 
 export function RoomScreen({ session, onLeave }: RoomScreenProps) {
-  const { client, clientId, userName, colour } = session;
+  const { clientId, userName, colour } = session;
+  const { client, state: connectionState, error: connectionError, destroy } = useCachePuppyClient();
 
   const boardRef = useRef<HTMLElement | null>(null);
   const [notes, setNotes] = useState<StickyNote[]>([]);
@@ -35,7 +37,6 @@ export function RoomScreen({ session, onLeave }: RoomScreenProps) {
 
   useRoomChannel({
     topic: TOPIC,
-    client,
     clientId,
     colour,
     boardRef,
@@ -73,8 +74,7 @@ export function RoomScreen({ session, onLeave }: RoomScreenProps) {
     } catch {
       /* channel may already be gone; still tear down */
     }
-    await client.unsubscribe(TOPIC);
-    await client.destroy();
+    await destroy();
     onLeave();
   }
 
@@ -141,8 +141,9 @@ export function RoomScreen({ session, onLeave }: RoomScreenProps) {
         <div>
           <h1>Topic: Sticky Notes Room</h1>
           <p className="muted">
-            Signed in as <strong>{userName}</strong> · {howManyPeople} in room
+            Signed in as <strong>{userName}</strong> · {howManyPeople} in room · connection: {connectionState}
           </p>
+          {connectionError ? <p className="error">Connection error: {connectionError.message}</p> : null}
         </div>
         <button type="button" className="btn" onClick={() => void leave()}>
           Leave

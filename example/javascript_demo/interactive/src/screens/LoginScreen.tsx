@@ -1,6 +1,4 @@
 import { useId, useMemo, useState } from "react";
-import { createClient } from "cachepuppy-js-sdk";
-import { WS_URL } from "../constants";
 import type { DemoSession } from "../types";
 
 const DEFAULT_COLOUR = "#6366f1";
@@ -15,12 +13,10 @@ export function LoginScreen({ onConnected }: LoginScreenProps) {
   const [userName, setUserName] = useState("");
   const [colour, setColour] = useState(DEFAULT_COLOUR);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [connState, setConnState] = useState<string>("idle");
 
   const clientId = useMemo(() => crypto.randomUUID(), []);
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = userName.trim();
     if (!trimmed) {
@@ -28,28 +24,7 @@ export function LoginScreen({ onConnected }: LoginScreenProps) {
       return;
     }
     setError(null);
-    setBusy(true);
-
-    const client = createClient({
-      url: WS_URL,
-      transport: "phoenix",
-      clientId,
-    });
-
-    const offState = client.on("stateChange", ({ state }) => {
-      setConnState(state);
-    });
-
-    try {
-      await client.connect();
-      onConnected({ client, clientId, userName: trimmed, colour });
-    } catch {
-      setError("Could not connect to the server. Is Phoenix running?");
-      void client.destroy();
-    } finally {
-      offState();
-      setBusy(false);
-    }
+    onConnected({ clientId, userName: trimmed, colour });
   }
 
   return (
@@ -66,7 +41,6 @@ export function LoginScreen({ onConnected }: LoginScreenProps) {
             value={userName}
             onChange={(e) => setUserName(e.target.value)}
             placeholder="Your name"
-            disabled={busy}
           />
         </label>
         <label className="field field--row" htmlFor={colourId}>
@@ -77,17 +51,12 @@ export function LoginScreen({ onConnected }: LoginScreenProps) {
             type="color"
             value={colour}
             onChange={(e) => setColour(e.target.value)}
-            disabled={busy}
           />
           <span className="colour-hex">{colour}</span>
         </label>
         {error ? <p className="error">{error}</p> : null}
-        <button type="submit" className="btn primary" disabled={busy}>
-          {busy ? "Connecting…" : "Connect"}
-        </button>
+        <button type="submit" className="btn primary">Continue</button>
       </form>
-      <p className="status subtle">Status: {connState}</p>
-      <p className="subtle mono">{WS_URL}</p>
     </div>
   );
 }
