@@ -60,14 +60,19 @@ export function RoomScreen({ session, onLeave }: RoomScreenProps) {
     if (!text) return;
 
     setSaving(true);
+    const next: StickyNote = {
+      id: crypto.randomUUID(),
+      userName,
+      colour,
+      text,
+    };
     try {
-      const latest = await client.getTopicState(TOPIC);
-      const next: StickyNote = {
-        id: crypto.randomUUID(),
-        userName,
-        colour,
-        text,
-      };
+      let latest: Record<string, unknown>;
+      try {
+        latest = await client.getTopicState(TOPIC);
+      } catch {
+        latest = topicState;
+      }
       await client.setTopicState(TOPIC, {
         notes: [...notesFromState(latest), next],
       });
