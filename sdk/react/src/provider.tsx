@@ -19,9 +19,27 @@ export interface CachePuppyProviderProps {
 }
 
 export function CachePuppyProvider({ options, autoConnect = false, children }: CachePuppyProviderProps) {
-  const client = useMemo(() => createClient(options), [options]);
+  const client = useMemo(
+    () => createClient(options),
+    [
+      options.url,
+      options.clientId,
+      options.authToken,
+      options.getAuthToken,
+      options.transport,
+      options.reconnect?.enabled,
+      options.reconnect?.initialDelayMs,
+      options.reconnect?.maxDelayMs,
+      options.reconnect?.factor,
+    ],
+  );
   const [state, setState] = useState<ConnectionState>(client.getState());
   const [error, setError] = useState<Error | null>(null);
+
+  useEffect(() => {
+    setState(client.getState());
+    setError(null);
+  }, [client]);
 
   useEffect(() => {
     const offState = client.on("stateChange", ({ state: nextState }) => {
@@ -34,7 +52,6 @@ export function CachePuppyProvider({ options, autoConnect = false, children }: C
     return () => {
       offState();
       offError();
-      void client.destroy();
     };
   }, [client]);
 
