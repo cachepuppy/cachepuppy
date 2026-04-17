@@ -34,12 +34,21 @@ defmodule CachePuppyCore.ClusterQuorumGuard do
     :persistent_term.get(@mode_key, :healthy)
   end
 
-  @spec quorum_status() :: %{current_nodes: pos_integer(), quorum_threshold: pos_integer(), quorum_met: boolean()}
+  @spec quorum_status() :: %{
+          current_nodes: pos_integer(),
+          quorum_threshold: pos_integer(),
+          quorum_met: boolean()
+        }
   def quorum_status do
     total_nodes = CacheConfig.expected_nodes()
     quorum_threshold = div(total_nodes, 2) + 1
     current_nodes = length(Node.list()) + 1
-    %{current_nodes: current_nodes, quorum_threshold: quorum_threshold, quorum_met: current_nodes >= quorum_threshold}
+
+    %{
+      current_nodes: current_nodes,
+      quorum_threshold: quorum_threshold,
+      quorum_met: current_nodes >= quorum_threshold
+    }
   end
 
   @impl true
@@ -105,7 +114,25 @@ defmodule CachePuppyCore.ClusterQuorumGuard do
           publish_state(:fenced, true)
 
           if CacheConfig.quorum_stop_enabled?() do
-            _ = Task.start(fn -> System.stop(1) end)
+            # Hard-abort the VM with NO port flush.
+            #
+            # Do NOT use `System.stop/1`: graceful shutdown runs every
+            # application's terminate callback, and Horde's DeltaCrdt sync
+            # and Erlang distribution teardown both block on TCP timeouts
+            # for unreachable peers.
+            #
+            # Do NOT use `System.halt/1` either: it calls
+            # `:erlang.halt(status, [])`, which defaults to `flush: true`.
+            # The flush step waits for all open Erlang ports to drain,
+            # including the distribution TCP ports to peers that are now
+            # unreachable via `docker network disconnect` (silent
+            # black-hole — no FIN/RST), so it also hangs on TCP timeouts.
+            #
+            # `:erlang.halt(1, [{:flush, false}])` aborts the VM
+            # immediately without waiting on any ports. Synchronous
+            # `Logger.flush/0` first so the error line above isn't lost.
+            Logger.flush()
+            :erlang.halt(1, [{:flush, false}])
           end
 
           %{state | mode: :fenced, grace_deadline_ms: state.grace_deadline_ms}

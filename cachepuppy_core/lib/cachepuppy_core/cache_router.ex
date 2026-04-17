@@ -85,7 +85,13 @@ defmodule CachePuppyCore.CacheRouter do
     )
 
     try do
-      :erpc.call(owner_node, __MODULE__, :remote_setdata, [pid, table, key, value], rpc_timeout_ms)
+      :erpc.call(
+        owner_node,
+        __MODULE__,
+        :remote_setdata,
+        [pid, table, key, value],
+        rpc_timeout_ms
+      )
     catch
       kind, reason ->
         Logger.warning(

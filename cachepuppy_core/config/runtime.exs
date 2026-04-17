@@ -43,7 +43,8 @@ if System.get_env("PHX_SERVER") do
 
   config :cachepuppy_core,
     cache_expected_nodes: total_nodes,
-    cache_quorum_poll_interval_ms: String.to_integer(System.get_env("QUORUM_POLL_INTERVAL_MS", "2000")),
+    cache_quorum_poll_interval_ms:
+      String.to_integer(System.get_env("QUORUM_POLL_INTERVAL_MS", "2000")),
     cache_quorum_grace_ms: String.to_integer(System.get_env("QUORUM_GRACE_MS", "20000"))
 end
 
