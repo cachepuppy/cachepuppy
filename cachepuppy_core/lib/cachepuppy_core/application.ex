@@ -8,6 +8,7 @@ defmodule CachePuppyCore.Application do
   @impl true
   def start(_type, _args) do
     topologies = Application.get_env(:libcluster, :topologies, [])
+
     quorum_guard_children =
       if CachePuppyCore.CacheConfig.quorum_guard_enabled?() do
         [{CachePuppyCore.ClusterQuorumGuard, []}]
@@ -15,23 +16,25 @@ defmodule CachePuppyCore.Application do
         []
       end
 
-    children = [
-      CachePuppyCoreWeb.Telemetry,
-      {Finch, name: CachePuppyCore.Finch},
-      {Task.Supervisor, name: CachePuppyCore.FlushTaskSupervisor},
-      {Cluster.Supervisor, [topologies, [name: CachePuppyCore.ClusterSupervisor]]},
-      {Phoenix.PubSub, name: CachePuppyCore.PubSub},
-      {Horde.Registry, [name: CachePuppyCore.TopicRegistry, keys: :unique, members: :auto]},
-      {Horde.DynamicSupervisor,
-       [name: CachePuppyCore.TopicSupervisor, strategy: :one_for_one, members: :auto]},
-      {Horde.Registry, [name: CachePuppyCore.CacheShardRegistry, keys: :unique, members: :auto]},
-      {Horde.DynamicSupervisor,
-       [name: CachePuppyCore.CacheShardSupervisor, strategy: :one_for_one, members: :auto]},
-      CachePuppyCoreWeb.Presence
-      # Start a worker by calling: CachePuppyCore.Worker.start_link(arg)
-      # {CachePuppyCore.Worker, arg},
-      # Start to serve requests, typically the last entry
-    ] ++ quorum_guard_children ++ [CachePuppyCoreWeb.Endpoint]
+    children =
+      [
+        CachePuppyCoreWeb.Telemetry,
+        {Finch, name: CachePuppyCore.Finch},
+        {Task.Supervisor, name: CachePuppyCore.FlushTaskSupervisor},
+        {Cluster.Supervisor, [topologies, [name: CachePuppyCore.ClusterSupervisor]]},
+        {Phoenix.PubSub, name: CachePuppyCore.PubSub},
+        {Horde.Registry, [name: CachePuppyCore.TopicRegistry, keys: :unique, members: :auto]},
+        {Horde.DynamicSupervisor,
+         [name: CachePuppyCore.TopicSupervisor, strategy: :one_for_one, members: :auto]},
+        {Horde.Registry,
+         [name: CachePuppyCore.CacheShardRegistry, keys: :unique, members: :auto]},
+        {Horde.DynamicSupervisor,
+         [name: CachePuppyCore.CacheShardSupervisor, strategy: :one_for_one, members: :auto]},
+        CachePuppyCoreWeb.Presence
+        # Start a worker by calling: CachePuppyCore.Worker.start_link(arg)
+        # {CachePuppyCore.Worker, arg},
+        # Start to serve requests, typically the last entry
+      ] ++ quorum_guard_children ++ [CachePuppyCoreWeb.Endpoint]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options

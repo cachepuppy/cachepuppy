@@ -134,6 +134,7 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
 
       CacheFlushEngine.persist_set(pid, "users", "city", "blr")
       send(pid, :flush_tick)
+
       wait_until(fn ->
         File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id)) and
           File.exists?(CacheUtils.checkpoint_path(storage_dir, shard_id))
@@ -195,6 +196,7 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
 
     with_cache_config(storage_dir, 1024, fn ->
       File.mkdir_p!(storage_dir)
+
       File.write!(
         Path.join(storage_dir, "shard_#{shard_id}.meta"),
         :erlang.term_to_binary(%{

@@ -65,7 +65,11 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
 
   @impl true
   def handle_cast({:persist_set, table, key, value}, state) do
-    state = with_valid_owner(state, fn s -> append_set(s, table, key, value) |> maybe_rotate_result() end)
+    state =
+      with_valid_owner(state, fn s ->
+        append_set(s, table, key, value) |> maybe_rotate_result()
+      end)
+
     {:noreply, state}
   end
 
@@ -83,7 +87,10 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
     {:noreply, handle_snapshot_done(state, result)}
   end
 
-  def handle_info({:DOWN, ref, :process, pid, reason}, %ProcessState{snapshot_task_ref: ref} = state)
+  def handle_info(
+        {:DOWN, ref, :process, pid, reason},
+        %ProcessState{snapshot_task_ref: ref} = state
+      )
       when is_pid(pid) do
     Logger.warning(
       "cache_snapshot task_down shard_id=#{state.shard_id} node=#{node()} reason=#{inspect(reason)}"
@@ -151,8 +158,7 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
   defp maybe_sync(state) do
     case :file.sync(state.current_wal_fd) do
       :ok ->
-        {:ok,
-         %{state | pending_sync_bytes: 0, last_sync_at_ms: System.system_time(:millisecond)}}
+        {:ok, %{state | pending_sync_bytes: 0, last_sync_at_ms: System.system_time(:millisecond)}}
 
       {:error, reason} ->
         {:error, reason}
