@@ -7,6 +7,11 @@ config :cachepuppy_core, CachePuppyCoreWeb.Endpoint,
   secret_key_base: "zEQ90oXfAPspKNxSysVFkt+f/rWteNirruT6paM+GT3KKbjQlwxUEF4HOrsxrciO",
   server: false
 
+config :cachepuppy_core,
+  cache_expected_nodes: 1,
+  cache_quorum_guard_enabled: false,
+  cache_quorum_stop_enabled: false
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 

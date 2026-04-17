@@ -214,6 +214,58 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
     end)
   end
 
+  test "snapshot creation is blocked while quorum snapshot fence is active but WAL appends continue" do
+    shard_id = 11
+    storage_dir = unique_storage_dir("snapshot_blocked_start")
+
+    with_cache_config(storage_dir, 1_048_576, fn ->
+      write_owner_meta(storage_dir, shard_id, 11)
+      table = :ets.new(:engine_snapshot_blocked_start, [:set, :protected])
+      true = :ets.insert(table, {{"users", "name"}, "beamline"})
+      set_snapshot_blocked(true)
+
+      pid =
+        start_supervised!(
+          {CacheFlushEngine,
+           shard_id: shard_id,
+           table: table,
+           owner_epoch: 11,
+           snapshot_interval_ms: 0,
+           snapshot_min_wal_bytes: 1}
+        )
+
+      CacheFlushEngine.persist_set(pid, "users", "city", "blr")
+      send(pid, :flush_tick)
+      _ = :sys.get_state(pid)
+
+      assert File.stat!(CacheUtils.wal_path(storage_dir, shard_id, 1)).size > 0
+      refute File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id))
+      refute File.exists?(CacheUtils.checkpoint_path(storage_dir, shard_id))
+    end)
+  end
+
+  test "snapshot finalize and prune are blocked while quorum snapshot fence is active" do
+    shard_id = 12
+    storage_dir = unique_storage_dir("snapshot_blocked_finalize")
+    ref = make_ref()
+
+    with_cache_config(storage_dir, 1_048_576, fn ->
+      write_owner_meta(storage_dir, shard_id, 11)
+      table = :ets.new(:engine_snapshot_blocked_finalize, [:set, :protected])
+      pid = start_engine(shard_id, table, 11)
+
+      File.write!(CacheUtils.wal_path(storage_dir, shard_id, 1), "old-wal-segment")
+
+      :sys.replace_state(pid, fn current_state -> %{current_state | snapshot_task_ref: ref} end)
+      set_snapshot_blocked(true)
+      send(pid, {ref, {:snapshot_done, :ok, 2}})
+      _ = :sys.get_state(pid)
+
+      assert File.exists?(CacheUtils.wal_path(storage_dir, shard_id, 1))
+      refute File.exists?(CacheUtils.checkpoint_path(storage_dir, shard_id))
+    end)
+  end
+
   defp with_cache_config(storage_dir, wal_segment_max_bytes, fun) do
     old_storage = Application.get_env(:cachepuppy_core, :cache_storage_dir)
     old_wal_bytes = Application.get_env(:cachepuppy_core, :cache_wal_segment_max_bytes)
@@ -224,6 +276,7 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
     try do
       fun.()
     after
+      set_snapshot_blocked(false)
       restore_env(:cache_storage_dir, old_storage)
       restore_env(:cache_wal_segment_max_bytes, old_wal_bytes)
     end
@@ -276,5 +329,9 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
         10 -> wait_until(fun, attempts - 1)
       end
     end
+  end
+
+  defp set_snapshot_blocked(value) do
+    :persistent_term.put({CachePuppyCore.ClusterQuorumGuard, :snapshot_blocked}, value)
   end
 end

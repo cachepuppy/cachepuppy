@@ -247,7 +247,7 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
     do: state
 
   defp maybe_start_snapshot(state) do
-    if owner_valid?(state) and should_snapshot?(state) do
+    if snapshot_allowed?() and owner_valid?(state) and should_snapshot?(state) do
       cutoff_seq = state.current_seq
       started_state = %{state | last_snapshot_at_ms: System.system_time(:millisecond)}
       table = state.table
@@ -265,15 +265,23 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
   end
 
   defp handle_snapshot_done(state, {:snapshot_done, :ok, cutoff_seq}) do
-    with_valid_owner(clear_snapshot_task(state), fn s ->
-      {:ok, next_state} = finalize_snapshot(s, cutoff_seq)
+    if snapshot_allowed?() do
+      with_valid_owner(clear_snapshot_task(state), fn s ->
+        {:ok, next_state} = finalize_snapshot(s, cutoff_seq)
 
-      Logger.info(
-        "cache_snapshot success shard_id=#{state.shard_id} node=#{node()} cutoff_seq=#{cutoff_seq}"
+        Logger.info(
+          "cache_snapshot success shard_id=#{state.shard_id} node=#{node()} cutoff_seq=#{cutoff_seq}"
+        )
+
+        {:ok, next_state}
+      end)
+    else
+      Logger.warning(
+        "cache_snapshot skipped_finalize shard_id=#{state.shard_id} node=#{node()} reason=quorum_snapshot_blocked"
       )
 
-      {:ok, next_state}
-    end)
+      clear_snapshot_task(state)
+    end
   end
 
   defp handle_snapshot_done(state, {:snapshot_done, {:error, reason}, _cutoff_seq}) do
@@ -282,6 +290,10 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
     )
 
     clear_snapshot_task(state)
+  end
+
+  defp snapshot_allowed? do
+    not CachePuppyCore.ClusterQuorumGuard.snapshot_blocked?()
   end
 
   defp schedule_flush(%ProcessState{} = state) do

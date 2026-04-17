@@ -8,6 +8,12 @@ defmodule CachePuppyCore.Application do
   @impl true
   def start(_type, _args) do
     topologies = Application.get_env(:libcluster, :topologies, [])
+    quorum_guard_children =
+      if CachePuppyCore.CacheConfig.quorum_guard_enabled?() do
+        [{CachePuppyCore.ClusterQuorumGuard, []}]
+      else
+        []
+      end
 
     children = [
       CachePuppyCoreWeb.Telemetry,
@@ -21,12 +27,11 @@ defmodule CachePuppyCore.Application do
       {Horde.Registry, [name: CachePuppyCore.CacheShardRegistry, keys: :unique, members: :auto]},
       {Horde.DynamicSupervisor,
        [name: CachePuppyCore.CacheShardSupervisor, strategy: :one_for_one, members: :auto]},
-      CachePuppyCoreWeb.Presence,
+      CachePuppyCoreWeb.Presence
       # Start a worker by calling: CachePuppyCore.Worker.start_link(arg)
       # {CachePuppyCore.Worker, arg},
       # Start to serve requests, typically the last entry
-      CachePuppyCoreWeb.Endpoint
-    ]
+    ] ++ quorum_guard_children ++ [CachePuppyCoreWeb.Endpoint]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
