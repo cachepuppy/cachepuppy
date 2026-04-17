@@ -16,8 +16,35 @@ import Config
 #
 # Alternatively, you can use `mix phx.gen.release` to generate a `bin/server`
 # script that automatically sets the env var above.
+parse_required_positive_int_env! = fn name ->
+  raw =
+    System.get_env(name) ||
+      raise """
+      required environment variable #{name} is missing.
+      It must be set to a positive integer.
+      """
+
+  case Integer.parse(raw) do
+    {value, ""} when value > 0 ->
+      value
+
+    _ ->
+      raise """
+      invalid #{name}=#{inspect(raw)}.
+      It must be set to a positive integer.
+      """
+  end
+end
+
 if System.get_env("PHX_SERVER") do
+  total_nodes = parse_required_positive_int_env!.("TOTAL_NODES")
+
   config :cachepuppy_core, CachePuppyCoreWeb.Endpoint, server: true
+
+  config :cachepuppy_core,
+    cache_expected_nodes: total_nodes,
+    cache_quorum_poll_interval_ms: String.to_integer(System.get_env("QUORUM_POLL_INTERVAL_MS", "2000")),
+    cache_quorum_grace_ms: String.to_integer(System.get_env("QUORUM_GRACE_MS", "20000"))
 end
 
 config :cachepuppy_core, CachePuppyCoreWeb.Endpoint,

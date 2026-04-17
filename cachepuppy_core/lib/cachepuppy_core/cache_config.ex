@@ -9,6 +9,8 @@ defmodule CachePuppyCore.CacheConfig do
   @default_snapshot_interval_ms 60_000
   @default_snapshot_min_wal_bytes 262_144
   @default_recovery_max_segments 1_024
+  @default_quorum_poll_interval_ms 2_000
+  @default_quorum_grace_ms 20_000
 
   def shard_count do
     Application.get_env(:cachepuppy_core, :cache_shard_count, @default_shard_count)
@@ -60,5 +62,29 @@ defmodule CachePuppyCore.CacheConfig do
       :cache_recovery_max_segments,
       @default_recovery_max_segments
     )
+  end
+
+  def expected_nodes do
+    Application.fetch_env!(:cachepuppy_core, :cache_expected_nodes)
+  end
+
+  def quorum_poll_interval_ms do
+    Application.get_env(
+      :cachepuppy_core,
+      :cache_quorum_poll_interval_ms,
+      @default_quorum_poll_interval_ms
+    )
+  end
+
+  def quorum_grace_ms do
+    Application.get_env(:cachepuppy_core, :cache_quorum_grace_ms, @default_quorum_grace_ms)
+  end
+
+  def quorum_stop_enabled? do
+    Application.get_env(:cachepuppy_core, :cache_quorum_stop_enabled, true)
+  end
+
+  def quorum_guard_enabled? do
+    Application.get_env(:cachepuppy_core, :cache_quorum_guard_enabled, true)
   end
 end

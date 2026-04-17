@@ -13,7 +13,21 @@ With `mix phx.server`, the app runs on `http://localhost:4000`. With Docker Comp
 
 ## HTTP endpoint
 
+- `GET /healthz` is liveness-only and returns `200` when the node process is up.
+- `GET /readyz` is quorum-aware readiness and returns `200` only when cluster quorum is met.
 - `GET /api/health` returns status plus cluster visibility (`node`, `cluster_size`, `connected_nodes`).
+
+Required runtime env for quorum:
+
+- `TOTAL_NODES` (required, positive integer)
+- `QUORUM_POLL_INTERVAL_MS` (optional, default `2000`)
+- `QUORUM_GRACE_MS` (optional, default `20000`)
+
+Quorum behavior:
+
+- If quorum is lost, the node immediately blocks snapshot/checkpoint finalization and enters a grace period.
+- WAL appends continue during grace.
+- If quorum is not restored before grace expires, the node hard-stops.
 
 ## Websocket endpoint
 
@@ -94,7 +108,7 @@ This project supports local 3-node clustering via `libcluster` and Docker Compos
 
 `nginx` waits until all three Phoenix replicas pass their HTTP healthchecks before starting, so Docker DNS can resolve `app1`–`app3` and nginx does not fail with `host not found in upstream`.
 
-`app1`–`app3` share the same image tag (`cachepuppy_core_app:latest`) so one `docker compose build` / `up --build` updates every replica (healthchecks use `curl` from the runtime image).
+`app1`–`app3` share the same image tag (`cachepuppy_core_app:latest`) so one `docker compose build` / `up --build` updates every replica (healthchecks use quorum-aware `/readyz`).
 
 Check node visibility:
 
