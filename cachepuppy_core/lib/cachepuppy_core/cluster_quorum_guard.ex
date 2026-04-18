@@ -4,7 +4,7 @@ defmodule CachePuppyCore.ClusterQuorumGuard do
   use GenServer
   require Logger
 
-  alias CachePuppyCore.CacheConfig
+  alias CachePuppyCore.Persistence.CacheConfig
 
   @mode_key {__MODULE__, :mode}
   @snapshot_blocked_key {__MODULE__, :snapshot_blocked}

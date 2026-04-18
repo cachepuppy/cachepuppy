@@ -1,7 +1,7 @@
-defmodule CachePuppyCore.CacheRouterTest do
+defmodule CachePuppyCore.Persistence.CacheRouterTest do
   use ExUnit.Case, async: false
 
-  alias CachePuppyCore.CacheRouter
+  alias CachePuppyCore.Persistence.CacheRouter
 
   test "shard hashing is deterministic" do
     Application.put_env(:cachepuppy_core, :cache_shard_count, 32)

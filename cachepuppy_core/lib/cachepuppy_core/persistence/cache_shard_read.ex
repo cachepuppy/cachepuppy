@@ -1,4 +1,4 @@
-defmodule CachePuppyCore.CacheShardRead do
+defmodule CachePuppyCore.Persistence.CacheShardRead do
   @moduledoc false
 
   @type shard_meta :: %{

@@ -3,7 +3,7 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
 
   require Logger
 
-  alias CachePuppyCore.CacheConfig
+  alias CachePuppyCore.Persistence.CacheConfig
   alias CachePuppyCore.Persistence.CacheOwnerMeta
   alias CachePuppyCore.Persistence.CacheRecoveryEngine
   alias CachePuppyCore.Persistence.CacheUtils

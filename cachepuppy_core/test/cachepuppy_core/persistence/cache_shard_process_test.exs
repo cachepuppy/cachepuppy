@@ -1,10 +1,10 @@
-defmodule CachePuppyCore.CacheShardProcessTest do
+defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
   use ExUnit.Case, async: false
 
   alias CachePuppyCore.Persistence.CacheFlushEngine
   alias CachePuppyCore.Persistence.CacheUtils
-  alias CachePuppyCore.CacheShardRead
-  alias CachePuppyCore.CacheShardProcess
+  alias CachePuppyCore.Persistence.CacheShardRead
+  alias CachePuppyCore.Persistence.CacheShardProcess
 
   test "rehydrates from snapshot and WAL on startup" do
     shard_id = 7
