@@ -11,5 +11,6 @@ defmodule CachePuppyCoreWeb.Router do
     get "/health", HealthController, :show, log: false
     post "/cache/setdata", CacheController, :setdata
     post "/cache/getdata", CacheController, :getdata
+    post "/cache/deletedata", CacheController, :deletedata
   end
 end

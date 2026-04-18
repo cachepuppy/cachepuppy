@@ -1,6 +1,6 @@
 import { nextId } from "../protocol.js";
 import type { CachePuppyEnvelope, TopicWebhookConfigOptions } from "../types.js";
-import type { TopicStateResponse, Transport } from "./transport.js";
+import type { CacheSetDataOptions, TopicStateResponse, Transport } from "./transport.js";
 
 type EnvelopeHandler = (message: CachePuppyEnvelope) => void;
 
@@ -8,7 +8,7 @@ class MockBus {
   private envelopeHandlers = new Map<string, Set<EnvelopeHandler>>();
   private topicMembers = new Map<string, Set<string>>();
   private topicStates = new Map<string, Record<string, unknown>>();
-  private cacheData = new Map<string, unknown>();
+  private cacheData = new Map<string, { value: unknown; expiresAtMs?: number }>();
   /** Per simulated client (private session channel; no room topic). */
   private sessionStates = new Map<string, Record<string, unknown>>();
   /** Last webhook config per topic (mock does not perform HTTP). */
@@ -163,13 +163,27 @@ class MockBus {
     return { ...(this.topicStates.get(topic) ?? {}) };
   }
 
-  setData(table: string, key: string, value: unknown): unknown {
-    this.cacheData.set(cacheDataKey(table, key), value);
+  setData(table: string, key: string, value: unknown, options?: CacheSetDataOptions): unknown {
+    const k = cacheDataKey(table, key);
+    const expiresAtMs =
+      typeof options?.ttlMs === "number" && options.ttlMs > 0 ? Date.now() + options.ttlMs : undefined;
+    this.cacheData.set(k, { value, expiresAtMs });
     return value;
   }
 
   getData(table: string, key: string): unknown {
-    return this.cacheData.get(cacheDataKey(table, key));
+    const k = cacheDataKey(table, key);
+    const cell = this.cacheData.get(k);
+    if (!cell) return undefined;
+    if (typeof cell.expiresAtMs === "number" && Date.now() >= cell.expiresAtMs) {
+      this.cacheData.delete(k);
+      return undefined;
+    }
+    return cell.value;
+  }
+
+  deleteData(table: string, key: string): boolean {
+    return this.cacheData.delete(cacheDataKey(table, key));
   }
 
   setSessionState(clientId: string, payload: Record<string, unknown>): Record<string, unknown> {
@@ -235,12 +249,22 @@ export class MockTransport implements Transport {
     return { state: globalBus.getState(topic), sourceNode: "mock", servedByNode: "mock" };
   }
 
-  async setData(_clientId: string, table: string, key: string, value: unknown): Promise<unknown> {
-    return globalBus.setData(table, key, value);
+  async setData(
+    _clientId: string,
+    table: string,
+    key: string,
+    value: unknown,
+    options?: CacheSetDataOptions,
+  ): Promise<unknown> {
+    return globalBus.setData(table, key, value, options);
   }
 
   async getData(_clientId: string, table: string, key: string): Promise<unknown> {
     return globalBus.getData(table, key);
+  }
+
+  async deleteData(_clientId: string, table: string, key: string): Promise<boolean> {
+    return globalBus.deleteData(table, key);
   }
 
   async clearTopicState(_clientId: string, topic: string): Promise<boolean> {

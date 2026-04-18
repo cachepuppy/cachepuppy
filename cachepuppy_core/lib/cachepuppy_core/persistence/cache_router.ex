@@ -5,7 +5,10 @@ defmodule CachePuppyCore.Persistence.CacheRouter do
   alias CachePuppyCore.Persistence.CacheConfig
   alias CachePuppyCore.Persistence.CacheShardRead
 
-  def setdata(table, key, value) when is_binary(table) and is_binary(key) do
+  def setdata(table, key, value, opts \\ [])
+
+  def setdata(table, key, value, opts)
+      when is_binary(table) and is_binary(key) and is_list(opts) do
     with {:ok, shard_id} <- shard_id_for_entry(table, key),
          {:ok, pid} <- ensure_shard_started(shard_id),
          {:ok, owner_node} <- owner_node_for_pid(pid) do
@@ -13,11 +16,11 @@ defmodule CachePuppyCore.Persistence.CacheRouter do
         "cache_set route table=#{inspect(table)} key=#{inspect(key)} shard_id=#{shard_id} requested_by=#{node()} owner_node=#{owner_node}"
       )
 
-      dispatch_set(owner_node, pid, shard_id, table, key, value)
+      dispatch_set(owner_node, pid, shard_id, table, key, value, opts)
     end
   end
 
-  def setdata(_table, _key, _value), do: {:error, :invalid_table_or_key}
+  def setdata(_table, _key, _value, _opts), do: {:error, :invalid_table_or_key}
 
   def getdata(table, key) when is_binary(table) and is_binary(key) do
     with {:ok, shard_id} <- shard_id_for_entry(table, key),
@@ -32,6 +35,20 @@ defmodule CachePuppyCore.Persistence.CacheRouter do
   end
 
   def getdata(_table, _key), do: {:error, :invalid_table_or_key}
+
+  def deldata(table, key) when is_binary(table) and is_binary(key) do
+    with {:ok, shard_id} <- shard_id_for_entry(table, key),
+         {:ok, pid} <- ensure_shard_started(shard_id),
+         {:ok, owner_node} <- owner_node_for_pid(pid) do
+      Logger.info(
+        "cache_del route table=#{inspect(table)} key=#{inspect(key)} shard_id=#{shard_id} requested_by=#{node()} owner_node=#{owner_node}"
+      )
+
+      dispatch_delete(owner_node, pid, shard_id, table, key)
+    end
+  end
+
+  def deldata(_table, _key), do: {:error, :invalid_table_or_key}
 
   def shard_id_for_key(key) when is_binary(key) do
     shard_count = CacheConfig.shard_count()
@@ -69,15 +86,20 @@ defmodule CachePuppyCore.Persistence.CacheRouter do
     end
   end
 
-  def remote_setdata(pid, table, key, value), do: call_shard(pid, {:set, table, key, value})
+  def remote_setdata(pid, table, key, value, opts \\ []),
+    do: call_shard(pid, {:set, table, key, value, opts})
+
   def remote_getdata(shard_id, table, key), do: CacheShardRead.fast_get(shard_id, table, key)
 
-  defp dispatch_set(owner_node, pid, shard_id, table, key, value) when owner_node == node() do
+  def remote_deldata(pid, table, key), do: call_shard(pid, {:delete, table, key})
+
+  defp dispatch_set(owner_node, pid, shard_id, table, key, value, opts)
+       when owner_node == node() do
     Logger.info("cache_set local_execute shard_id=#{shard_id} node=#{node()}")
-    call_shard(pid, {:set, table, key, value})
+    call_shard(pid, {:set, table, key, value, opts})
   end
 
-  defp dispatch_set(owner_node, pid, shard_id, table, key, value) do
+  defp dispatch_set(owner_node, pid, shard_id, table, key, value, opts) do
     rpc_timeout_ms = CacheConfig.rpc_timeout_ms()
 
     Logger.info(
@@ -89,13 +111,37 @@ defmodule CachePuppyCore.Persistence.CacheRouter do
         owner_node,
         __MODULE__,
         :remote_setdata,
-        [pid, table, key, value],
+        [pid, table, key, value, opts],
         rpc_timeout_ms
       )
     catch
       kind, reason ->
         Logger.warning(
           "cache_set rpc_failed shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node} kind=#{inspect(kind)} reason=#{inspect(reason)}"
+        )
+
+        {:error, {:rpc_failed, {kind, reason}}}
+    end
+  end
+
+  defp dispatch_delete(owner_node, pid, shard_id, table, key) when owner_node == node() do
+    Logger.info("cache_del local_execute shard_id=#{shard_id} node=#{node()}")
+    call_shard(pid, {:delete, table, key})
+  end
+
+  defp dispatch_delete(owner_node, pid, shard_id, table, key) do
+    rpc_timeout_ms = CacheConfig.rpc_timeout_ms()
+
+    Logger.info(
+      "cache_del rpc_execute shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node}"
+    )
+
+    try do
+      :erpc.call(owner_node, __MODULE__, :remote_deldata, [pid, table, key], rpc_timeout_ms)
+    catch
+      kind, reason ->
+        Logger.warning(
+          "cache_del rpc_failed shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node} kind=#{inspect(kind)} reason=#{inspect(reason)}"
         )
 
         {:error, {:rpc_failed, {kind, reason}}}

@@ -32,8 +32,10 @@ defmodule CachePuppyCore.ClusterQuorumGuardTest do
 
       wait_until(fn -> ClusterQuorumGuard.mode() == :grace end)
       Application.put_env(:cachepuppy_core, :cache_expected_nodes, 1)
-      wait_until(fn -> ClusterQuorumGuard.mode() == :healthy end)
-      refute ClusterQuorumGuard.snapshot_blocked?()
+
+      wait_until(fn ->
+        ClusterQuorumGuard.mode() == :healthy and not ClusterQuorumGuard.snapshot_blocked?()
+      end)
     end)
   end
 

@@ -4,7 +4,9 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
   use GenServer
   require Logger
   alias CachePuppyCore.Persistence.CacheConfig
+  alias CachePuppyCore.Persistence.CacheEntry
   alias CachePuppyCore.Persistence.CacheShardRead
+  alias CachePuppyCore.Persistence.CacheShardTtlSweeper
   alias CachePuppyCore.Persistence.CacheFlushEngine
   alias CachePuppyCore.Persistence.CacheFlushEngine.FlushState
   alias CachePuppyCore.Persistence.CacheOwnerMeta
@@ -21,7 +23,8 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
             flush: %FlushState{},
             flush_tick_ref: reference() | nil,
             recovery_task_ref: reference() | nil,
-            owner_check_ref: reference() | nil
+            owner_check_ref: reference() | nil,
+            ttl_sweeper_pid: pid() | nil
           }
 
     defstruct shard_id: 0,
@@ -32,7 +35,8 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
               flush: nil,
               flush_tick_ref: nil,
               recovery_task_ref: nil,
-              owner_check_ref: nil
+              owner_check_ref: nil,
+              ttl_sweeper_pid: nil
   end
 
   def child_spec(opts) do
@@ -55,8 +59,12 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
     end
   end
 
-  def set(shard_id, table, key, value) when is_integer(shard_id) do
-    GenServer.call(via_shard(shard_id), {:set, table, key, value})
+  def set(shard_id, table, key, value, opts \\ []) when is_integer(shard_id) and is_list(opts) do
+    GenServer.call(via_shard(shard_id), {:set, table, key, value, opts})
+  end
+
+  def delete(shard_id, table, key) when is_integer(shard_id) do
+    GenServer.call(via_shard(shard_id), {:delete, table, key})
   end
 
   @impl true
@@ -101,6 +109,10 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
 
     state = schedule_flush_tick(state)
 
+    {:ok, sweeper} = CacheShardTtlSweeper.start_link(shard_id: shard_id, owner: self())
+    true = Process.link(sweeper)
+    state = %{state | ttl_sweeper_pid: sweeper}
+
     Logger.info(
       "cache_shard init shard_id=#{shard_id} node=#{node()} owner_epoch=#{owner_epoch} owner_valid=#{owner_valid?} ready=false storage_dir=#{storage_dir}"
     )
@@ -109,8 +121,15 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
   end
 
   @impl true
-  def handle_call({:set, table, key, value}, _from, state)
+  def handle_call({:set, table, key, value}, from, state)
       when is_binary(table) and is_binary(key) do
+    handle_call({:set, table, key, value, []}, from, state)
+  end
+
+  def handle_call({:set, table, key, value, opts}, _from, state)
+      when is_binary(table) and is_binary(key) and is_list(opts) do
+    ttl_ms = Keyword.get(opts, :ttl_ms)
+
     cond do
       not state.ready? ->
         {:reply, {:error, :rehydrating}, state}
@@ -118,12 +137,16 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
       not state.owner_valid? ->
         {:reply, {:error, :stale_owner}, state}
 
+      not (ttl_ms == nil or (is_integer(ttl_ms) and ttl_ms > 0)) ->
+        {:reply, {:error, :invalid_ttl}, state}
+
       true ->
         storage_key = {table, key}
 
-        case CacheFlushEngine.persist_set(state.flush, table, key, value) do
-          {:ok, new_flush} ->
-            :ets.insert(state.table, {storage_key, value})
+        case CacheFlushEngine.persist_set(state.flush, table, key, value, ttl_ms) do
+          {:ok, new_flush, wal_ts_ms} ->
+            entry = CacheEntry.from_wal(value, wal_ts_ms, ttl_ms)
+            :ets.insert(state.table, {storage_key, entry})
 
             Logger.debug(
               "cache_set execute shard_id=#{state.shard_id} node=#{node()} table=#{inspect(table)} key=#{inspect(key)}"
@@ -137,7 +160,38 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
     end
   end
 
-  def handle_call({:set, _table, _key, _value}, _from, state) do
+  def handle_call({:set, _table, _key, _value, _opts}, _from, state) do
+    {:reply, {:error, :invalid_table_or_key}, state}
+  end
+
+  def handle_call({:delete, table, key}, _from, state)
+      when is_binary(table) and is_binary(key) do
+    cond do
+      not state.ready? ->
+        {:reply, {:error, :rehydrating}, state}
+
+      not state.owner_valid? ->
+        {:reply, {:error, :stale_owner}, state}
+
+      true ->
+        storage_key = {table, key}
+
+        if :ets.member(state.table, storage_key) do
+          case CacheFlushEngine.persist_delete(state.flush, table, key) do
+            {:ok, new_flush} ->
+              :ets.delete(state.table, storage_key)
+              {:reply, {:ok, true}, %{state | flush: new_flush}}
+
+            {:error, reason} ->
+              {:reply, {:error, reason}, state}
+          end
+        else
+          {:reply, {:ok, false}, state}
+        end
+    end
+  end
+
+  def handle_call({:delete, _table, _key}, _from, state) do
     {:reply, {:error, :invalid_table_or_key}, state}
   end
 

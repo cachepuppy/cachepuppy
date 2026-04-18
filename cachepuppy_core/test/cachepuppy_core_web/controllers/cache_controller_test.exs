@@ -1,9 +1,13 @@
 defmodule CachePuppyCoreWeb.CacheControllerTest do
   use CachePuppyCoreWeb.ConnCase, async: false
 
+  alias CachePuppyCore.CacheShardSync
+
   setup do
+    :ok = CacheShardSync.reset_horde_shards!()
+
     storage_dir =
-      Path.join(System.tmp_dir!(), "cache_controller_#{System.unique_integer([:positive])}")
+      CachePuppyCore.TestTmpDir.path("cache_controller")
 
     File.mkdir_p!(storage_dir)
     old_storage = Application.get_env(:cachepuppy_core, :cache_storage_dir)
@@ -28,10 +32,12 @@ defmodule CachePuppyCoreWeb.CacheControllerTest do
     value = %{"flag" => true}
     params = %{"table" => table, "key" => key, "value" => value}
 
-    conn = post_until_setdata_ok(conn, ~p"/api/cache/setdata", params)
+    :ok = CacheShardSync.sync!(table, key)
+
+    conn = post(conn, ~p"/api/cache/setdata", params)
     assert %{"table" => ^table, "key" => ^key, "value" => ^value} = json_response(conn, 200)
 
-    conn = post_until_ok(build_conn(), ~p"/api/cache/getdata", %{"table" => table, "key" => key})
+    conn = post(build_conn(), ~p"/api/cache/getdata", %{"table" => table, "key" => key})
     assert %{"table" => ^table, "key" => ^key, "value" => ^value} = json_response(conn, 200)
   end
 
@@ -40,56 +46,52 @@ defmodule CachePuppyCoreWeb.CacheControllerTest do
     assert %{"reason" => "invalid_payload"} = json_response(conn, 400)
   end
 
+  test "setdata rejects invalid ttl_ms", %{conn: conn} do
+    conn =
+      post(conn, ~p"/api/cache/setdata", %{
+        "table" => "users",
+        "key" => "k",
+        "value" => "v",
+        "ttl_ms" => 0
+      })
+
+    assert %{"reason" => "invalid_ttl_ms"} = json_response(conn, 400)
+  end
+
+  test "deletedata removes key", %{conn: conn} do
+    table = "users"
+    key = "del_http_#{System.unique_integer([:positive])}"
+    value = "x"
+
+    :ok = CacheShardSync.sync!(table, key)
+
+    conn =
+      post(conn, ~p"/api/cache/setdata", %{
+        "table" => table,
+        "key" => key,
+        "value" => value
+      })
+
+    assert %{"table" => ^table, "key" => ^key, "value" => ^value} = json_response(conn, 200)
+
+    conn =
+      post(build_conn(), ~p"/api/cache/deletedata", %{"table" => table, "key" => key})
+
+    assert %{"table" => ^table, "key" => ^key, "deleted" => true} = json_response(conn, 200)
+
+    conn =
+      post(build_conn(), ~p"/api/cache/deletedata", %{"table" => table, "key" => key})
+
+    assert %{"table" => ^table, "key" => ^key, "deleted" => false} = json_response(conn, 200)
+
+    conn = post(build_conn(), ~p"/api/cache/getdata", %{"table" => table, "key" => key})
+    assert %{"table" => ^table, "key" => ^key, "value" => nil} = json_response(conn, 200)
+  end
+
   test "cors preflight works for cache api", %{conn: conn} do
     conn = options(conn, ~p"/api/cache/setdata")
     assert response(conn, 204)
     assert get_resp_header(conn, "access-control-allow-origin") == ["*"]
     assert get_resp_header(conn, "access-control-allow-methods") == ["GET,POST,OPTIONS"]
-  end
-
-  defp post_until_setdata_ok(conn, path, params, attempts \\ 150)
-
-  defp post_until_setdata_ok(_conn, _path, _params, 0),
-    do: flunk("setdata did not succeed while shard rehydrated")
-
-  defp post_until_setdata_ok(conn, path, params, attempts) do
-    conn = post(conn, path, params)
-
-    case conn.status do
-      200 ->
-        conn
-
-      500 ->
-        receive do
-        after
-          20 -> post_until_setdata_ok(build_conn(), path, params, attempts - 1)
-        end
-
-      other ->
-        flunk("unexpected status #{other} body=#{inspect(conn.resp_body)}")
-    end
-  end
-
-  defp post_until_ok(conn, path, params, attempts \\ 150)
-
-  defp post_until_ok(_conn, _path, _params, 0),
-    do: flunk("request did not succeed while shard rehydrated")
-
-  defp post_until_ok(conn, path, params, attempts) do
-    conn = post(conn, path, params)
-
-    case conn.status do
-      200 ->
-        conn
-
-      500 ->
-        receive do
-        after
-          20 -> post_until_ok(build_conn(), path, params, attempts - 1)
-        end
-
-      other ->
-        flunk("unexpected status #{other} body=#{inspect(conn.resp_body)}")
-    end
   end
 end

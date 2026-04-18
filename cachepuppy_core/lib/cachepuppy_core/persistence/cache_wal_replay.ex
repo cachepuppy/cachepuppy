@@ -3,6 +3,7 @@ defmodule CachePuppyCore.Persistence.CacheWalReplay do
 
   require Logger
 
+  alias CachePuppyCore.Persistence.CacheEntry
   alias CachePuppyCore.Persistence.CacheUtils
 
   @spec truncate_corrupt_tail(binary()) :: {list(), non_neg_integer()}
@@ -22,8 +23,13 @@ defmodule CachePuppyCore.Persistence.CacheWalReplay do
         {records, valid_bytes} = truncate_corrupt_tail(binary)
 
         Enum.each(records, fn
-          {:set, table_name, key, value, _ts} when is_binary(table_name) and is_binary(key) ->
-            :ets.insert(table, {{table_name, key}, value})
+          {:set, table_name, key, value, ts, ttl_ms}
+          when is_binary(table_name) and is_binary(key) and is_integer(ts) ->
+            entry = CacheEntry.from_wal(value, ts, ttl_ms)
+            :ets.insert(table, {{table_name, key}, entry})
+
+          {:delete, table_name, key, _ts} when is_binary(table_name) and is_binary(key) ->
+            :ets.delete(table, {table_name, key})
 
           _ ->
             :ok

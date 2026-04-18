@@ -6,6 +6,11 @@ export interface TopicStateResponse {
   servedByNode?: string;
 }
 
+export interface CacheSetDataOptions {
+  /** Time-to-live in milliseconds (optional). */
+  ttlMs?: number;
+}
+
 export interface Transport {
   connect(clientId: string): Promise<void>;
   disconnect(clientId: string): Promise<void>;
@@ -19,8 +24,15 @@ export interface Transport {
     options: TopicWebhookConfigOptions,
   ): Promise<void>;
   getState?(clientId: string, topic: string): Promise<Record<string, unknown>>;
-  setData?(clientId: string, table: string, key: string, value: unknown): Promise<unknown>;
+  setData?(
+    clientId: string,
+    table: string,
+    key: string,
+    value: unknown,
+    options?: CacheSetDataOptions,
+  ): Promise<unknown>;
   getData?(clientId: string, table: string, key: string): Promise<unknown>;
+  deleteData?(clientId: string, table: string, key: string): Promise<boolean>;
   /** Per-websocket private state on the fixed `session` channel (no room topic). */
   setSessionState?(clientId: string, payload: Record<string, unknown>): Promise<Record<string, unknown>>;
   getSessionState?(clientId: string): Promise<Record<string, unknown>>;

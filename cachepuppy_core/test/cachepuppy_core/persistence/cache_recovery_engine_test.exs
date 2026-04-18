@@ -1,6 +1,7 @@
 defmodule CachePuppyCore.Persistence.CacheRecoveryEngineTest do
   use ExUnit.Case, async: false
 
+  alias CachePuppyCore.Persistence.CacheEntry
   alias CachePuppyCore.Persistence.CacheRecoveryEngine
   alias CachePuppyCore.Persistence.CacheUtils
 
@@ -20,7 +21,9 @@ defmodule CachePuppyCore.Persistence.CacheRecoveryEngineTest do
     File.mkdir_p!(storage_dir)
 
     seed = :ets.new(:recovery_snapshot_only, [:set, :protected])
-    true = :ets.insert(seed, {{"users", "name"}, "beamline"})
+
+    true =
+      :ets.insert(seed, {{"users", "name"}, %CacheEntry{value: "beamline", expires_at_ms: nil}})
 
     :ok =
       :ets.tab2file(seed, String.to_charlist(CacheUtils.snapshot_path(storage_dir, shard_id)),
@@ -30,7 +33,10 @@ defmodule CachePuppyCore.Persistence.CacheRecoveryEngineTest do
     :ets.delete(seed)
 
     table = CacheRecoveryEngine.load_snapshot_then_replay(shard_id, storage_dir)
-    assert [{{"users", "name"}, "beamline"}] = :ets.lookup(table, {"users", "name"})
+
+    assert [{{"users", "name"}, %CacheEntry{value: "beamline", expires_at_ms: nil}}] =
+             :ets.lookup(table, {"users", "name"})
+
     :ets.delete(table)
   end
 
@@ -40,7 +46,7 @@ defmodule CachePuppyCore.Persistence.CacheRecoveryEngineTest do
     File.mkdir_p!(storage_dir)
 
     seed = :ets.new(:recovery_checkpoint_seed, [:set, :protected])
-    true = :ets.insert(seed, {{"users", "base"}, "v0"})
+    true = :ets.insert(seed, {{"users", "base"}, %CacheEntry{value: "v0", expires_at_ms: nil}})
 
     :ok =
       :ets.tab2file(seed, String.to_charlist(CacheUtils.snapshot_path(storage_dir, shard_id)),
@@ -61,17 +67,20 @@ defmodule CachePuppyCore.Persistence.CacheRecoveryEngineTest do
 
     File.write!(
       CacheUtils.wal_path(storage_dir, shard_id, 1),
-      encode_record({:set, "users", "old", "x", 1})
+      encode_record({:set, "users", "old", "x", 1, nil})
     )
 
     File.write!(
       CacheUtils.wal_path(storage_dir, shard_id, 2),
-      encode_record({:set, "users", "new", "y", 2})
+      encode_record({:set, "users", "new", "y", 2, nil})
     )
 
     table = CacheRecoveryEngine.load_snapshot_then_replay(shard_id, storage_dir)
     assert [] = :ets.lookup(table, {"users", "old"})
-    assert [{{"users", "new"}, "y"}] = :ets.lookup(table, {"users", "new"})
+
+    assert [{{"users", "new"}, %CacheEntry{value: "y", expires_at_ms: nil}}] =
+             :ets.lookup(table, {"users", "new"})
+
     :ets.delete(table)
   end
 
@@ -102,8 +111,8 @@ defmodule CachePuppyCore.Persistence.CacheRecoveryEngineTest do
   end
 
   test "truncate_corrupt_tail returns valid records and consumed bytes" do
-    record1 = encode_record({:set, "users", "k1", "v1", 1})
-    record2 = encode_record({:set, "users", "k2", "v2", 2})
+    record1 = encode_record({:set, "users", "k1", "v1", 1, nil})
+    record2 = encode_record({:set, "users", "k2", "v2", 2, nil})
     binary = record1 <> record2 <> <<1, 2, 3>>
 
     {records, consumed} = CacheRecoveryEngine.truncate_corrupt_tail(binary)
@@ -117,11 +126,14 @@ defmodule CachePuppyCore.Persistence.CacheRecoveryEngineTest do
     File.mkdir_p!(storage_dir)
 
     wal_path = CacheUtils.wal_path(storage_dir, shard_id, 1)
-    File.write!(wal_path, encode_record({:set, "users", "k1", "v1", 1}) <> <<1, 2, 3>>)
+    File.write!(wal_path, encode_record({:set, "users", "k1", "v1", 1, nil}) <> <<1, 2, 3>>)
     size_before = File.stat!(wal_path).size
 
     table = CacheRecoveryEngine.load_snapshot_then_replay(shard_id, storage_dir)
-    assert [{{"users", "k1"}, "v1"}] = :ets.lookup(table, {"users", "k1"})
+
+    assert [{{"users", "k1"}, %CacheEntry{value: "v1", expires_at_ms: nil}}] =
+             :ets.lookup(table, {"users", "k1"})
+
     :ets.delete(table)
 
     size_after = File.stat!(wal_path).size
@@ -136,16 +148,19 @@ defmodule CachePuppyCore.Persistence.CacheRecoveryEngineTest do
     with_recovery_limit(1, fn ->
       File.write!(
         CacheUtils.wal_path(storage_dir, shard_id, 1),
-        encode_record({:set, "users", "k", "v1", 1})
+        encode_record({:set, "users", "k", "v1", 1, nil})
       )
 
       File.write!(
         CacheUtils.wal_path(storage_dir, shard_id, 2),
-        encode_record({:set, "users", "k", "v2", 2})
+        encode_record({:set, "users", "k", "v2", 2, nil})
       )
 
       table = CacheRecoveryEngine.load_snapshot_then_replay(shard_id, storage_dir)
-      assert [{{"users", "k"}, "v1"}] = :ets.lookup(table, {"users", "k"})
+
+      assert [{{"users", "k"}, %CacheEntry{value: "v1", expires_at_ms: nil}}] =
+               :ets.lookup(table, {"users", "k"})
+
       :ets.delete(table)
     end)
   end
@@ -157,16 +172,19 @@ defmodule CachePuppyCore.Persistence.CacheRecoveryEngineTest do
 
     File.write!(
       CacheUtils.wal_path(storage_dir, shard_id, 2),
-      encode_record({:set, "users", "k", "v2", 2})
+      encode_record({:set, "users", "k", "v2", 2, nil})
     )
 
     File.write!(
       CacheUtils.wal_path(storage_dir, shard_id, 1),
-      encode_record({:set, "users", "k", "v1", 1})
+      encode_record({:set, "users", "k", "v1", 1, nil})
     )
 
     table = CacheRecoveryEngine.load_snapshot_then_replay(shard_id, storage_dir)
-    assert [{{"users", "k"}, "v2"}] = :ets.lookup(table, {"users", "k"})
+
+    assert [{{"users", "k"}, %CacheEntry{value: "v2", expires_at_ms: nil}}] =
+             :ets.lookup(table, {"users", "k"})
+
     :ets.delete(table)
   end
 
@@ -206,9 +224,6 @@ defmodule CachePuppyCore.Persistence.CacheRecoveryEngineTest do
   end
 
   defp unique_storage_dir(label) do
-    Path.join(
-      System.tmp_dir!(),
-      "cache_recovery_engine_#{label}_#{System.unique_integer([:positive])}"
-    )
+    CachePuppyCore.TestTmpDir.path("cache_recovery_engine_#{label}")
   end
 end
