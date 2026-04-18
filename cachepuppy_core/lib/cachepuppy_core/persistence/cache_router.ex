@@ -1,9 +1,9 @@
-defmodule CachePuppyCore.CacheRouter do
+defmodule CachePuppyCore.Persistence.CacheRouter do
   @moduledoc false
 
   require Logger
-  alias CachePuppyCore.CacheConfig
-  alias CachePuppyCore.CacheShardRead
+  alias CachePuppyCore.Persistence.CacheConfig
+  alias CachePuppyCore.Persistence.CacheShardRead
 
   def setdata(table, key, value) when is_binary(table) and is_binary(key) do
     with {:ok, shard_id} <- shard_id_for_entry(table, key),
@@ -137,7 +137,7 @@ defmodule CachePuppyCore.CacheRouter do
 
     case Horde.DynamicSupervisor.start_child(
            CachePuppyCore.CacheShardSupervisor,
-           {CachePuppyCore.CacheShardProcess, child_spec}
+           {CachePuppyCore.Persistence.CacheShardProcess, child_spec}
          ) do
       {:ok, pid} -> {:ok, pid}
       {:error, {:already_started, pid}} -> {:ok, pid}

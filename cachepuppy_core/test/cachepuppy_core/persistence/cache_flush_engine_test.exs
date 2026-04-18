@@ -1,7 +1,7 @@
-defmodule CachePuppyCore.CacheFlushEngineTest do
+defmodule CachePuppyCore.Persistence.CacheFlushEngineTest do
   use ExUnit.Case, async: false
 
-  alias CachePuppyCore.CacheShardProcess
+  alias CachePuppyCore.Persistence.CacheShardProcess
   alias CachePuppyCore.Persistence.CacheFlushEngine
   alias CachePuppyCore.Persistence.CacheUtils
 

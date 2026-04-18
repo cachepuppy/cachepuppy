@@ -1,4 +1,4 @@
-defmodule CachePuppyCore.CacheConfig do
+defmodule CachePuppyCore.Persistence.CacheConfig do
   @moduledoc false
 
   @default_shard_count 64

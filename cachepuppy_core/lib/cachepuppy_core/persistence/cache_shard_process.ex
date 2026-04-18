@@ -1,10 +1,10 @@
-defmodule CachePuppyCore.CacheShardProcess do
+defmodule CachePuppyCore.Persistence.CacheShardProcess do
   @moduledoc false
 
   use GenServer
   require Logger
-  alias CachePuppyCore.CacheConfig
-  alias CachePuppyCore.CacheShardRead
+  alias CachePuppyCore.Persistence.CacheConfig
+  alias CachePuppyCore.Persistence.CacheShardRead
   alias CachePuppyCore.Persistence.CacheFlushEngine
   alias CachePuppyCore.Persistence.CacheFlushEngine.FlushState
   alias CachePuppyCore.Persistence.CacheOwnerMeta

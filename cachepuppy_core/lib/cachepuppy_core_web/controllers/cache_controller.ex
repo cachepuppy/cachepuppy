@@ -1,7 +1,7 @@
 defmodule CachePuppyCoreWeb.CacheController do
   use CachePuppyCoreWeb, :controller
 
-  alias CachePuppyCore.CacheRouter
+  alias CachePuppyCore.Persistence.CacheRouter
 
   def setdata(conn, %{"table" => table, "key" => key, "value" => value})
       when is_binary(table) and is_binary(key) do

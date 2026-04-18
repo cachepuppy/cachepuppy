@@ -10,7 +10,7 @@ defmodule CachePuppyCore.Application do
     topologies = Application.get_env(:libcluster, :topologies, [])
 
     quorum_guard_children =
-      if CachePuppyCore.CacheConfig.quorum_guard_enabled?() do
+      if CachePuppyCore.Persistence.CacheConfig.quorum_guard_enabled?() do
         [{CachePuppyCore.ClusterQuorumGuard, []}]
       else
         []

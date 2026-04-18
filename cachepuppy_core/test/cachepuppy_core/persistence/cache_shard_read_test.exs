@@ -1,8 +1,8 @@
-defmodule CachePuppyCore.CacheShardReadTest do
+defmodule CachePuppyCore.Persistence.CacheShardReadTest do
   use ExUnit.Case, async: false
 
-  alias CachePuppyCore.CacheShardProcess
-  alias CachePuppyCore.CacheShardRead
+  alias CachePuppyCore.Persistence.CacheShardProcess
+  alias CachePuppyCore.Persistence.CacheShardRead
 
   test "fast_get returns rehydrating while shard metadata is not ready" do
     shard_id = 101

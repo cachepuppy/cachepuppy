@@ -1,4 +1,4 @@
-defmodule CachePuppyCore.CacheRecoveryEngineTest do
+defmodule CachePuppyCore.Persistence.CacheRecoveryEngineTest do
   use ExUnit.Case, async: false
 
   alias CachePuppyCore.Persistence.CacheRecoveryEngine
