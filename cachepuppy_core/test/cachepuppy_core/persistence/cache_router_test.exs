@@ -1,7 +1,13 @@
 defmodule CachePuppyCore.Persistence.CacheRouterTest do
   use ExUnit.Case, async: false
 
+  alias CachePuppyCore.CacheShardSync
   alias CachePuppyCore.Persistence.CacheRouter
+
+  setup do
+    :ok = CacheShardSync.reset_horde_shards!()
+    :ok
+  end
 
   test "shard hashing is deterministic" do
     Application.put_env(:cachepuppy_core, :cache_shard_count, 32)
@@ -16,7 +22,7 @@ defmodule CachePuppyCore.Persistence.CacheRouterTest do
 
   test "setdata and getdata roundtrip through shard routing" do
     storage_dir =
-      Path.join(System.tmp_dir!(), "cache_router_#{System.unique_integer([:positive])}")
+      CachePuppyCore.TestTmpDir.path("cache_router")
 
     Application.put_env(:cachepuppy_core, :cache_shard_count, 16)
     Application.put_env(:cachepuppy_core, :cache_flush_interval_ms, 30_000)
@@ -33,9 +39,13 @@ defmodule CachePuppyCore.Persistence.CacheRouterTest do
 
     table = "users"
 
-    assert_eventually_ok(fn -> CacheRouter.setdata(table, key, value) end, value)
-    assert_eventually_ok(fn -> CacheRouter.getdata(table, key) end, value)
-    assert_eventually_ok(fn -> CacheRouter.getdata(table, "#{key}_missing") end, nil)
+    :ok = CacheShardSync.sync!(table, key)
+    assert {:ok, ^value} = CacheRouter.setdata(table, key, value)
+    assert {:ok, ^value} = CacheRouter.getdata(table, key)
+
+    missing_key = "#{key}_missing"
+    :ok = CacheShardSync.sync!(table, missing_key)
+    assert {:ok, nil} = CacheRouter.getdata(table, missing_key)
   end
 
   test "single-node cluster resolves owner to current node via horde placement" do
@@ -43,28 +53,51 @@ defmodule CachePuppyCore.Persistence.CacheRouterTest do
     assert owner == node()
   end
 
-  defp assert_eventually_ok(fun, expected, attempts \\ 100)
-  defp assert_eventually_ok(_fun, _expected, 0), do: flunk("operation stayed in rehydrating")
+  test "deldata removes key and is idempotent" do
+    storage_dir =
+      CachePuppyCore.TestTmpDir.path("cache_router_del")
 
-  defp assert_eventually_ok(fun, expected, attempts) do
-    case fun.() do
-      {:ok, ^expected} ->
-        :ok
+    Application.put_env(:cachepuppy_core, :cache_shard_count, 16)
+    Application.put_env(:cachepuppy_core, :cache_flush_interval_ms, 30_000)
+    Application.put_env(:cachepuppy_core, :cache_storage_dir, storage_dir)
 
-      {:error, :rehydrating} ->
-        receive do
-        after
-          10 -> assert_eventually_ok(fun, expected, attempts - 1)
-        end
+    on_exit(fn ->
+      Application.delete_env(:cachepuppy_core, :cache_shard_count)
+      Application.delete_env(:cachepuppy_core, :cache_flush_interval_ms)
+      Application.delete_env(:cachepuppy_core, :cache_storage_dir)
+    end)
 
-      {:error, :stale_owner} ->
-        receive do
-        after
-          10 -> assert_eventually_ok(fun, expected, attempts - 1)
-        end
+    table = "users"
+    key = "del_key_#{System.unique_integer([:positive])}"
+    value = "gone"
 
-      other ->
-        flunk("unexpected response: #{inspect(other)}")
-    end
+    :ok = CacheShardSync.sync!(table, key)
+    assert {:ok, ^value} = CacheRouter.setdata(table, key, value)
+    assert {:ok, true} = CacheRouter.deldata(table, key)
+    assert {:ok, false} = CacheRouter.deldata(table, key)
+    assert {:ok, nil} = CacheRouter.getdata(table, key)
+  end
+
+  test "setdata with ttl_ms option roundtrips get" do
+    storage_dir =
+      CachePuppyCore.TestTmpDir.path("cache_router_ttl")
+
+    Application.put_env(:cachepuppy_core, :cache_shard_count, 16)
+    Application.put_env(:cachepuppy_core, :cache_flush_interval_ms, 30_000)
+    Application.put_env(:cachepuppy_core, :cache_storage_dir, storage_dir)
+
+    on_exit(fn ->
+      Application.delete_env(:cachepuppy_core, :cache_shard_count)
+      Application.delete_env(:cachepuppy_core, :cache_flush_interval_ms)
+      Application.delete_env(:cachepuppy_core, :cache_storage_dir)
+    end)
+
+    table = "users"
+    key = "ttl_key_#{System.unique_integer([:positive])}"
+    value = "with_ttl"
+
+    :ok = CacheShardSync.sync!(table, key)
+    assert {:ok, ^value} = CacheRouter.setdata(table, key, value, ttl_ms: 3_600_000)
+    assert {:ok, ^value} = CacheRouter.getdata(table, key)
   end
 end

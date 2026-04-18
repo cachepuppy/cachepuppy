@@ -11,6 +11,8 @@ defmodule CachePuppyCore.Persistence.CacheConfig do
   @default_recovery_max_segments 1_024
   @default_quorum_poll_interval_ms 2_000
   @default_quorum_grace_ms 20_000
+  @default_ttl_sweep_interval_ms 10_000
+  @default_ttl_ms_max 86_400_000 * 30
 
   def shard_count do
     Application.get_env(:cachepuppy_core, :cache_shard_count, @default_shard_count)
@@ -86,5 +88,17 @@ defmodule CachePuppyCore.Persistence.CacheConfig do
 
   def quorum_guard_enabled? do
     Application.get_env(:cachepuppy_core, :cache_quorum_guard_enabled, true)
+  end
+
+  def ttl_sweep_interval_ms do
+    Application.get_env(
+      :cachepuppy_core,
+      :cache_ttl_sweep_interval_ms,
+      @default_ttl_sweep_interval_ms
+    )
+  end
+
+  def ttl_ms_max do
+    Application.get_env(:cachepuppy_core, :cache_ttl_ms_max, @default_ttl_ms_max)
   end
 end

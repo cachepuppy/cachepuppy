@@ -1,8 +1,7 @@
 import { createEnvelope, isEnvelope } from "./protocol.js";
 import { MockTransport } from "./transport/mockTransport.js";
 import { PhoenixTransport } from "./transport/phoenixTransport.js";
-import type { Transport } from "./transport/transport.js";
-import type { TopicStateResponse } from "./transport/transport.js";
+import type { CacheSetDataOptions, Transport, TopicStateResponse } from "./transport/transport.js";
 import type {
   CachePuppyEnvelope,
   ClientEventMap,
@@ -194,12 +193,12 @@ export class CachePuppyClient {
     return { state };
   }
 
-  async setData(table: string, key: string, value: unknown): Promise<unknown> {
+  async setData(table: string, key: string, value: unknown, options?: CacheSetDataOptions): Promise<unknown> {
     if (!this.transport.setData) {
       throw new Error("TransportError: setData is not supported by this transport");
     }
 
-    return this.transport.setData(this.clientId, table, key, value);
+    return this.transport.setData(this.clientId, table, key, value, options);
   }
 
   async getData(table: string, key: string): Promise<unknown> {
@@ -208,6 +207,14 @@ export class CachePuppyClient {
     }
 
     return this.transport.getData(this.clientId, table, key);
+  }
+
+  async deleteData(table: string, key: string): Promise<boolean> {
+    if (!this.transport.deleteData) {
+      throw new Error("TransportError: deleteData is not supported by this transport");
+    }
+
+    return this.transport.deleteData(this.clientId, table, key);
   }
 
   async setSessionState(payload: Record<string, unknown>): Promise<Record<string, unknown>> {

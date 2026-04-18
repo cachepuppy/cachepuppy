@@ -42,17 +42,37 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
   @spec close(%FlushState{}) :: %FlushState{}
   def close(%FlushState{} = state), do: close_wal(state)
 
-  @spec persist_set(%FlushState{}, String.t(), String.t(), term()) ::
-          {:ok, %FlushState{}} | {:error, term()}
-  def persist_set(%FlushState{} = flush, table, key, value) do
+  @spec persist_set(%FlushState{}, String.t(), String.t(), term(), nil | pos_integer()) ::
+          {:ok, %FlushState{}, pos_integer()} | {:error, term()}
+  def persist_set(%FlushState{} = flush, table, key, value, ttl_ms \\ nil) do
     if owner_valid?(flush.shard_id, flush.owner_epoch) do
-      case append_set(flush, table, key, value) |> maybe_rotate_result() do
+      case append_set(flush, table, key, value, ttl_ms) |> maybe_rotate_result() do
+        {:ok, {new_flush, ts_ms}} ->
+          {:ok, new_flush, ts_ms}
+
+        {:error, reason} ->
+          Logger.warning(
+            "cache_flush persist_set_failed shard_id=#{flush.shard_id} node=#{node()} reason=#{inspect(reason)}"
+          )
+
+          {:error, reason}
+      end
+    else
+      {:error, :stale_owner}
+    end
+  end
+
+  @spec persist_delete(%FlushState{}, String.t(), String.t()) ::
+          {:ok, %FlushState{}} | {:error, term()}
+  def persist_delete(%FlushState{} = flush, table, key) do
+    if owner_valid?(flush.shard_id, flush.owner_epoch) do
+      case append_delete(flush, table, key) |> maybe_rotate_result() do
         {:ok, new_flush} ->
           {:ok, new_flush}
 
         {:error, reason} ->
           Logger.warning(
-            "cache_flush persist_set_failed shard_id=#{flush.shard_id} node=#{node()} reason=#{inspect(reason)}"
+            "cache_flush persist_delete_failed shard_id=#{flush.shard_id} node=#{node()} reason=#{inspect(reason)}"
           )
 
           {:error, reason}
@@ -142,8 +162,26 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
     %{state | current_wal_fd: nil}
   end
 
-  defp append_set(state, table, key, value) do
-    record = encode_record({:set, table, key, value, System.system_time(:millisecond)})
+  defp append_set(state, table, key, value, ttl_ms) do
+    ts_ms = System.system_time(:millisecond)
+    record = encode_record({:set, table, key, value, ts_ms, ttl_ms})
+
+    with :ok <- :file.write(state.current_wal_fd, record) do
+      bytes = byte_size(record)
+
+      {:ok,
+       {%{
+          state
+          | current_wal_bytes: state.current_wal_bytes + bytes,
+            wal_bytes_since_snapshot: state.wal_bytes_since_snapshot + bytes,
+            pending_sync_bytes: state.pending_sync_bytes + bytes
+        }, ts_ms}}
+    end
+  end
+
+  defp append_delete(state, table, key) do
+    ts_ms = System.system_time(:millisecond)
+    record = encode_record({:delete, table, key, ts_ms})
 
     with :ok <- :file.write(state.current_wal_fd, record) do
       bytes = byte_size(record)
@@ -362,6 +400,13 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
     end
   end
 
-  defp maybe_rotate_result({:ok, state}), do: maybe_rotate(state)
+  defp maybe_rotate_result({:ok, {%FlushState{} = state, ts_ms}}) do
+    case maybe_rotate(state) do
+      {:ok, rotated} -> {:ok, {rotated, ts_ms}}
+      {:error, _} = err -> err
+    end
+  end
+
+  defp maybe_rotate_result({:ok, %FlushState{} = state}), do: maybe_rotate(state)
   defp maybe_rotate_result(error), do: error
 end

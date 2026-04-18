@@ -53,10 +53,7 @@ defmodule CachePuppyCore.Persistence.CacheShardReadTest do
   defp restore_env(key, value), do: Application.put_env(:cachepuppy_core, key, value)
 
   defp unique_storage_dir(label) do
-    Path.join(
-      System.tmp_dir!(),
-      "cache_shard_read_#{label}_#{System.unique_integer([:positive])}"
-    )
+    CachePuppyCore.TestTmpDir.path("cache_shard_read_#{label}")
   end
 
   defp wait_until_ready(pid, attempts \\ 200)

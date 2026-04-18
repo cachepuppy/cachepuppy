@@ -1,6 +1,7 @@
 defmodule CachePuppyCore.Persistence.CacheFlushEngineTest do
   use ExUnit.Case, async: false
 
+  alias CachePuppyCore.Persistence.CacheEntry
   alias CachePuppyCore.Persistence.CacheShardProcess
   alias CachePuppyCore.Persistence.CacheFlushEngine
   alias CachePuppyCore.Persistence.CacheUtils
@@ -102,15 +103,24 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngineTest do
     storage_dir = unique_storage_dir("rotate")
 
     with_cache_config(storage_dir, 64, fn ->
-      write_owner_meta(storage_dir, shard_id, 11)
-      pid = start_shard(shard_id)
-      wait_until_ready(pid)
+      old_flush_ms = Application.get_env(:cachepuppy_core, :cache_flush_interval_ms)
+      Application.put_env(:cachepuppy_core, :cache_flush_interval_ms, 86_400_000)
+      set_snapshot_blocked(true)
 
-      assert {:ok, _} = GenServer.call(pid, {:set, "users", "k1", String.duplicate("a", 80)})
-      send(pid, :flush_tick)
-      state = :sys.get_state(pid)
-      assert state.flush.current_seq == 2
-      assert File.exists?(CacheUtils.wal_path(storage_dir, shard_id, 2))
+      try do
+        write_owner_meta(storage_dir, shard_id, 11)
+        pid = start_shard(shard_id)
+        wait_until_ready(pid)
+
+        assert {:ok, _} = GenServer.call(pid, {:set, "users", "k1", String.duplicate("a", 80)})
+        send(pid, :flush_tick)
+        state = :sys.get_state(pid)
+        assert state.flush.current_seq == 2
+        assert File.exists?(CacheUtils.wal_path(storage_dir, shard_id, 2))
+      after
+        set_snapshot_blocked(false)
+        restore_env(:cache_flush_interval_ms, old_flush_ms)
+      end
     end)
   end
 
@@ -218,7 +228,10 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngineTest do
 
         snap = :ets.file2tab(String.to_charlist(CacheUtils.snapshot_path(storage_dir, shard_id)))
         assert {:ok, tid} = snap
-        assert [{{"users", "real"}, "from_wal"}] == :ets.lookup(tid, {"users", "real"})
+
+        assert [{{"users", "real"}, %CacheEntry{value: "from_wal", expires_at_ms: nil}}] ==
+                 :ets.lookup(tid, {"users", "real"})
+
         :ets.delete(tid)
       end)
     end)
@@ -311,10 +324,7 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngineTest do
   defp restore_env(key, value), do: Application.put_env(:cachepuppy_core, key, value)
 
   defp unique_storage_dir(label) do
-    Path.join(
-      System.tmp_dir!(),
-      "cache_flush_engine_#{label}_#{System.unique_integer([:positive])}"
-    )
+    CachePuppyCore.TestTmpDir.path("cache_flush_engine_#{label}")
   end
 
   defp start_shard(shard_id) do

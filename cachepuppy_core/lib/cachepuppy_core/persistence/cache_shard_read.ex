@@ -1,6 +1,8 @@
 defmodule CachePuppyCore.Persistence.CacheShardRead do
   @moduledoc false
 
+  alias CachePuppyCore.Persistence.CacheEntry
+
   @type shard_meta :: %{
           shard_id: non_neg_integer(),
           table: :ets.tid(),
@@ -29,6 +31,11 @@ defmodule CachePuppyCore.Persistence.CacheShardRead do
   end
 
   def fast_get(_shard_id, _table, _key), do: {:error, :invalid_table_or_key}
+
+  @spec shard_meta(non_neg_integer()) :: shard_meta() | :undefined
+  def shard_meta(shard_id) when is_integer(shard_id) do
+    :persistent_term.get(meta_key(shard_id), :undefined)
+  end
 
   @spec publish_rehydrating(non_neg_integer(), :ets.tid(), non_neg_integer()) :: :ok
   def publish_rehydrating(shard_id, table_tid, owner_epoch)
@@ -76,12 +83,20 @@ defmodule CachePuppyCore.Persistence.CacheShardRead do
 
   defp lookup_value(table_tid, table, key) do
     storage_key = {table, key}
+    now = System.system_time(:millisecond)
 
     try do
       value =
         case :ets.lookup(table_tid, storage_key) do
-          [{^storage_key, found}] -> found
-          [] -> nil
+          [{^storage_key, %CacheEntry{} = entry}] ->
+            if is_integer(entry.expires_at_ms) and entry.expires_at_ms <= now do
+              nil
+            else
+              entry.value
+            end
+
+          [] ->
+            nil
         end
 
       {:ok, value}

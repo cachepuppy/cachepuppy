@@ -1,10 +1,12 @@
 defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
   use ExUnit.Case, async: false
 
+  alias CachePuppyCore.Persistence.CacheEntry
   alias CachePuppyCore.Persistence.CacheFlushEngine
   alias CachePuppyCore.Persistence.CacheUtils
   alias CachePuppyCore.Persistence.CacheShardRead
   alias CachePuppyCore.Persistence.CacheShardProcess
+  alias CachePuppyCore.Persistence.CacheShardTtlSweeper
 
   test "rehydrates from snapshot and WAL on startup" do
     shard_id = 7
@@ -14,7 +16,13 @@ defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
       File.mkdir_p!(storage_dir)
 
       table = :ets.new(:rehydrate_seed, [:set, :protected])
-      true = :ets.insert(table, {{"users", "name"}, "beamline"})
+
+      true =
+        :ets.insert(
+          table,
+          {{"users", "name"}, %CacheEntry{value: "beamline", expires_at_ms: nil}}
+        )
+
       snapshot_path = CacheUtils.snapshot_path(storage_dir, shard_id)
       snapshot_tmp = CacheUtils.snapshot_temp_path(storage_dir, shard_id)
       :ok = :ets.tab2file(table, String.to_charlist(snapshot_tmp), sync: true)
@@ -25,7 +33,7 @@ defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
 
       {:ok, flush} = CacheFlushEngine.open(shard_id, 1)
 
-      {:ok, flush} = CacheFlushEngine.persist_set(flush, "users", "city", "blr")
+      {:ok, flush, _} = CacheFlushEngine.persist_set(flush, "users", "city", "blr")
       _ = CacheFlushEngine.close(flush)
 
       pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
@@ -80,6 +88,32 @@ defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
     end)
   end
 
+  test "delete removes key and idempotent second delete" do
+    shard_id = 14
+    storage_dir = unique_storage_dir("delete_key")
+
+    with_cache_config(storage_dir, 1_048_576, 100_000, fn ->
+      pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
+      wait_until_ready(pid)
+      assert {:ok, "x"} = GenServer.call(pid, {:set, "users", "k1", "x"})
+      assert {:ok, true} = GenServer.call(pid, {:delete, "users", "k1"})
+      assert {:ok, false} = GenServer.call(pid, {:delete, "users", "k1"})
+      assert {:ok, nil} = CacheShardRead.fast_get(shard_id, "users", "k1")
+    end)
+  end
+
+  test "ttl sweeper run_once does not crash when shard is ready" do
+    shard_id = 15
+    storage_dir = unique_storage_dir("sweeper_safe")
+
+    with_cache_config(storage_dir, 1_048_576, 100_000, fn ->
+      pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
+      wait_until_ready(pid)
+      sweeper = :sys.get_state(pid).ttl_sweeper_pid
+      assert :ok = CacheShardTtlSweeper.run_once(sweeper)
+    end)
+  end
+
   defp write_owner_meta(storage_dir, shard_id, epoch) do
     File.mkdir_p!(storage_dir)
 
@@ -116,10 +150,7 @@ defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
   defp restore_env(key, value), do: Application.put_env(:cachepuppy_core, key, value)
 
   defp unique_storage_dir(label) do
-    Path.join(
-      System.tmp_dir!(),
-      "cache_shard_process_#{label}_#{System.unique_integer([:positive])}"
-    )
+    CachePuppyCore.TestTmpDir.path("cache_shard_process_#{label}")
   end
 
   defp wait_until_ready(pid, attempts \\ 200)

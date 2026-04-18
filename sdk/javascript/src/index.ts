@@ -10,3 +10,4 @@ export type {
   TopicHandler,
   TopicWebhookConfigOptions,
 } from "./types.js";
+export type { CacheSetDataOptions } from "./transport/transport.js";
