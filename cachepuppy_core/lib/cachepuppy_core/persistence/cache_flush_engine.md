@@ -5,106 +5,65 @@ This document explains each function in `CachePuppyCore.Persistence.CacheFlushEn
 ## Quick Flow (Gist First)
 
 1. A cache write comes into a shard process.
-2. The shard appends that write to its WAL file immediately.
-3. The shard updates ETS in-memory state.
-4. On periodic maintenance ticks, WAL data is synced to disk and rotated into new segment files when large.
-5. Snapshot checks run infrequently; when thresholds are met, a background snapshot of ETS is written.
-6. After snapshot success, a checkpoint is written and older WAL segments are pruned.
-7. On restart, the shard loads snapshot first and then replays WAL records after the checkpoint to catch up.
-8. If WAL tail bytes are corrupted/incomplete (for example after crash), only the valid prefix is replayed and the bad tail is truncated.
+2. The shard issues a synchronous `GenServer.call` to the flush engine so the WAL append completes before ETS is updated.
+3. On periodic maintenance ticks, WAL data is synced to disk and rotated into new segment files when large.
+4. Snapshot checks run infrequently; when thresholds are met, the engine syncs, rolls to a new WAL segment, then a background task materializes `snapshot.ets` by loading the previous snapshot (if any) and replaying closed WAL segments from the checkpoint through the rolled-off segment.
+5. After snapshot success, a checkpoint is written and older WAL segments are pruned.
+6. On restart, the shard loads snapshot first and then replays WAL records after the checkpoint to catch up.
+7. If WAL tail bytes are corrupted/incomplete (for example after crash), only the valid prefix is replayed and the bad tail is truncated (recovery path).
 
 ## Overview
 
 `CacheFlushEngine` manages shard-local flush persistence with:
-- WAL append and periodic sync
+
+- WAL append (via `handle_call` / `persist_set`) and periodic sync
 - WAL segment rotation
-- Snapshot writing and checkpointing
+- WAL-derived snapshot writing and checkpointing
 
 The engine struct stores runtime state such as current WAL segment, open file descriptor, sync bookkeeping, and snapshot progress hints.
 
 ## Public Functions
 
 ### `init/1`
-- Reads dynamic option: `:shard_id`.
+
+- Reads dynamic option: `:shard_id`, `:table`, `:owner_epoch`, snapshot thresholds.
 - Reads static settings from `CacheConfig` (storage dir, WAL segment size).
 - Ensures the storage directory exists.
 - Detects the latest WAL segment and byte size.
 - Opens that segment in append mode and initializes engine state.
-- Returns `{:ok, engine}`.
+- Schedules periodic flush ticks.
 
-### `close/1`
-- If no WAL file is open, returns state unchanged.
-- Otherwise syncs and closes the current WAL file descriptor.
-- Returns updated engine with `current_wal_fd: nil`.
+### `persist_set/4`
 
-### `append_set/4`
-- Encodes one write operation (`{:set, table, key, value, ts}`) as a length-prefixed binary record.
-- Appends the record to current WAL file.
-- Updates in-memory byte counters:
-  - `current_wal_bytes`
-  - `wal_bytes_since_snapshot`
-  - `pending_sync_bytes`
-- Returns `{:ok, updated_engine}` or file write error.
+- `GenServer.call` handler: when ownership metadata is valid, encodes and appends one `{:set, table, key, value, ts}` record, then may rotate if the segment exceeds the configured max size.
+- Returns `:ok` or `{:error, reason}` (including `{:error, :stale_owner}` when ownership is invalid).
+- Does not fsync on every append; pending bytes are synced on `:flush_tick`.
 
-### `maybe_sync/1`
-- No-op when `pending_sync_bytes` is `0`.
-- Calls `:file.sync/1` whenever there are pending WAL bytes.
-- Resets pending-sync counters on success.
-- Returns `{:ok, engine}` or `{:error, reason}`.
+### `terminate/2`
 
-### `maybe_rotate/1`
-- Checks if current segment exceeds `CacheConfig.wal_segment_max_bytes/0`.
-- If yes:
-  - syncs and closes current segment
-  - increments segment sequence
-  - opens new segment file
-  - resets per-segment counters
-- Returns `{:ok, engine}` or file error.
+- Syncs and closes the WAL file descriptor.
 
-### `should_snapshot?/3`
-- Returns `true` only when both are met:
-  - `wal_bytes_since_snapshot >= snapshot_min_wal_bytes`
-  - elapsed time since `last_snapshot_at_ms >= snapshot_interval_ms`
+## Internal behaviour
 
-### `mark_snapshot_started/1`
-- Updates `last_snapshot_at_ms` to current timestamp.
-- Used to avoid duplicate back-to-back snapshot starts.
+### Maintenance (`:flush_tick`)
 
-### `snapshot_cutoff_seq/1`
-- Returns current WAL segment sequence.
-- Used as the snapshot checkpoint boundary for pruning.
+- `maybe_sync` then `maybe_rotate` when the owner is still valid.
 
-### `finalize_snapshot/2`
-- Writes checkpoint metadata (`snapshot_cutoff_seq`, `updated_at_ms`).
-- Prunes WAL segments older than cutoff.
-- Resets `wal_bytes_since_snapshot`.
-- Returns `{:ok, updated_engine}`.
+### Snapshots
 
-### `write_snapshot/2`
-- Writes ETS table to temp snapshot via `:ets.tab2file(..., sync: true)`.
-- Atomically promotes temp snapshot with `File.rename/2`.
-- Returns `:ok` or error tuple.
+- When allowed and thresholds are met: `maybe_sync`, then a forced WAL segment roll so all durable data through the previous segment is in closed files.
+- A `Task` runs `CacheWalReplay.materialize_snapshot_from_wal/4` (checkpoint from disk, closed segment range), then `finalize_snapshot/2` writes the checkpoint and prunes older WAL segments.
 
-## Internal Modules
+## Related modules
 
 ### `CachePuppyCore.Persistence.CacheUtils`
-- Owns shared helpers for path conventions and WAL segment listing.
+
+- Path conventions and WAL segment listing.
+
+### `CachePuppyCore.Persistence.CacheWalReplay`
+
+- WAL decode, replay into an ETS table, optional tail truncation on disk, and snapshot materialization from WAL + prior snapshot.
 
 ### `CachePuppyCore.Persistence.CacheRecoveryEngine`
-- Owns snapshot + WAL replay flow and tail-corruption truncation logic.
 
-## Private Functions
-
-### `encode_record/1`
-- Serializes term and prefixes payload length as 32-bit unsigned integer.
-
-### `latest_wal_segment/2`
-- Finds newest WAL segment and size.
-- Defaults to `{1, 0}` if no WAL exists.
-
-### `prune_wal_segments/3`
-- Removes WAL segment files where `seq < cutoff_seq`.
-
-### `write_term_file/2`
-- Writes erlang term to `path.tmp` then renames to final path.
-- Used for checkpoint atomicity.
+- Loads `snapshot.ets` then replays WAL from the checkpoint onward (uses `CacheWalReplay`).

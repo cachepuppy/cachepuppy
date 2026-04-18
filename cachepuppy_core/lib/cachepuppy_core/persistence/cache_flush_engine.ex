@@ -6,7 +6,9 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
 
   alias CachePuppyCore.CacheConfig
   alias CachePuppyCore.Persistence.CacheOwnerMeta
+  alias CachePuppyCore.Persistence.CacheRecoveryEngine
   alias CachePuppyCore.Persistence.CacheUtils
+  alias CachePuppyCore.Persistence.CacheWalReplay
 
   defmodule ProcessState do
     @moduledoc false
@@ -31,9 +33,9 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
     GenServer.start_link(__MODULE__, opts)
   end
 
-  @spec persist_set(pid(), String.t(), String.t(), term()) :: :ok
+  @spec persist_set(pid(), String.t(), String.t(), term()) :: :ok | {:error, term()}
   def persist_set(pid, table, key, value) do
-    GenServer.cast(pid, {:persist_set, table, key, value})
+    GenServer.call(pid, {:persist_set, table, key, value})
   end
 
   @impl true
@@ -64,13 +66,22 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
   end
 
   @impl true
-  def handle_cast({:persist_set, table, key, value}, state) do
-    state =
-      with_valid_owner(state, fn s ->
-        append_set(s, table, key, value) |> maybe_rotate_result()
-      end)
+  def handle_call({:persist_set, table, key, value}, _from, state) do
+    if owner_valid?(state) do
+      case append_set(state, table, key, value) |> maybe_rotate_result() do
+        {:ok, new_state} ->
+          {:reply, :ok, new_state}
 
-    {:noreply, state}
+        {:error, reason} ->
+          Logger.warning(
+            "cache_flush persist_set_failed shard_id=#{state.shard_id} node=#{node()} reason=#{inspect(reason)}"
+          )
+
+          {:reply, {:error, reason}, state}
+      end
+    else
+      {:reply, {:error, :stale_owner}, state}
+    end
   end
 
   @impl true
@@ -207,17 +218,6 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
     {:ok, %{state | wal_bytes_since_snapshot: 0}}
   end
 
-  defp write_snapshot(table, shard_id) do
-    storage_dir = CacheConfig.storage_dir()
-    tmp_path = CacheUtils.snapshot_temp_path(storage_dir, shard_id)
-    final_path = CacheUtils.snapshot_path(storage_dir, shard_id)
-
-    with :ok <- :ets.tab2file(table, String.to_charlist(tmp_path), sync: true),
-         :ok <- File.rename(tmp_path, final_path) do
-      :ok
-    end
-  end
-
   defp encode_record(term) do
     payload = :erlang.term_to_binary(term)
     <<byte_size(payload)::unsigned-integer-size(32), payload::binary>>
@@ -254,29 +254,96 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
 
   defp maybe_start_snapshot(state) do
     if snapshot_allowed?() and owner_valid?(state) and should_snapshot?(state) do
-      cutoff_seq = state.current_seq
-      started_state = %{state | last_snapshot_at_ms: System.system_time(:millisecond)}
-      table = state.table
-      shard_id = state.shard_id
+      storage_dir = CacheConfig.storage_dir()
+      checkpoint_seq = CacheRecoveryEngine.read_checkpoint_seq(storage_dir, state.shard_id)
 
-      task =
-        Task.Supervisor.async_nolink(CachePuppyCore.FlushTaskSupervisor, fn ->
-          {:snapshot_done, write_snapshot(table, shard_id), cutoff_seq}
-        end)
+      case prepare_snapshot_wal_boundary(state) do
+        {:ok, state_after} ->
+          included_seq = state_after.current_seq - 1
+          finalize_cutoff = state_after.current_seq
+          started_state = %{state_after | last_snapshot_at_ms: System.system_time(:millisecond)}
+          shard_id = state.shard_id
 
-      %{started_state | snapshot_task_ref: task.ref}
+          task =
+            Task.Supervisor.async_nolink(CachePuppyCore.FlushTaskSupervisor, fn ->
+              result =
+                CacheWalReplay.materialize_snapshot_from_wal(
+                  storage_dir,
+                  shard_id,
+                  checkpoint_seq,
+                  included_seq
+                )
+
+              {:snapshot_done, result, finalize_cutoff}
+            end)
+
+          %{started_state | snapshot_task_ref: task.ref}
+
+        {:error, reason} ->
+          Logger.warning(
+            "cache_snapshot prepare_failed shard_id=#{state.shard_id} node=#{node()} reason=#{inspect(reason)}"
+          )
+
+          state
+      end
     else
       state
     end
   end
 
-  defp handle_snapshot_done(state, {:snapshot_done, :ok, cutoff_seq}) do
+  defp prepare_snapshot_wal_boundary(state) do
+    with {:ok, s1} <- maybe_sync(state),
+         {:ok, s2} <- force_rotate_for_snapshot(s1) do
+      {:ok, s2}
+    end
+  end
+
+  defp force_rotate_for_snapshot(%ProcessState{current_wal_fd: nil}), do: {:error, :no_wal_fd}
+
+  defp force_rotate_for_snapshot(state) do
+    next_seq = state.current_seq + 1
+    next_path = CacheUtils.wal_path(CacheConfig.storage_dir(), state.shard_id, next_seq)
+
+    case :file.open(String.to_charlist(next_path), [:append, :binary, :raw]) do
+      {:ok, new_fd} ->
+        case :file.sync(state.current_wal_fd) do
+          :ok ->
+            case :file.close(state.current_wal_fd) do
+              :ok ->
+                now_ms = System.system_time(:millisecond)
+
+                {:ok,
+                 %{
+                   state
+                   | current_seq: next_seq,
+                     current_wal_fd: new_fd,
+                     current_wal_bytes: 0,
+                     pending_sync_bytes: 0,
+                     last_sync_at_ms: now_ms
+                 }}
+
+              {:error, reason} ->
+                _ = :file.close(new_fd)
+                {:error, {:close_old_wal, reason}}
+            end
+
+          {:error, reason} ->
+            _ = :file.close(new_fd)
+            {:error, reason}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp handle_snapshot_done(state, {:snapshot_done, :ok, finalize_cutoff}) do
     if snapshot_allowed?() do
       with_valid_owner(clear_snapshot_task(state), fn s ->
-        {:ok, next_state} = finalize_snapshot(s, cutoff_seq)
+        {:ok, next_state} = finalize_snapshot(s, finalize_cutoff)
 
         Logger.info(
-          "cache_snapshot success shard_id=#{state.shard_id} node=#{node()} cutoff_seq=#{cutoff_seq}"
+          "cache_snapshot success shard_id=#{state.shard_id} node=#{node()} cutoff_seq=#{finalize_cutoff}"
         )
 
         {:ok, next_state}
@@ -290,7 +357,7 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
     end
   end
 
-  defp handle_snapshot_done(state, {:snapshot_done, {:error, reason}, _cutoff_seq}) do
+  defp handle_snapshot_done(state, {:snapshot_done, {:error, reason}, _finalize_cutoff}) do
     Logger.warning(
       "cache_snapshot failed shard_id=#{state.shard_id} node=#{node()} reason=#{inspect(reason)}"
     )
