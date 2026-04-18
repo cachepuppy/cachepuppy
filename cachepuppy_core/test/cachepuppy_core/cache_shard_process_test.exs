@@ -9,7 +9,6 @@ defmodule CachePuppyCore.CacheShardProcessTest do
   test "rehydrates from snapshot and WAL on startup" do
     shard_id = 7
     storage_dir = unique_storage_dir("rehydrate")
-    meta = Path.join(storage_dir, "shard_#{shard_id}.meta")
 
     with_cache_config(storage_dir, 1024, 1_000, fn ->
       File.mkdir_p!(storage_dir)
@@ -22,27 +21,12 @@ defmodule CachePuppyCore.CacheShardProcessTest do
       :ok = File.rename(snapshot_tmp, snapshot_path)
       :ets.delete(table)
 
-      File.write!(
-        meta,
-        :erlang.term_to_binary(%{
-          "epoch" => 1,
-          "owner_node" => to_string(node()),
-          "rehydrating" => false
-        })
-      )
+      write_owner_meta(storage_dir, shard_id, 1)
 
-      flush_pid =
-        start_supervised!(
-          {CacheFlushEngine,
-           shard_id: shard_id,
-           table: :ets.new(:rehydrate_flush, [:set, :protected]),
-           owner_epoch: 1,
-           snapshot_interval_ms: 60_000,
-           snapshot_min_wal_bytes: 1_000}
-        )
+      {:ok, flush} = CacheFlushEngine.open(shard_id, 1)
 
-      CacheFlushEngine.persist_set(flush_pid, "users", "city", "blr")
-      _ = :sys.get_state(flush_pid)
+      {:ok, flush} = CacheFlushEngine.persist_set(flush, "users", "city", "blr")
+      _ = CacheFlushEngine.close(flush)
 
       pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
       wait_until_ready(pid)
@@ -59,8 +43,7 @@ defmodule CachePuppyCore.CacheShardProcessTest do
       pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
       wait_until_ready(pid)
       assert {:ok, 42} = GenServer.call(pid, {:set, "users", "answer", 42})
-      flush_pid = :sys.get_state(pid).flush_pid
-      _ = :sys.get_state(flush_pid)
+      assert :sys.get_state(pid).flush.current_wal_bytes > 0
 
       wal_files =
         storage_dir
@@ -95,6 +78,20 @@ defmodule CachePuppyCore.CacheShardProcessTest do
       _ = :sys.get_state(pid)
       assert {:error, :stale_owner} = GenServer.call(pid, {:set, "users", "key", "value"})
     end)
+  end
+
+  defp write_owner_meta(storage_dir, shard_id, epoch) do
+    File.mkdir_p!(storage_dir)
+
+    File.write!(
+      Path.join(storage_dir, "shard_#{shard_id}.meta"),
+      :erlang.term_to_binary(%{
+        "epoch" => epoch,
+        "owner_node" => to_string(node()),
+        "rehydrating" => false,
+        "updated_at_ms" => System.system_time(:millisecond)
+      })
+    )
   end
 
   defp with_cache_config(storage_dir, wal_segment_max_bytes, flush_interval_ms, fun) do

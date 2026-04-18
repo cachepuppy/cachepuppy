@@ -6,6 +6,7 @@ defmodule CachePuppyCore.CacheShardProcess do
   alias CachePuppyCore.CacheConfig
   alias CachePuppyCore.CacheShardRead
   alias CachePuppyCore.Persistence.CacheFlushEngine
+  alias CachePuppyCore.Persistence.CacheFlushEngine.FlushState
   alias CachePuppyCore.Persistence.CacheOwnerMeta
   alias CachePuppyCore.Persistence.CacheRecoveryEngine
 
@@ -17,7 +18,8 @@ defmodule CachePuppyCore.CacheShardProcess do
             owner_epoch: non_neg_integer(),
             ready?: boolean(),
             owner_valid?: boolean(),
-            flush_pid: pid() | nil,
+            flush: %FlushState{},
+            flush_tick_ref: reference() | nil,
             recovery_task_ref: reference() | nil,
             owner_check_ref: reference() | nil
           }
@@ -27,7 +29,8 @@ defmodule CachePuppyCore.CacheShardProcess do
               owner_epoch: 0,
               ready?: false,
               owner_valid?: false,
-              flush_pid: nil,
+              flush: nil,
+              flush_tick_ref: nil,
               recovery_task_ref: nil,
               owner_check_ref: nil
   end
@@ -59,8 +62,6 @@ defmodule CachePuppyCore.CacheShardProcess do
   @impl true
   def init(opts) do
     shard_id = Keyword.fetch!(opts, :shard_id)
-    snapshot_interval_ms = CacheConfig.snapshot_interval_ms()
-    snapshot_min_wal_bytes = CacheConfig.snapshot_min_wal_bytes()
     storage_dir = CacheConfig.storage_dir()
 
     _ = File.mkdir_p(storage_dir)
@@ -68,14 +69,7 @@ defmodule CachePuppyCore.CacheShardProcess do
     table = :ets.new(__MODULE__, [:set, :protected])
     CacheShardRead.publish_rehydrating(shard_id, table, owner_epoch)
 
-    {:ok, flush_pid} =
-      CacheFlushEngine.start_link(
-        shard_id: shard_id,
-        table: table,
-        owner_epoch: owner_epoch,
-        snapshot_interval_ms: snapshot_interval_ms,
-        snapshot_min_wal_bytes: snapshot_min_wal_bytes
-      )
+    {:ok, flush} = CacheFlushEngine.open(shard_id, owner_epoch)
 
     owner_valid? =
       CacheOwnerMeta.owner_valid?(storage_dir, shard_id, owner_epoch, to_string(node()))
@@ -101,9 +95,11 @@ defmodule CachePuppyCore.CacheShardProcess do
       owner_epoch: owner_epoch,
       ready?: false,
       owner_valid?: owner_valid?,
-      flush_pid: flush_pid,
+      flush: flush,
       recovery_task_ref: ref
     }
+
+    state = schedule_flush_tick(state)
 
     Logger.info(
       "cache_shard init shard_id=#{shard_id} node=#{node()} owner_epoch=#{owner_epoch} owner_valid=#{owner_valid?} ready=false storage_dir=#{storage_dir}"
@@ -125,15 +121,15 @@ defmodule CachePuppyCore.CacheShardProcess do
       true ->
         storage_key = {table, key}
 
-        case CacheFlushEngine.persist_set(state.flush_pid, table, key, value) do
-          :ok ->
+        case CacheFlushEngine.persist_set(state.flush, table, key, value) do
+          {:ok, new_flush} ->
             :ets.insert(state.table, {storage_key, value})
 
             Logger.debug(
               "cache_set execute shard_id=#{state.shard_id} node=#{node()} table=#{inspect(table)} key=#{inspect(key)}"
             )
 
-            {:reply, {:ok, value}, state}
+            {:reply, {:ok, value}, %{state | flush: new_flush}}
 
           {:error, reason} ->
             {:reply, {:error, reason}, state}
@@ -171,6 +167,32 @@ defmodule CachePuppyCore.CacheShardProcess do
     {:noreply, %{state | recovery_task_ref: nil, ready?: false}}
   end
 
+  def handle_info(:flush_tick, state) do
+    flush = CacheFlushEngine.on_flush_tick(state.flush)
+    state = %{state | flush: flush} |> schedule_flush_tick()
+
+    {:noreply, state}
+  end
+
+  def handle_info({ref, reply}, %State{flush: %FlushState{snapshot_task_ref: ref}} = state)
+      when is_reference(ref) do
+    _ = Process.demonitor(ref, [:flush])
+    flush = CacheFlushEngine.on_snapshot_message(state.flush, reply)
+    {:noreply, %{state | flush: flush}}
+  end
+
+  def handle_info(
+        {:DOWN, ref, :process, _pid, reason},
+        %State{flush: %FlushState{snapshot_task_ref: ref}} = state
+      )
+      when is_reference(ref) do
+    Logger.warning(
+      "cache_snapshot task_down shard_id=#{state.shard_id} node=#{node()} reason=#{inspect(reason)}"
+    )
+
+    {:noreply, %{state | flush: CacheFlushEngine.clear_snapshot_task_ref(state.flush)}}
+  end
+
   def handle_info(:owner_check_tick, state) do
     state = %{state | owner_check_ref: nil}
     {:noreply, schedule_owner_check(refresh_owner_validity(state))}
@@ -181,9 +203,12 @@ defmodule CachePuppyCore.CacheShardProcess do
   end
 
   @impl true
-  def terminate(_reason, %State{flush_pid: flush_pid}) do
+  def terminate(_reason, state) do
     CacheShardRead.clear(self())
-    if is_pid(flush_pid), do: Process.exit(flush_pid, :normal)
+
+    state = cancel_flush_tick(state)
+    _ = CacheFlushEngine.close(state.flush)
+
     :ok
   end
 
@@ -206,6 +231,18 @@ defmodule CachePuppyCore.CacheShardProcess do
   defp schedule_owner_check(state) do
     ref = Process.send_after(self(), :owner_check_tick, CacheConfig.flush_interval_ms())
     %{state | owner_check_ref: ref}
+  end
+
+  defp schedule_flush_tick(state) do
+    ref = Process.send_after(self(), :flush_tick, CacheConfig.flush_interval_ms())
+    %{state | flush_tick_ref: ref}
+  end
+
+  defp cancel_flush_tick(%State{flush_tick_ref: nil} = s), do: s
+
+  defp cancel_flush_tick(%State{flush_tick_ref: ref} = s) do
+    Process.cancel_timer(ref)
+    %{s | flush_tick_ref: nil}
   end
 
   defp via_shard(shard_id) do
