@@ -124,14 +124,20 @@ defmodule CachePuppyCore.CacheShardProcess do
 
       true ->
         storage_key = {table, key}
-        :ets.insert(state.table, {storage_key, value})
-        CacheFlushEngine.persist_set(state.flush_pid, table, key, value)
 
-        Logger.debug(
-          "cache_set execute shard_id=#{state.shard_id} node=#{node()} table=#{inspect(table)} key=#{inspect(key)}"
-        )
+        case CacheFlushEngine.persist_set(state.flush_pid, table, key, value) do
+          :ok ->
+            :ets.insert(state.table, {storage_key, value})
 
-        {:reply, {:ok, value}, state}
+            Logger.debug(
+              "cache_set execute shard_id=#{state.shard_id} node=#{node()} table=#{inspect(table)} key=#{inspect(key)}"
+            )
+
+            {:reply, {:ok, value}, state}
+
+          {:error, reason} ->
+            {:reply, {:error, reason}, state}
+        end
     end
   end
 

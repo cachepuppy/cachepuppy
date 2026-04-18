@@ -45,7 +45,7 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
       write_owner_meta(storage_dir, shard_id, 11)
       table = :ets.new(:engine_persist_valid, [:set, :protected])
       pid = start_engine(shard_id, table, 11)
-      CacheFlushEngine.persist_set(pid, "users", "k1", "v1")
+      assert :ok = CacheFlushEngine.persist_set(pid, "users", "k1", "v1")
       state = :sys.get_state(pid)
       assert state.current_wal_bytes > 0
       assert state.pending_sync_bytes > 0
@@ -72,7 +72,7 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
         })
       )
 
-      CacheFlushEngine.persist_set(pid, "users", "k1", "v1")
+      assert {:error, :stale_owner} = CacheFlushEngine.persist_set(pid, "users", "k1", "v1")
       _ = :sys.get_state(pid)
       assert File.stat!(CacheUtils.wal_path(storage_dir, shard_id, 1)).size == 0
     end)
@@ -209,10 +209,42 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
 
       table = :ets.new(:engine_rehydrating_block, [:set, :protected])
       pid = start_engine(shard_id, table, 1)
-      CacheFlushEngine.persist_set(pid, "users", "k1", "v1")
+      assert {:error, :stale_owner} = CacheFlushEngine.persist_set(pid, "users", "k1", "v1")
       _ = :sys.get_state(pid)
 
       assert File.stat!(CacheUtils.wal_path(storage_dir, shard_id, 1)).size == 0
+    end)
+  end
+
+  test "snapshot materializes from WAL only, not ETS-only rows" do
+    shard_id = 13
+    storage_dir = unique_storage_dir("wal_only_snapshot")
+
+    with_cache_config(storage_dir, 1_048_576, fn ->
+      write_owner_meta(storage_dir, shard_id, 11)
+      table = :ets.new(:engine_wal_only_snapshot, [:set, :protected])
+      true = :ets.insert(table, {{"users", "ghost"}, "from_ets_only"})
+
+      pid =
+        start_supervised!(
+          {CacheFlushEngine,
+           shard_id: shard_id,
+           table: table,
+           owner_epoch: 11,
+           snapshot_interval_ms: 0,
+           snapshot_min_wal_bytes: 1}
+        )
+
+      assert :ok = CacheFlushEngine.persist_set(pid, "users", "real", "from_wal")
+      send(pid, :flush_tick)
+
+      wait_until(fn -> File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id)) end)
+
+      snap = :ets.file2tab(String.to_charlist(CacheUtils.snapshot_path(storage_dir, shard_id)))
+      assert {:ok, tid} = snap
+      assert [] == :ets.lookup(tid, {"users", "ghost"})
+      assert [{{"users", "real"}, "from_wal"}] == :ets.lookup(tid, {"users", "real"})
+      :ets.delete(tid)
     end)
   end
 

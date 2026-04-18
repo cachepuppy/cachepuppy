@@ -5,6 +5,7 @@ defmodule CachePuppyCore.Persistence.CacheRecoveryEngine do
 
   alias CachePuppyCore.CacheConfig
   alias CachePuppyCore.Persistence.CacheUtils
+  alias CachePuppyCore.Persistence.CacheWalReplay
 
   @spec load_snapshot_then_replay(non_neg_integer(), String.t()) :: :ets.tid()
   def load_snapshot_then_replay(shard_id, storage_dir) do
@@ -15,7 +16,12 @@ defmodule CachePuppyCore.Persistence.CacheRecoveryEngine do
     |> CacheUtils.wal_segments(shard_id)
     |> Enum.filter(fn {seq, _, _} -> seq >= checkpoint_seq end)
     |> Enum.take(CacheConfig.recovery_max_segments())
-    |> Enum.each(fn {_seq, path, _size} -> replay_wal_file(table, path) end)
+    |> Enum.each(fn {_seq, path, _size} ->
+      CacheWalReplay.replay_wal_path_into_table(table, path,
+        persist_truncate: true,
+        log_read_errors: true
+      )
+    end)
 
     table
   end
@@ -38,8 +44,7 @@ defmodule CachePuppyCore.Persistence.CacheRecoveryEngine do
     _ -> 1
   end
 
-  @spec truncate_corrupt_tail(binary()) :: {list(), non_neg_integer()}
-  def truncate_corrupt_tail(binary), do: decode_records(binary, [], 0)
+  defdelegate truncate_corrupt_tail(binary), to: CacheWalReplay
 
   defp load_snapshot_or_new(shard_id, storage_dir) do
     path = CacheUtils.snapshot_path(storage_dir, shard_id)
@@ -59,45 +64,5 @@ defmodule CachePuppyCore.Persistence.CacheRecoveryEngine do
 
         :ets.new(__MODULE__, [:set, :protected])
     end
-  end
-
-  defp replay_wal_file(table, path) do
-    case File.read(path) do
-      {:ok, binary} ->
-        {records, valid_bytes} = truncate_corrupt_tail(binary)
-
-        Enum.each(records, fn
-          {:set, table_name, key, value, _ts} when is_binary(table_name) and is_binary(key) ->
-            :ets.insert(table, {{table_name, key}, value})
-
-          _ ->
-            :ok
-        end)
-
-        if valid_bytes < byte_size(binary) do
-          :ok = File.write(path, binary_part(binary, 0, valid_bytes))
-        end
-
-      {:error, reason} ->
-        Logger.warning("cache_rehydrate wal_read_failed path=#{path} reason=#{inspect(reason)}")
-    end
-  end
-
-  defp decode_records(<<len::unsigned-integer-size(32), rest::binary>>, acc, consumed)
-       when byte_size(rest) >= len do
-    <<term_bin::binary-size(len), tail::binary>> = rest
-
-    case safe_binary_to_term(term_bin) do
-      {:ok, term} -> decode_records(tail, [term | acc], consumed + 4 + len)
-      :error -> {Enum.reverse(acc), consumed}
-    end
-  end
-
-  defp decode_records(_binary, acc, consumed), do: {Enum.reverse(acc), consumed}
-
-  defp safe_binary_to_term(binary) do
-    {:ok, :erlang.binary_to_term(binary)}
-  rescue
-    _ -> :error
   end
 end

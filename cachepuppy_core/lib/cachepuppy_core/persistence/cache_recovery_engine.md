@@ -21,6 +21,8 @@ This document explains each function in `CachePuppyCore.Persistence.CacheRecover
 
 It does not append WAL entries, rotate segments, or trigger snapshots.
 
+WAL decoding, replay, and tail truncation are delegated to `CachePuppyCore.Persistence.CacheWalReplay` so recovery matches snapshot materialization.
+
 ## Public Functions
 
 ### `load_snapshot_then_replay/2`
