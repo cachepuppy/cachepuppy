@@ -1,25 +1,26 @@
 defmodule CachePuppyCore.CacheFlushEngineTest do
   use ExUnit.Case, async: false
 
+  alias CachePuppyCore.CacheShardProcess
   alias CachePuppyCore.Persistence.CacheFlushEngine
   alias CachePuppyCore.Persistence.CacheUtils
 
-  test "start_link creates first WAL segment on cold start" do
+  test "shard creates first WAL segment on cold start" do
     shard_id = 1
     storage_dir = unique_storage_dir("init_cold")
 
     with_cache_config(storage_dir, 1024, fn ->
       write_owner_meta(storage_dir, shard_id, 1)
-      table = :ets.new(:engine_init_cold, [:set, :protected])
-      pid = start_engine(shard_id, table, 1)
+      pid = start_shard(shard_id)
+      wait_until_ready(pid)
       state = :sys.get_state(pid)
-      assert state.current_seq == 1
-      assert state.current_wal_bytes == 0
+      assert state.flush.current_seq == 1
+      assert state.flush.current_wal_bytes == 0
       assert File.exists?(CacheUtils.wal_path(storage_dir, shard_id, 1))
     end)
   end
 
-  test "start_link resumes latest WAL segment and size" do
+  test "shard resumes latest WAL segment and size" do
     shard_id = 2
     storage_dir = unique_storage_dir("init_resume")
 
@@ -28,39 +29,38 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
       File.write!(CacheUtils.wal_path(storage_dir, shard_id, 1), "abc")
       File.write!(CacheUtils.wal_path(storage_dir, shard_id, 2), "abcdef")
       write_owner_meta(storage_dir, shard_id, 1)
-      table = :ets.new(:engine_init_resume, [:set, :protected])
-      pid = start_engine(shard_id, table, 1)
+      pid = start_shard(shard_id)
+      wait_until_ready(pid)
 
       state = :sys.get_state(pid)
-      assert state.current_seq == 2
-      assert state.current_wal_bytes == 6
+      assert state.flush.current_seq == 2
+      assert state.flush.current_wal_bytes == 6
     end)
   end
 
-  test "persist_set appends WAL record when owner is valid" do
+  test "set appends WAL record when owner is valid" do
     shard_id = 3
     storage_dir = unique_storage_dir("persist_valid")
 
     with_cache_config(storage_dir, 1024, fn ->
       write_owner_meta(storage_dir, shard_id, 11)
-      table = :ets.new(:engine_persist_valid, [:set, :protected])
-      pid = start_engine(shard_id, table, 11)
-      assert :ok = CacheFlushEngine.persist_set(pid, "users", "k1", "v1")
+      pid = start_shard(shard_id)
+      wait_until_ready(pid)
+      assert {:ok, "v1"} = GenServer.call(pid, {:set, "users", "k1", "v1"})
       state = :sys.get_state(pid)
-      assert state.current_wal_bytes > 0
-      assert state.pending_sync_bytes > 0
+      assert state.flush.current_wal_bytes > 0
+      assert state.flush.pending_sync_bytes > 0
       assert File.stat!(CacheUtils.wal_path(storage_dir, shard_id, 1)).size > 0
     end)
   end
 
-  test "persist_set is ignored when owner metadata is stale" do
+  test "persist_set returns stale_owner when owner metadata does not match epoch" do
     shard_id = 4
     storage_dir = unique_storage_dir("persist_stale")
 
     with_cache_config(storage_dir, 1024, fn ->
       write_owner_meta(storage_dir, shard_id, 11)
-      table = :ets.new(:engine_persist_stale, [:set, :protected])
-      pid = start_engine(shard_id, table, 11)
+      {:ok, flush} = flush_open(shard_id)
 
       File.write!(
         Path.join(storage_dir, "shard_#{shard_id}.meta"),
@@ -72,8 +72,8 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
         })
       )
 
-      assert {:error, :stale_owner} = CacheFlushEngine.persist_set(pid, "users", "k1", "v1")
-      _ = :sys.get_state(pid)
+      assert {:error, :stale_owner} = CacheFlushEngine.persist_set(flush, "users", "k1", "v1")
+      _ = CacheFlushEngine.close(flush)
       assert File.stat!(CacheUtils.wal_path(storage_dir, shard_id, 1)).size == 0
     end)
   end
@@ -84,16 +84,16 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
 
     with_cache_config(storage_dir, 1024, fn ->
       write_owner_meta(storage_dir, shard_id, 11)
-      table = :ets.new(:engine_sync, [:set, :protected])
-      pid = start_engine(shard_id, table, 11)
+      pid = start_shard(shard_id)
+      wait_until_ready(pid)
 
-      CacheFlushEngine.persist_set(pid, "users", "k1", "v1")
+      assert {:ok, "v1"} = GenServer.call(pid, {:set, "users", "k1", "v1"})
       state_before = :sys.get_state(pid)
-      assert state_before.pending_sync_bytes > 0
+      assert state_before.flush.pending_sync_bytes > 0
 
       send(pid, :flush_tick)
       state_after = :sys.get_state(pid)
-      assert state_after.pending_sync_bytes == 0
+      assert state_after.flush.pending_sync_bytes == 0
     end)
   end
 
@@ -103,12 +103,13 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
 
     with_cache_config(storage_dir, 64, fn ->
       write_owner_meta(storage_dir, shard_id, 11)
-      table = :ets.new(:engine_rotate, [:set, :protected])
-      pid = start_engine(shard_id, table, 11)
-      CacheFlushEngine.persist_set(pid, "users", "k1", String.duplicate("a", 80))
+      pid = start_shard(shard_id)
+      wait_until_ready(pid)
+
+      assert {:ok, _} = GenServer.call(pid, {:set, "users", "k1", String.duplicate("a", 80)})
       send(pid, :flush_tick)
       state = :sys.get_state(pid)
-      assert state.current_seq == 2
+      assert state.flush.current_seq == 2
       assert File.exists?(CacheUtils.wal_path(storage_dir, shard_id, 2))
     end)
   end
@@ -118,26 +119,18 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
     storage_dir = unique_storage_dir("snapshot")
 
     with_cache_config(storage_dir, 1_048_576, fn ->
-      write_owner_meta(storage_dir, shard_id, 11)
-      table = :ets.new(:engine_snapshot, [:set, :protected])
-      true = :ets.insert(table, {{"users", "name"}, "beamline"})
+      with_snapshot_thresholds(0, 1, fn ->
+        write_owner_meta(storage_dir, shard_id, 11)
+        pid = start_shard(shard_id)
+        wait_until_ready(pid)
 
-      pid =
-        start_supervised!(
-          {CacheFlushEngine,
-           shard_id: shard_id,
-           table: table,
-           owner_epoch: 11,
-           snapshot_interval_ms: 0,
-           snapshot_min_wal_bytes: 1}
-        )
+        assert {:ok, "blr"} = GenServer.call(pid, {:set, "users", "city", "blr"})
+        send(pid, :flush_tick)
 
-      CacheFlushEngine.persist_set(pid, "users", "city", "blr")
-      send(pid, :flush_tick)
-
-      wait_until(fn ->
-        File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id)) and
-          File.exists?(CacheUtils.checkpoint_path(storage_dir, shard_id))
+        wait_until(fn ->
+          File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id)) and
+            File.exists?(CacheUtils.checkpoint_path(storage_dir, shard_id))
+        end)
       end)
     end)
   end
@@ -147,50 +140,43 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
     storage_dir = unique_storage_dir("prune")
 
     with_cache_config(storage_dir, 40, fn ->
-      write_owner_meta(storage_dir, shard_id, 11)
-      table = :ets.new(:engine_prune, [:set, :protected])
+      with_snapshot_thresholds(0, 1, fn ->
+        write_owner_meta(storage_dir, shard_id, 11)
+        pid = start_shard(shard_id)
+        wait_until_ready(pid)
 
-      pid =
-        start_supervised!(
-          {CacheFlushEngine,
-           shard_id: shard_id,
-           table: table,
-           owner_epoch: 11,
-           snapshot_interval_ms: 0,
-           snapshot_min_wal_bytes: 1}
-        )
+        assert {:ok, _} = GenServer.call(pid, {:set, "users", "k1", String.duplicate("a", 80)})
+        send(pid, :flush_tick)
+        assert {:ok, _} = GenServer.call(pid, {:set, "users", "k2", String.duplicate("b", 80)})
+        send(pid, :flush_tick)
 
-      CacheFlushEngine.persist_set(pid, "users", "k1", String.duplicate("a", 80))
-      send(pid, :flush_tick)
-      CacheFlushEngine.persist_set(pid, "users", "k2", String.duplicate("b", 80))
-      send(pid, :flush_tick)
+        wait_until(fn ->
+          state = :sys.get_state(pid)
+          state.flush.current_seq >= 3
+        end)
 
-      wait_until(fn ->
-        state = :sys.get_state(pid)
-        state.current_seq >= 3
-      end)
-
-      wait_until(fn ->
-        not File.exists?(CacheUtils.wal_path(storage_dir, shard_id, 1))
+        wait_until(fn ->
+          not File.exists?(CacheUtils.wal_path(storage_dir, shard_id, 1))
+        end)
       end)
     end)
   end
 
-  test "engine process terminates cleanly" do
+  test "shard process terminates cleanly" do
     shard_id = 9
     storage_dir = unique_storage_dir("terminate")
 
     with_cache_config(storage_dir, 1_048_576, fn ->
       write_owner_meta(storage_dir, shard_id, 11)
-      table = :ets.new(:engine_terminate, [:set, :protected])
-      pid = start_engine(shard_id, table, 11)
+      pid = start_shard(shard_id)
+      wait_until_ready(pid)
       ref = Process.monitor(pid)
       :ok = GenServer.stop(pid, :normal)
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}
     end)
   end
 
-  test "does not persist writes while metadata is rehydrating" do
+  test "persist_set returns stale_owner while shard metadata marks rehydrating" do
     shard_id = 10
     storage_dir = unique_storage_dir("rehydrating_block")
 
@@ -207,44 +193,34 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
         })
       )
 
-      table = :ets.new(:engine_rehydrating_block, [:set, :protected])
-      pid = start_engine(shard_id, table, 1)
-      assert {:error, :stale_owner} = CacheFlushEngine.persist_set(pid, "users", "k1", "v1")
-      _ = :sys.get_state(pid)
+      {:ok, flush} = flush_open(shard_id, 1)
+      assert {:error, :stale_owner} = CacheFlushEngine.persist_set(flush, "users", "k1", "v1")
+      _ = CacheFlushEngine.close(flush)
 
       assert File.stat!(CacheUtils.wal_path(storage_dir, shard_id, 1)).size == 0
     end)
   end
 
-  test "snapshot materializes from WAL only, not ETS-only rows" do
+  test "snapshot materializes from WAL only" do
     shard_id = 13
     storage_dir = unique_storage_dir("wal_only_snapshot")
 
     with_cache_config(storage_dir, 1_048_576, fn ->
-      write_owner_meta(storage_dir, shard_id, 11)
-      table = :ets.new(:engine_wal_only_snapshot, [:set, :protected])
-      true = :ets.insert(table, {{"users", "ghost"}, "from_ets_only"})
+      with_snapshot_thresholds(0, 1, fn ->
+        write_owner_meta(storage_dir, shard_id, 11)
+        pid = start_shard(shard_id)
+        wait_until_ready(pid)
 
-      pid =
-        start_supervised!(
-          {CacheFlushEngine,
-           shard_id: shard_id,
-           table: table,
-           owner_epoch: 11,
-           snapshot_interval_ms: 0,
-           snapshot_min_wal_bytes: 1}
-        )
+        assert {:ok, "from_wal"} = GenServer.call(pid, {:set, "users", "real", "from_wal"})
+        send(pid, :flush_tick)
 
-      assert :ok = CacheFlushEngine.persist_set(pid, "users", "real", "from_wal")
-      send(pid, :flush_tick)
+        wait_until(fn -> File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id)) end)
 
-      wait_until(fn -> File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id)) end)
-
-      snap = :ets.file2tab(String.to_charlist(CacheUtils.snapshot_path(storage_dir, shard_id)))
-      assert {:ok, tid} = snap
-      assert [] == :ets.lookup(tid, {"users", "ghost"})
-      assert [{{"users", "real"}, "from_wal"}] == :ets.lookup(tid, {"users", "real"})
-      :ets.delete(tid)
+        snap = :ets.file2tab(String.to_charlist(CacheUtils.snapshot_path(storage_dir, shard_id)))
+        assert {:ok, tid} = snap
+        assert [{{"users", "real"}, "from_wal"}] == :ets.lookup(tid, {"users", "real"})
+        :ets.delete(tid)
+      end)
     end)
   end
 
@@ -253,28 +229,21 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
     storage_dir = unique_storage_dir("snapshot_blocked_start")
 
     with_cache_config(storage_dir, 1_048_576, fn ->
-      write_owner_meta(storage_dir, shard_id, 11)
-      table = :ets.new(:engine_snapshot_blocked_start, [:set, :protected])
-      true = :ets.insert(table, {{"users", "name"}, "beamline"})
-      set_snapshot_blocked(true)
+      with_snapshot_thresholds(0, 1, fn ->
+        write_owner_meta(storage_dir, shard_id, 11)
+        set_snapshot_blocked(true)
 
-      pid =
-        start_supervised!(
-          {CacheFlushEngine,
-           shard_id: shard_id,
-           table: table,
-           owner_epoch: 11,
-           snapshot_interval_ms: 0,
-           snapshot_min_wal_bytes: 1}
-        )
+        pid = start_shard(shard_id)
+        wait_until_ready(pid)
 
-      CacheFlushEngine.persist_set(pid, "users", "city", "blr")
-      send(pid, :flush_tick)
-      _ = :sys.get_state(pid)
+        assert {:ok, "blr"} = GenServer.call(pid, {:set, "users", "city", "blr"})
+        send(pid, :flush_tick)
+        _ = :sys.get_state(pid)
 
-      assert File.stat!(CacheUtils.wal_path(storage_dir, shard_id, 1)).size > 0
-      refute File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id))
-      refute File.exists?(CacheUtils.checkpoint_path(storage_dir, shard_id))
+        assert File.stat!(CacheUtils.wal_path(storage_dir, shard_id, 1)).size > 0
+        refute File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id))
+        refute File.exists?(CacheUtils.checkpoint_path(storage_dir, shard_id))
+      end)
     end)
   end
 
@@ -285,12 +254,15 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
 
     with_cache_config(storage_dir, 1_048_576, fn ->
       write_owner_meta(storage_dir, shard_id, 11)
-      table = :ets.new(:engine_snapshot_blocked_finalize, [:set, :protected])
-      pid = start_engine(shard_id, table, 11)
+      pid = start_shard(shard_id)
+      wait_until_ready(pid)
 
       File.write!(CacheUtils.wal_path(storage_dir, shard_id, 1), "old-wal-segment")
 
-      :sys.replace_state(pid, fn current_state -> %{current_state | snapshot_task_ref: ref} end)
+      :sys.replace_state(pid, fn state ->
+        %{state | flush: %{state.flush | snapshot_task_ref: ref}}
+      end)
+
       set_snapshot_blocked(true)
       send(pid, {ref, {:snapshot_done, :ok, 2}})
       _ = :sys.get_state(pid)
@@ -298,6 +270,25 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
       assert File.exists?(CacheUtils.wal_path(storage_dir, shard_id, 1))
       refute File.exists?(CacheUtils.checkpoint_path(storage_dir, shard_id))
     end)
+  end
+
+  defp flush_open(shard_id, owner_epoch \\ 11) do
+    CacheFlushEngine.open(shard_id, owner_epoch)
+  end
+
+  defp with_snapshot_thresholds(interval_ms, min_wal_bytes, fun) do
+    old_i = Application.get_env(:cachepuppy_core, :cache_snapshot_interval_ms)
+    old_b = Application.get_env(:cachepuppy_core, :cache_snapshot_min_wal_bytes)
+
+    Application.put_env(:cachepuppy_core, :cache_snapshot_interval_ms, interval_ms)
+    Application.put_env(:cachepuppy_core, :cache_snapshot_min_wal_bytes, min_wal_bytes)
+
+    try do
+      fun.()
+    after
+      restore_env(:cache_snapshot_interval_ms, old_i)
+      restore_env(:cache_snapshot_min_wal_bytes, old_b)
+    end
   end
 
   defp with_cache_config(storage_dir, wal_segment_max_bytes, fun) do
@@ -326,15 +317,8 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
     )
   end
 
-  defp start_engine(shard_id, table, owner_epoch) do
-    start_supervised!(
-      {CacheFlushEngine,
-       shard_id: shard_id,
-       table: table,
-       owner_epoch: owner_epoch,
-       snapshot_interval_ms: 60_000,
-       snapshot_min_wal_bytes: 1_000}
-    )
+  defp start_shard(shard_id) do
+    start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
   end
 
   defp write_owner_meta(storage_dir, shard_id, epoch) do
@@ -349,6 +333,22 @@ defmodule CachePuppyCore.CacheFlushEngineTest do
         "updated_at_ms" => System.system_time(:millisecond)
       })
     )
+  end
+
+  defp wait_until_ready(pid, attempts \\ 200)
+  defp wait_until_ready(_pid, 0), do: flunk("shard did not become ready in time")
+
+  defp wait_until_ready(pid, attempts) do
+    state = :sys.get_state(pid)
+
+    if state.ready? do
+      :ok
+    else
+      receive do
+      after
+        10 -> wait_until_ready(pid, attempts - 1)
+      end
+    end
   end
 
   defp wait_until(fun, attempts \\ 100)

@@ -1,69 +1,50 @@
 # Cache Flush Engine
 
-This document explains each function in `CachePuppyCore.Persistence.CacheFlushEngine` and how they fit together.
+This document explains `CachePuppyCore.Persistence.CacheFlushEngine` and how persistence integrates with the shard process.
 
 ## Quick Flow (Gist First)
 
-1. A cache write comes into a shard process.
-2. The shard issues a synchronous `GenServer.call` to the flush engine so the WAL append completes before ETS is updated.
-3. On periodic maintenance ticks, WAL data is synced to disk and rotated into new segment files when large.
-4. Snapshot checks run infrequently; when thresholds are met, the engine syncs, rolls to a new WAL segment, then a background task materializes `snapshot.ets` by loading the previous snapshot (if any) and replaying closed WAL segments from the checkpoint through the rolled-off segment.
-5. After snapshot success, a checkpoint is written and older WAL segments are pruned.
-6. On restart, the shard loads snapshot first and then replays WAL records after the checkpoint to catch up.
-7. If WAL tail bytes are corrupted/incomplete (for example after crash), only the valid prefix is replayed and the bad tail is truncated (recovery path).
+1. `CacheShardProcess` owns WAL state as a nested `%FlushState{}` struct.
+2. Each `set` calls `CacheFlushEngine.persist_set/4` before updating ETS.
+3. The shard schedules `:flush_tick` to itself (`Process.send_after`); on each tick it calls `CacheFlushEngine.on_flush_tick/1` for sync, optional rotate, and snapshot eligibility.
+4. Snapshot work still runs under `Task.Supervisor.async_nolink` from the flush engine when a tick decides to start a snapshot; replay/`tab2file` stays off the shard’s synchronous `set` path.
+5. After snapshot success, `on_snapshot_message/2` applies checkpoint + prune via `finalize_snapshot`.
 
 ## Overview
 
-`CacheFlushEngine` manages shard-local flush persistence with:
+`CacheFlushEngine` is a **module** operating on an explicit `%FlushState{}` struct (WAL fd, segment seq, snapshot task ref, byte counters). The **shard GenServer** is the only production process that holds `%FlushState{}` and routes timer and task messages; **flush tick timers** live on the shard, not on `%FlushState{}`.
 
-- WAL append (via `handle_call` / `persist_set`) and periodic sync
-- WAL segment rotation
-- WAL-derived snapshot writing and checkpointing
+## Public API (selected)
 
-The engine struct stores runtime state such as current WAL segment, open file descriptor, sync bookkeeping, and snapshot progress hints.
+### `open/2`
 
-## Public Functions
+`open(shard_id, owner_epoch)`. Creates storage dir if needed, opens the latest WAL segment, returns `{:ok, %FlushState{}}`.
 
-### `init/1`
+### `close/1`
 
-- Reads dynamic option: `:shard_id`, `:table`, `:owner_epoch`, snapshot thresholds.
-- Reads static settings from `CacheConfig` (storage dir, WAL segment size).
-- Ensures the storage directory exists.
-- Detects the latest WAL segment and byte size.
-- Opens that segment in append mode and initializes engine state.
-- Schedules periodic flush ticks.
+Syncs and closes the WAL fd on `%FlushState{}`.
 
 ### `persist_set/4`
 
-- `GenServer.call` handler: when ownership metadata is valid, encodes and appends one `{:set, table, key, value, ts}` record, then may rotate if the segment exceeds the configured max size.
-- Returns `:ok` or `{:error, reason}` (including `{:error, :stale_owner}` when ownership is invalid).
-- Does not fsync on every append; pending bytes are synced on `:flush_tick`.
+`persist_set(flush, table, key, value)` — owner check (from `flush.owner_epoch`), append, optional size-based rotate. Returns `{:ok, new_flush}` or `{:error, reason}`.
 
-### `terminate/2`
+### `on_flush_tick/1`
 
-- Syncs and closes the WAL file descriptor.
+Runs periodic sync + rotate (when owner valid), then `maybe_start_snapshot` when allowed.
 
-## Internal behaviour
+### `on_snapshot_message/2`
 
-### Maintenance (`:flush_tick`)
+Handles task completion tuples (`{:snapshot_done, ...}`) and updates flush state (checkpoint, prune, clear task ref).
 
-- `maybe_sync` then `maybe_rotate` when the owner is still valid.
+### `clear_snapshot_task_ref/1`
 
-### Snapshots
+Clears `snapshot_task_ref` after a failed or abandoned snapshot task.
 
-- When allowed and thresholds are met: `maybe_sync`, then a forced WAL segment roll so all durable data through the previous segment is in closed files.
-- A `Task` runs `CacheWalReplay.materialize_snapshot_from_wal/4` (checkpoint from disk, closed segment range), then `finalize_snapshot/2` writes the checkpoint and prunes older WAL segments.
+## Tests
+
+Persistence behavior is covered by `CacheShardProcess` integration tests and by calling `CacheFlushEngine` functions directly where no GenServer mailbox is required (for example `persist_set/4` with a `%FlushState{}` from `open/2`).
 
 ## Related modules
 
-### `CachePuppyCore.Persistence.CacheUtils`
-
-- Path conventions and WAL segment listing.
-
-### `CachePuppyCore.Persistence.CacheWalReplay`
-
-- WAL decode, replay into an ETS table, optional tail truncation on disk, and snapshot materialization from WAL + prior snapshot.
-
-### `CachePuppyCore.Persistence.CacheRecoveryEngine`
-
-- Loads `snapshot.ets` then replays WAL from the checkpoint onward (uses `CacheWalReplay`).
+- `CacheWalReplay` — WAL replay and snapshot materialization.
+- `CacheRecoveryEngine` — startup recovery using `CacheWalReplay`.
