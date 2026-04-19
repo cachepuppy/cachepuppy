@@ -4,7 +4,6 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
   require Logger
 
   alias CachePuppyCore.Persistence.CacheConfig
-  alias CachePuppyCore.Persistence.CacheOwnerMeta
   alias CachePuppyCore.Persistence.CacheRecoveryEngine
   alias CachePuppyCore.Persistence.CacheUtils
   alias CachePuppyCore.Persistence.CacheWalReplay
@@ -42,10 +41,11 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
   @spec close(%FlushState{}) :: %FlushState{}
   def close(%FlushState{} = state), do: close_wal(state)
 
-  @spec persist_set(%FlushState{}, String.t(), String.t(), term(), nil | pos_integer()) ::
+  @spec persist_set(%FlushState{}, boolean(), String.t(), String.t(), term(), nil | pos_integer()) ::
           {:ok, %FlushState{}, pos_integer()} | {:error, term()}
-  def persist_set(%FlushState{} = flush, table, key, value, ttl_ms \\ nil) do
-    if owner_valid?(flush.shard_id, flush.owner_epoch) do
+  def persist_set(%FlushState{} = flush, owner_valid?, table, key, value, ttl_ms \\ nil)
+      when is_boolean(owner_valid?) do
+    if owner_valid? do
       case append_set(flush, table, key, value, ttl_ms) |> maybe_rotate_result() do
         {:ok, {new_flush, ts_ms}} ->
           {:ok, new_flush, ts_ms}
@@ -62,10 +62,11 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
     end
   end
 
-  @spec persist_delete(%FlushState{}, String.t(), String.t()) ::
+  @spec persist_delete(%FlushState{}, boolean(), String.t(), String.t()) ::
           {:ok, %FlushState{}} | {:error, term()}
-  def persist_delete(%FlushState{} = flush, table, key) do
-    if owner_valid?(flush.shard_id, flush.owner_epoch) do
+  def persist_delete(%FlushState{} = flush, owner_valid?, table, key)
+      when is_boolean(owner_valid?) do
+    if owner_valid? do
       case append_delete(flush, table, key) |> maybe_rotate_result() do
         {:ok, new_flush} ->
           {:ok, new_flush}
@@ -82,10 +83,10 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
     end
   end
 
-  @spec on_flush_tick(%FlushState{}) :: %FlushState{}
-  def on_flush_tick(%FlushState{} = flush) do
+  @spec on_flush_tick(%FlushState{}, boolean()) :: %FlushState{}
+  def on_flush_tick(%FlushState{} = flush, owner_valid?) when is_boolean(owner_valid?) do
     flush =
-      if owner_valid?(flush.shard_id, flush.owner_epoch) do
+      if owner_valid? do
         case maybe_sync(flush) |> maybe_rotate_result() do
           {:ok, f} -> f
           {:error, _} -> flush
@@ -94,17 +95,18 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
         flush
       end
 
-    maybe_start_snapshot(flush)
+    maybe_start_snapshot(flush, owner_valid?)
   end
 
-  @spec on_snapshot_message(%FlushState{}, term()) :: %FlushState{}
-  def on_snapshot_message(%FlushState{} = flush, message) do
+  @spec on_snapshot_message(%FlushState{}, term(), boolean()) :: %FlushState{}
+  def on_snapshot_message(%FlushState{} = flush, message, owner_valid?)
+      when is_boolean(owner_valid?) do
     case message do
       {:snapshot_done, :ok, finalize_cutoff} ->
         flush_cleared = %{flush | snapshot_task_ref: nil}
 
         if snapshot_allowed?() do
-          with_valid_owner(flush_cleared, fn s ->
+          with_valid_owner(flush_cleared, owner_valid?, fn s ->
             {:ok, next} = finalize_snapshot(s, finalize_cutoff)
 
             Logger.info(
@@ -277,13 +279,12 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
     :ok = File.rename(tmp_path, path)
   end
 
-  defp maybe_start_snapshot(%FlushState{snapshot_task_ref: ref} = flush)
+  defp maybe_start_snapshot(%FlushState{snapshot_task_ref: ref} = flush, _owner_valid?)
        when not is_nil(ref),
        do: flush
 
-  defp maybe_start_snapshot(%FlushState{} = flush) do
-    if snapshot_allowed?() and owner_valid?(flush.shard_id, flush.owner_epoch) and
-         should_snapshot?(flush) do
+  defp maybe_start_snapshot(%FlushState{} = flush, owner_valid?) do
+    if snapshot_allowed?() and owner_valid? and should_snapshot?(flush) do
       storage_dir = CacheConfig.storage_dir()
       checkpoint_seq = CacheRecoveryEngine.read_checkpoint_seq(storage_dir, flush.shard_id)
 
@@ -371,12 +372,8 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
     not CachePuppyCore.ClusterQuorumGuard.snapshot_blocked?()
   end
 
-  defp owner_valid?(shard_id, epoch) do
-    CacheOwnerMeta.owner_valid?(CacheConfig.storage_dir(), shard_id, epoch, to_string(node()))
-  end
-
-  defp with_valid_owner(flush, fun) do
-    if owner_valid?(flush.shard_id, flush.owner_epoch) do
+  defp with_valid_owner(flush, owner_valid?, fun) do
+    if owner_valid? do
       case fun.(flush) do
         {:ok, next_flush} ->
           next_flush

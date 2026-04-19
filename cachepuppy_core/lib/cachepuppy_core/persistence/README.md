@@ -26,6 +26,7 @@ Without ownership guards, two processes could write WAL/snapshots for the same s
     - same `owner_node`
     - `rehydrating == false`
   - Only valid owners can append WAL, rotate, snapshot, and finalize.
+  - The shard caches this on ticks/transitions; **`CacheFlushEngine` uses that cache** for append/sync/snapshot gates so steady-state writes do not re-read `.meta` from disk on every op.
 
 - `refresh_owner_validity/1`
   - Re-reads metadata and updates cached `owner_valid?` state.
@@ -40,7 +41,7 @@ Assume shard process `10` is running and storage is shared.
    - `%{"epoch" => 4, "owner_node" => "node_b@cluster", "rehydrating" => false}`
 3. `claim_ownership/2` writes:
    - `%{"epoch" => 5, "owner_node" => "node_a@cluster", "rehydrating" => true}`
-4. Recovery loads snapshot + replays WAL.
+4. Recovery loads snapshot + replays WAL into a temporary ETS table, registers the shard as **heir**, then exits so the shard receives `ETS-TRANSFER` and swaps that table in as the live ETS (no full `tab2list` copy).
 5. `mark_rehydration_done/1` updates metadata:
    - `%{"epoch" => 5, "owner_node" => "node_a@cluster", "rehydrating" => false}`
 6. `refresh_owner_validity/1` sets `owner_valid? = true`.
@@ -70,10 +71,10 @@ How WAL state and snapshot completion integrate with the shard.
 ### Quick flow
 
 1. `CachePuppyCore.Persistence.CacheShardProcess` owns WAL state as a nested `%FlushState{}` struct.
-2. Each `set` calls `CacheFlushEngine.persist_set/4` before updating ETS.
-3. The shard schedules `:flush_tick` to itself (`Process.send_after`); on each tick it calls `CacheFlushEngine.on_flush_tick/1` for sync, optional rotate, and snapshot eligibility.
+2. Each `set` calls `CacheFlushEngine.persist_set/6` (with cached `owner_valid?`) before updating ETS.
+3. The shard schedules `:flush_tick` to itself (`Process.send_after`); on each tick it calls `CacheFlushEngine.on_flush_tick/2` for sync, optional rotate, and snapshot eligibility.
 4. Snapshot work runs under `Task.Supervisor.async_nolink` when a tick starts a snapshot; replay/`tab2file` stays off the shard’s synchronous `set` path.
-5. After snapshot success, `on_snapshot_message/2` applies checkpoint + prune via `finalize_snapshot`.
+5. After snapshot success, `on_snapshot_message/3` applies checkpoint + prune via `finalize_snapshot`.
 
 ### Overview
 
@@ -89,15 +90,15 @@ How WAL state and snapshot completion integrate with the shard.
 
 Syncs and closes the WAL fd on `%FlushState{}`.
 
-#### `persist_set/4`
+#### `persist_set/6`
 
-`persist_set(flush, table, key, value)` — owner check (from `flush.owner_epoch`), append, optional size-based rotate. Returns `{:ok, new_flush}` or `{:error, reason}`.
+`persist_set(flush, owner_valid?, table, key, value, ttl_ms \\ nil)` — caller supplies cached `owner_valid?` (no per-write disk read), append, optional size-based rotate. Returns `{:ok, new_flush, ts_ms}` or `{:error, reason}`.
 
-#### `on_flush_tick/1`
+#### `on_flush_tick/2`
 
-Runs periodic sync + rotate (when owner valid), then `maybe_start_snapshot` when allowed.
+Runs periodic sync + rotate (when `owner_valid?` is true), then `maybe_start_snapshot` when allowed.
 
-#### `on_snapshot_message/2`
+#### `on_snapshot_message/3`
 
 Handles task completion tuples (`{:snapshot_done, ...}`) and updates flush state (checkpoint, prune, clear task ref).
 
@@ -107,7 +108,7 @@ Clears `snapshot_task_ref` after a failed or abandoned snapshot task.
 
 ### Tests
 
-Persistence behavior is covered under `test/cachepuppy_core/persistence/` (including `CacheShardProcess` integration tests and direct `CacheFlushEngine` calls where no GenServer mailbox is required, for example `persist_set/4` with a `%FlushState{}` from `open/2`).
+Persistence behavior is covered under `test/cachepuppy_core/persistence/` (including `CacheShardProcess` integration tests and direct `CacheFlushEngine` calls where no GenServer mailbox is required, for example `persist_set/6` with a `%FlushState{}` from `open/2`).
 
 ### Related modules
 

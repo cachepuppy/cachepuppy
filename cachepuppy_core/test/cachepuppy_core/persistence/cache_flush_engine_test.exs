@@ -73,7 +73,8 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngineTest do
         })
       )
 
-      assert {:error, :stale_owner} = CacheFlushEngine.persist_set(flush, "users", "k1", "v1")
+      assert {:error, :stale_owner} =
+               CacheFlushEngine.persist_set(flush, false, "users", "k1", "v1")
       _ = CacheFlushEngine.close(flush)
       assert File.stat!(CacheUtils.wal_path(storage_dir, shard_id, 1)).size == 0
     end)
@@ -204,7 +205,8 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngineTest do
       )
 
       {:ok, flush} = flush_open(shard_id, 1)
-      assert {:error, :stale_owner} = CacheFlushEngine.persist_set(flush, "users", "k1", "v1")
+      assert {:error, :stale_owner} =
+               CacheFlushEngine.persist_set(flush, false, "users", "k1", "v1")
       _ = CacheFlushEngine.close(flush)
 
       assert File.stat!(CacheUtils.wal_path(storage_dir, shard_id, 1)).size == 0

@@ -89,9 +89,14 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
       spawn(fn ->
         try do
           recovered = CacheRecoveryEngine.load_snapshot_then_replay(shard_id, storage_dir)
-          entries = :ets.tab2list(recovered)
-          :ets.delete(recovered)
-          send(caller, {:recovery_done, ref, {:ok, entries}})
+
+          case :ets.setopts(recovered, {:heir, caller, ref}) do
+            true ->
+              :ok
+
+            false ->
+              send(caller, {:recovery_done, ref, {:error, :ets_heir_setopts_failed}})
+          end
         rescue
           error -> send(caller, {:recovery_done, ref, {:error, error}})
         end
@@ -143,7 +148,14 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
       true ->
         storage_key = {table, key}
 
-        case CacheFlushEngine.persist_set(state.flush, table, key, value, ttl_ms) do
+        case CacheFlushEngine.persist_set(
+               state.flush,
+               state.owner_valid?,
+               table,
+               key,
+               value,
+               ttl_ms
+             ) do
           {:ok, new_flush, wal_ts_ms} ->
             entry = CacheEntry.from_wal(value, wal_ts_ms, ttl_ms)
             :ets.insert(state.table, {storage_key, entry})
@@ -177,7 +189,7 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
         storage_key = {table, key}
 
         if :ets.member(state.table, storage_key) do
-          case CacheFlushEngine.persist_delete(state.flush, table, key) do
+          case CacheFlushEngine.persist_delete(state.flush, state.owner_valid?, table, key) do
             {:ok, new_flush} ->
               :ets.delete(state.table, storage_key)
               {:reply, {:ok, true}, %{state | flush: new_flush}}
@@ -196,17 +208,27 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
   end
 
   @impl true
-  def handle_info({:recovery_done, ref, {:ok, entries}}, %State{recovery_task_ref: ref} = state) do
-    if entries != [] do
-      :ets.insert(state.table, entries)
-    end
+  def handle_info(
+        {:"ETS-TRANSFER", recovered_tid, _from, ref},
+        %State{recovery_task_ref: ref, table: old_table} = state
+      ) do
+    :ets.delete(old_table)
+
+    state = %{
+      state
+      | table: recovered_tid,
+        recovery_task_ref: nil,
+        ready?: true
+    }
 
     state = mark_rehydration_done(state)
-    state = refresh_owner_validity(%{state | recovery_task_ref: nil, ready?: true})
+    state = refresh_owner_validity(state)
     CacheShardRead.publish_ready(state.shard_id, state.table, state.owner_epoch)
 
+    recovered_size = :ets.info(recovered_tid, :size)
+
     Logger.info(
-      "cache_shard ready shard_id=#{state.shard_id} node=#{node()} recovered_entries=#{length(entries)}"
+      "cache_shard ready shard_id=#{state.shard_id} node=#{node()} recovered_entries=#{recovered_size}"
     )
 
     {:noreply, state}
@@ -222,7 +244,7 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
   end
 
   def handle_info(:flush_tick, state) do
-    flush = CacheFlushEngine.on_flush_tick(state.flush)
+    flush = CacheFlushEngine.on_flush_tick(state.flush, state.owner_valid?)
     state = %{state | flush: flush} |> schedule_flush_tick()
 
     {:noreply, state}
@@ -231,7 +253,10 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
   def handle_info({ref, reply}, %State{flush: %FlushState{snapshot_task_ref: ref}} = state)
       when is_reference(ref) do
     _ = Process.demonitor(ref, [:flush])
-    flush = CacheFlushEngine.on_snapshot_message(state.flush, reply)
+
+    flush =
+      CacheFlushEngine.on_snapshot_message(state.flush, reply, state.owner_valid?)
+
     {:noreply, %{state | flush: flush}}
   end
 

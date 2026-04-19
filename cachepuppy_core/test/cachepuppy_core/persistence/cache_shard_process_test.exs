@@ -33,7 +33,7 @@ defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
 
       {:ok, flush} = CacheFlushEngine.open(shard_id, 1)
 
-      {:ok, flush, _} = CacheFlushEngine.persist_set(flush, "users", "city", "blr")
+      {:ok, flush, _} = CacheFlushEngine.persist_set(flush, true, "users", "city", "blr")
       _ = CacheFlushEngine.close(flush)
 
       pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
