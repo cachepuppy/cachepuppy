@@ -2,13 +2,14 @@ import { useState } from "react";
 
 interface InsertDataModalProps {
   onClose: () => void;
-  onSubmit: (table: string, key: string, value: unknown) => Promise<unknown>;
+  onSubmit: (table: string, key: string, value: unknown, options?: { ttlMs?: number }) => Promise<unknown>;
 }
 
 export function InsertDataModal({ onClose, onSubmit }: InsertDataModalProps) {
   const [table, setTable] = useState("");
   const [key, setKey] = useState("");
   const [data, setData] = useState("");
+  const [ttlSeconds, setTtlSeconds] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -32,11 +33,23 @@ export function InsertDataModal({ onClose, onSubmit }: InsertDataModalProps) {
       return;
     }
 
+    const ttlTrimmed = ttlSeconds.trim();
+    let options: { ttlMs?: number } | undefined;
+    if (ttlTrimmed !== "") {
+      const seconds = Number(ttlTrimmed);
+      if (!Number.isFinite(seconds) || seconds <= 0) {
+        setError("TTL (seconds) must be a positive number, or leave blank.");
+        setResult(null);
+        return;
+      }
+      options = { ttlMs: Math.round(seconds * 1000) };
+    }
+
     setBusy(true);
     setError(null);
     setResult(null);
     try {
-      const value = await onSubmit(normalizedTable, normalizedKey, parsed);
+      const value = await onSubmit(normalizedTable, normalizedKey, parsed, options);
       setResult(JSON.stringify(value, null, 2));
     } catch {
       setError("Could not insert data.");
@@ -77,6 +90,17 @@ export function InsertDataModal({ onClose, onSubmit }: InsertDataModalProps) {
               onChange={(e) => setData(e.target.value)}
               placeholder='{"name":"Alice","role":"admin","active":true}'
               rows={5}
+              disabled={busy}
+            />
+          </label>
+          <label className="field">
+            <span>TTL (seconds, optional)</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={ttlSeconds}
+              onChange={(e) => setTtlSeconds(e.target.value)}
+              placeholder="Leave blank for no expiry"
               disabled={busy}
             />
           </label>

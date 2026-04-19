@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useCachePuppyClient, usePresence, useTopic, useTopicState } from "@cachepuppy/react";
 import type { CachePuppyEnvelope } from "@cachepuppy/core";
 import { TOPIC } from "../constants";
+import { DeleteDataModal } from "./components/DeleteDataModal";
 import { GetDataModal } from "./components/GetDataModal";
 import { InsertDataModal } from "./components/InsertDataModal";
 import type { DemoSession, StickyNote } from "../types";
@@ -24,6 +25,7 @@ export function RoomScreen({ session, onLeave }: RoomScreenProps) {
   const [saving, setSaving] = useState(false);
   const [showInsertModal, setShowInsertModal] = useState(false);
   const [showGetModal, setShowGetModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const topicEnabled = connectionState === "connected";
 
   const onTopicMessage = useCallback(
@@ -114,6 +116,9 @@ export function RoomScreen({ session, onLeave }: RoomScreenProps) {
         <button type="button" className="btn" onClick={() => setShowGetModal(true)}>
           Get data
         </button>
+        <button type="button" className="btn" onClick={() => setShowDeleteModal(true)}>
+          Delete data
+        </button>
       </section>
 
       <section ref={boardRef} className="notes-board card">
@@ -164,7 +169,7 @@ export function RoomScreen({ session, onLeave }: RoomScreenProps) {
       {showInsertModal ? (
         <InsertDataModal
           onClose={() => setShowInsertModal(false)}
-          onSubmit={(table, key, value) => client.setData(table, key, value)}
+          onSubmit={(table, key, value, opts) => client.setData(table, key, value, opts)}
         />
       ) : null}
 
@@ -172,6 +177,13 @@ export function RoomScreen({ session, onLeave }: RoomScreenProps) {
         <GetDataModal
           onClose={() => setShowGetModal(false)}
           onSubmit={(table, key) => client.getData(table, key)}
+        />
+      ) : null}
+
+      {showDeleteModal ? (
+        <DeleteDataModal
+          onClose={() => setShowDeleteModal(false)}
+          onSubmit={(table, key) => client.deleteData(table, key)}
         />
       ) : null}
     </div>
