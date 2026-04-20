@@ -57,6 +57,27 @@ States: `idle | connecting | connected | reconnecting | disconnected | destroyed
 - `on("message", handler)` for all decoded protocol messages.
 - `on("error", handler)` for typed SDK errors.
 
+## Admin HTTP client (`CachePuppyAdminClient`)
+
+Use **`createAdminClient(options)`** when calling the server’s **`/api/server/v1`** JSON routes from Node or a backend (no websocket, no `connect()`). Same **`url`** convention as `createClient`: a Phoenix websocket URL; the SDK derives the HTTP origin (see `httpBaseUrl.ts`).
+
+### Options
+
+- `url` (required): websocket URL used only to compute the HTTP base.
+- `authToken` (optional): sent as `Authorization: Bearer …` when present.
+- `fetchImpl` (optional): override `fetch` (tests, polyfills).
+
+### Methods
+
+- `setTopicState(topic, state)` — `PUT /api/server/v1/topics/:topic/state`; body is the full state object; returns updated `state` from the response.
+- `getTopicState(topic)` — `GET …/state`; returns the `state` map.
+- `getTopicStateWithMeta(topic)` — same GET; returns `{ state, sourceNode?, servedByNode? }` (from `meta.source_node` / `meta.served_by_node`).
+- `clearTopicState(topic)` — `DELETE …/topics/:topic`; returns `closed` as boolean.
+- `sendTopicMessage(topic, { event, payload? })` — `POST …/messages`; expects **202**; no return value.
+- `getTopicPresence(topic)` — `GET …/presence`; returns `{ clientCount, presence }` (maps `client_count` from JSON).
+
+Non-success HTTP responses throw `Error` with status and optional `reason` from JSON.
+
 ## Wire envelope (v1)
 
 All protocol messages use JSON:

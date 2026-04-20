@@ -1,4 +1,5 @@
 import { Presence, Socket, type Channel } from "phoenix";
+import { toHttpBaseUrl } from "../httpBaseUrl.js";
 import { nextId } from "../protocol.js";
 import type { CachePuppyEnvelope, TopicWebhookConfigOptions } from "../types.js";
 import type { CacheSetDataOptions, TopicStateResponse, Transport } from "./transport.js";
@@ -15,20 +16,6 @@ function toSdkTopic(channelTopic: string): string {
 
 function toSocketPath(url: string): string {
   return url.endsWith("/websocket") ? url.slice(0, -"/websocket".length) : url;
-}
-
-function toHttpBaseUrl(url: string): string {
-  const parsed = new URL(url);
-  if (parsed.protocol === "ws:") parsed.protocol = "http:";
-  if (parsed.protocol === "wss:") parsed.protocol = "https:";
-
-  if (parsed.pathname.endsWith("/socket/websocket")) {
-    parsed.pathname = parsed.pathname.slice(0, -"/socket/websocket".length) || "/";
-  } else if (parsed.pathname.endsWith("/socket")) {
-    parsed.pathname = parsed.pathname.slice(0, -"/socket".length) || "/";
-  }
-
-  return parsed.toString().replace(/\/$/, "");
 }
 
 /** Fixed Phoenix channel topic for per-connection private state (see SessionChannel). */
