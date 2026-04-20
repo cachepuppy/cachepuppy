@@ -1,31 +1,50 @@
 import { useMemo, useState } from "react";
 import { CachePuppyProvider } from "@cachepuppy/react";
+import { createAdminClient, type CachePuppyAdminClient } from "@cachepuppy/core";
 import { WS_URL } from "../constants";
-import type { DemoSession } from "../types";
 import { LoginScreen } from "./LoginScreen";
 import { RoomScreen } from "./RoomScreen";
 
 export default function App() {
-  const [session, setSession] = useState<DemoSession | null>(null);
+  const [clientId, setClientId] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
+  const [colour, setColour] = useState<string | null>(null);
   const clientOptions = useMemo(
     () =>
-      session
+      clientId
         ? {
             url: WS_URL,
             transport: "phoenix" as const,
-            clientId: session.clientId,
+            clientId,
           }
         : null,
-    [session],
+    [clientId],
   );
+  const adminClient: CachePuppyAdminClient = useMemo(() => createAdminClient({ url: WS_URL }), []);
 
-  if (session && clientOptions) {
+  function handleLogin(nextClientId: string, nextUserName: string, nextColour: string) {
+    setClientId(nextClientId);
+    setUserName(nextUserName);
+    setColour(nextColour);
+  }
+
+  if (clientId && userName && colour && clientOptions) {
     return (
       <CachePuppyProvider autoConnect options={clientOptions}>
-        <RoomScreen session={session} onLeave={() => setSession(null)} />
+        <RoomScreen
+          clientId={clientId}
+          userName={userName}
+          colour={colour}
+          adminClient={adminClient}
+          onLeave={() => {
+            setClientId(null);
+            setUserName(null);
+            setColour(null);
+          }}
+        />
       </CachePuppyProvider>
     );
   }
 
-  return <LoginScreen onConnected={setSession} />;
+  return <LoginScreen onConnected={handleLogin} />;
 }

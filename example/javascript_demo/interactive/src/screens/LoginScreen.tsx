@@ -1,13 +1,8 @@
 import { useId, useMemo, useState } from "react";
-import type { DemoSession } from "../types";
 
 const DEFAULT_COLOUR = "#6366f1";
 
-interface LoginScreenProps {
-  onConnected: (session: DemoSession) => void;
-}
-
-export function LoginScreen({ onConnected }: LoginScreenProps) {
+export function LoginScreen({ onConnected }) {
   const nameId = useId();
   const colourId = useId();
   const [userName, setUserName] = useState("");
@@ -24,13 +19,15 @@ export function LoginScreen({ onConnected }: LoginScreenProps) {
       return;
     }
     setError(null);
-    onConnected({ clientId, userName: trimmed, colour });
+    onConnected(clientId, trimmed, colour);
   }
 
   return (
     <div className="screen screen--login">
       <h1>Join the room</h1>
-      <p className="muted">Connect to the Phoenix server, then open the sticky notes room.</p>
+      <p className="muted">
+        Connect to the Phoenix server, then open the sticky notes room.
+      </p>
       <form className="card" onSubmit={handleSubmit}>
         <label className="field" htmlFor={nameId}>
           <span>User name</span>
@@ -55,7 +52,9 @@ export function LoginScreen({ onConnected }: LoginScreenProps) {
           <span className="colour-hex">{colour}</span>
         </label>
         {error ? <p className="error">{error}</p> : null}
-        <button type="submit" className="btn primary">Continue</button>
+        <button type="submit" className="btn primary">
+          Continue
+        </button>
       </form>
     </div>
   );

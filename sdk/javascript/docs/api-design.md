@@ -44,6 +44,7 @@ States: `idle | connecting | connected | reconnecting | disconnected | destroyed
 - `unsubscribe(topic: string, handler?: TopicHandler): Promise<void>`
 - `publish(topic: string, event: string, payload: unknown): Promise<void>`
 - `clientCount(topic: string): Promise<number>`
+- `CachePuppyClient` intentionally does **not** expose cache HTTP calls; use `CachePuppyAdminClient` for cache APIs.
 
 ### Topic shared state vs connection session state
 
@@ -75,6 +76,9 @@ Use **`createAdminClient(options)`** when calling the server’s **`/api/server/
 - `clearTopicState(topic)` — `DELETE …/topics/:topic`; returns `closed` as boolean.
 - `sendTopicMessage(topic, { event, payload? })` — `POST …/messages`; expects **202**; no return value.
 - `getTopicPresence(topic)` — `GET …/presence`; returns `{ clientCount, presence }` (maps `client_count` from JSON).
+- `setData(table, key, value, options?)` — `POST /api/cache/setdata`; returns stored `value`.
+- `getData(table, key)` — `POST /api/cache/getdata`; returns `value` (or `undefined` if not found/expired).
+- `deleteData(table, key)` — `POST /api/cache/deletedata`; returns `deleted` as boolean.
 
 Non-success HTTP responses throw `Error` with status and optional `reason` from JSON.
 

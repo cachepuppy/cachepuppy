@@ -1,26 +1,41 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useCachePuppyClient, usePresence, useTopic, useTopicState } from "@cachepuppy/react";
+import {
+  useCachePuppyClient,
+  usePresence,
+  useTopic,
+  useTopicState,
+} from "@cachepuppy/react";
 import type { CachePuppyEnvelope } from "@cachepuppy/core";
 import { TOPIC } from "../constants";
 import { DeleteDataModal } from "./components/DeleteDataModal";
 import { GetDataModal } from "./components/GetDataModal";
 import { InsertDataModal } from "./components/InsertDataModal";
-import type { DemoSession, StickyNote } from "../types";
+import type { StickyNote } from "../types";
 import { notesFromState } from "../types";
 import { attachBoardCursorTracking } from "../utils/boardCursorPublish";
-import { applyTopicMessageToPeerCursors, type PeerCursor } from "../utils/cursorTopicUtils";
+import {
+  applyTopicMessageToPeerCursors,
+  type PeerCursor,
+} from "../utils/cursorTopicUtils";
 
-interface RoomScreenProps {
-  session: DemoSession;
-  onLeave: () => void;
-}
-
-export function RoomScreen({ session, onLeave }: RoomScreenProps) {
-  const { clientId, userName, colour } = session;
-  const { client, state: connectionState, error: connectionError, destroy } = useCachePuppyClient();
+export function RoomScreen({
+  clientId,
+  userName,
+  colour,
+  adminClient,
+  onLeave,
+}) {
+  const {
+    client,
+    state: connectionState,
+    error: connectionError,
+    destroy,
+  } = useCachePuppyClient();
 
   const boardRef = useRef<HTMLElement | null>(null);
-  const [peerCursors, setPeerCursors] = useState<Record<string, PeerCursor>>({});
+  const [peerCursors, setPeerCursors] = useState<Record<string, PeerCursor>>(
+    {},
+  );
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [showInsertModal, setShowInsertModal] = useState(false);
@@ -30,7 +45,9 @@ export function RoomScreen({ session, onLeave }: RoomScreenProps) {
 
   const onTopicMessage = useCallback(
     (message: CachePuppyEnvelope) => {
-      setPeerCursors((prev) => applyTopicMessageToPeerCursors(prev, message, clientId));
+      setPeerCursors((prev) =>
+        applyTopicMessageToPeerCursors(prev, message, clientId),
+      );
     },
     [clientId],
   );
@@ -94,15 +111,35 @@ export function RoomScreen({ session, onLeave }: RoomScreenProps) {
     onLeave();
   }
 
+  async function insertCacheData(
+    table: string,
+    key: string,
+    value: unknown,
+    options?: { ttlMs?: number },
+  ): Promise<unknown> {
+    return adminClient.setData(table, key, value, options);
+  }
+
+  async function getCacheData(table: string, key: string): Promise<unknown> {
+    return adminClient.getData(table, key);
+  }
+
+  async function deleteCacheData(table: string, key: string): Promise<boolean> {
+    return adminClient.deleteData(table, key);
+  }
+
   return (
     <div className="screen screen--room">
       <header className="room-header">
         <div>
           <h1>Topic: Sticky Notes Room</h1>
           <p className="muted">
-            Signed in as <strong>{userName}</strong> · {clientCount} in room · connection: {connectionState}
+            Signed in as <strong>{userName}</strong> · {clientCount} in room ·
+            connection: {connectionState}
           </p>
-          {connectionError ? <p className="error">Connection error: {connectionError.message}</p> : null}
+          {connectionError ? (
+            <p className="error">Connection error: {connectionError.message}</p>
+          ) : null}
         </div>
         <button type="button" className="btn" onClick={() => void leave()}>
           Leave
@@ -110,13 +147,25 @@ export function RoomScreen({ session, onLeave }: RoomScreenProps) {
       </header>
 
       <section className="card row-actions">
-        <button type="button" className="btn" onClick={() => setShowInsertModal(true)}>
+        <button
+          type="button"
+          className="btn"
+          onClick={() => setShowInsertModal(true)}
+        >
           Insert data
         </button>
-        <button type="button" className="btn" onClick={() => setShowGetModal(true)}>
+        <button
+          type="button"
+          className="btn"
+          onClick={() => setShowGetModal(true)}
+        >
           Get data
         </button>
-        <button type="button" className="btn" onClick={() => setShowDeleteModal(true)}>
+        <button
+          type="button"
+          className="btn"
+          onClick={() => setShowDeleteModal(true)}
+        >
           Delete data
         </button>
       </section>
@@ -139,7 +188,11 @@ export function RoomScreen({ session, onLeave }: RoomScreenProps) {
         ) : (
           <ul className="notes-list">
             {notes.map((n) => (
-              <li key={n.id} className="sticky" style={{ borderTopColor: n.colour }}>
+              <li
+                key={n.id}
+                className="sticky"
+                style={{ borderTopColor: n.colour }}
+              >
                 <p className="sticky__text">{n.text}</p>
                 <span className="sticky__author" style={{ color: n.colour }}>
                   {n.userName}
@@ -161,7 +214,11 @@ export function RoomScreen({ session, onLeave }: RoomScreenProps) {
             disabled={saving}
           />
         </label>
-        <button type="submit" className="btn primary" disabled={saving || !draft.trim()}>
+        <button
+          type="submit"
+          className="btn primary"
+          disabled={saving || !draft.trim()}
+        >
           {saving ? "Saving…" : "Add note"}
         </button>
       </form>
@@ -169,21 +226,21 @@ export function RoomScreen({ session, onLeave }: RoomScreenProps) {
       {showInsertModal ? (
         <InsertDataModal
           onClose={() => setShowInsertModal(false)}
-          onSubmit={(table, key, value, opts) => client.setData(table, key, value, opts)}
+          onSubmit={insertCacheData}
         />
       ) : null}
 
       {showGetModal ? (
         <GetDataModal
           onClose={() => setShowGetModal(false)}
-          onSubmit={(table, key) => client.getData(table, key)}
+          onSubmit={getCacheData}
         />
       ) : null}
 
       {showDeleteModal ? (
         <DeleteDataModal
           onClose={() => setShowDeleteModal(false)}
-          onSubmit={(table, key) => client.deleteData(table, key)}
+          onSubmit={deleteCacheData}
         />
       ) : null}
     </div>

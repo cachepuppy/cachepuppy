@@ -1,16 +1,18 @@
 import { toHttpBaseUrl } from "./httpBaseUrl.js";
-import type { TopicStateResponse } from "./transport/transport.js";
+import type { CacheSetDataOptions, TopicStateResponse } from "./transport/transport.js";
 import type { AdminClientOptions, TopicPresenceResponse } from "./types.js";
 
 const API_PREFIX = "/api/server/v1";
 
 export class CachePuppyAdminClient {
-  private readonly baseUrl: string;
+  private readonly serverApiBaseUrl: string;
+  private readonly httpBaseUrl: string;
   private readonly authHeaders: Record<string, string>;
   private readonly fetchFn: typeof fetch;
 
   constructor(private readonly options: AdminClientOptions) {
-    this.baseUrl = `${toHttpBaseUrl(options.url)}${API_PREFIX}`;
+    this.httpBaseUrl = toHttpBaseUrl(options.url);
+    this.serverApiBaseUrl = `${this.httpBaseUrl}${API_PREFIX}`;
     this.authHeaders = options.authToken ? { authorization: `Bearer ${options.authToken}` } : {};
     this.fetchFn = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
   }
@@ -61,19 +63,51 @@ export class CachePuppyAdminClient {
     return { clientCount, presence };
   }
 
+  async setData(table: string, key: string, value: unknown, options?: CacheSetDataOptions): Promise<unknown> {
+    const body: Record<string, unknown> = { table, key, value };
+    if (typeof options?.ttlMs === "number" && options.ttlMs > 0) {
+      body.ttl_ms = options.ttlMs;
+    }
+    const data = await this.requestJson<{ value?: unknown }>("POST", "/api/cache/setdata", body, {
+      useServerApiPrefix: false,
+    });
+    return data.value;
+  }
+
+  async getData(table: string, key: string): Promise<unknown> {
+    const data = await this.requestJson<{ value?: unknown }>(
+      "POST",
+      "/api/cache/getdata",
+      { table, key },
+      { useServerApiPrefix: false },
+    );
+    return data.value;
+  }
+
+  async deleteData(table: string, key: string): Promise<boolean> {
+    const data = await this.requestJson<{ deleted?: unknown }>(
+      "POST",
+      "/api/cache/deletedata",
+      { table, key },
+      { useServerApiPrefix: false },
+    );
+    return data.deleted === true;
+  }
+
   private async requestJson<T>(
     method: string,
     path: string,
     body?: unknown,
-    opts?: { okStatuses?: number[] },
+    opts?: { okStatuses?: number[]; useServerApiPrefix?: boolean },
   ): Promise<T> {
     const okStatuses = opts?.okStatuses ?? [200];
+    const base = opts?.useServerApiPrefix === false ? this.httpBaseUrl : this.serverApiBaseUrl;
     const headers: Record<string, string> = {
       ...this.authHeaders,
       ...(body !== undefined ? { "content-type": "application/json" } : {}),
     };
 
-    const response = await this.fetchFn(`${this.baseUrl}${path}`, {
+    const response = await this.fetchFn(`${base}${path}`, {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
