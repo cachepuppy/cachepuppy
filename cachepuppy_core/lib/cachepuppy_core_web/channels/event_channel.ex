@@ -2,6 +2,7 @@ defmodule CachePuppyCoreWeb.EventChannel do
   use CachePuppyCoreWeb, :channel
   alias CachePuppyCore.TopicManager
   alias CachePuppyCoreWeb.Presence
+  alias CachePuppyCoreWeb.TopicRoom
 
   intercept ["message"]
 
@@ -33,8 +34,8 @@ defmodule CachePuppyCoreWeb.EventChannel do
         %{"event" => event, "payload" => payload},
         %{assigns: %{topic: topic, client_id: client_id}} = socket
       ) do
-    message = build_publish(topic, event, payload, client_id)
-    broadcast!(socket, "message", message)
+    message = TopicRoom.build_publish(topic, event, payload, client_id)
+    TopicRoom.broadcast_message!(topic, message)
     {:reply, :ok, socket}
   end
 
@@ -44,8 +45,8 @@ defmodule CachePuppyCoreWeb.EventChannel do
     payload = Map.get(envelope, "payload")
     client_id = socket.assigns.client_id
 
-    message = build_publish(socket.assigns.topic, event, payload, client_id)
-    broadcast!(socket, "message", message)
+    message = TopicRoom.build_publish(socket.assigns.topic, event, payload, client_id)
+    TopicRoom.broadcast_message!(socket.assigns.topic, message)
     {:reply, :ok, socket}
   end
 
@@ -54,7 +55,7 @@ defmodule CachePuppyCoreWeb.EventChannel do
       when is_map(payload) do
     case TopicManager.set_state(topic, payload) do
       {:ok, state, true} ->
-        broadcast_state_updated(socket, topic, state)
+        TopicRoom.broadcast_state_updated!(topic, state)
         {:reply, {:ok, %{"state" => state}}, socket}
 
       {:ok, state, false} ->
@@ -135,7 +136,7 @@ defmodule CachePuppyCoreWeb.EventChannel do
 
   @impl true
   def handle_out("message", payload, socket) do
-    push(socket, "message", put_served_by_node(payload))
+    push(socket, "message", TopicRoom.put_served_by_node(payload))
     {:noreply, socket}
   end
 
@@ -143,35 +144,5 @@ defmodule CachePuppyCoreWeb.EventChannel do
   def terminate(_reason, %{assigns: %{topic: topic}}) do
     TopicManager.notify_activity(topic)
     :ok
-  end
-
-  defp broadcast_state_updated(socket, topic, state) do
-    message = build_publish(topic, "state_updated", state, "topic_process")
-    broadcast!(socket, "message", message)
-  end
-
-  defp build_publish(topic, event, payload, client_id) do
-    %{
-      "v" => 1,
-      "type" => "publish",
-      "topic" => topic,
-      "event" => event,
-      "payload" => payload,
-      "ts" => System.system_time(:millisecond),
-      "meta" => %{"clientId" => client_id, "source_node" => to_string(node())}
-    }
-  end
-
-  defp put_served_by_node(payload) do
-    raw_meta = Map.get(payload, "meta")
-
-    meta =
-      if is_map(raw_meta) do
-        Map.put(raw_meta, "served_by_node", to_string(node()))
-      else
-        %{"served_by_node" => to_string(node())}
-      end
-
-    Map.put(payload, "meta", meta)
   end
 end
