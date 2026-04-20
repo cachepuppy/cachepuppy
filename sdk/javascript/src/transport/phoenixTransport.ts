@@ -1,7 +1,7 @@
 import { Presence, Socket, type Channel } from "phoenix";
 import { nextId } from "../protocol.js";
 import type { CachePuppyEnvelope, TopicWebhookConfigOptions } from "../types.js";
-import type { TopicStateResponse, Transport } from "./transport.js";
+import type { CacheSetDataOptions, TopicStateResponse, Transport } from "./transport.js";
 
 type EnvelopeHandler = (message: CachePuppyEnvelope) => void;
 
@@ -341,6 +341,61 @@ export class PhoenixTransport implements Transport {
         })
         .receive("error", () => reject(new Error("Failed to get session state")))
         .receive("timeout", () => reject(new Error("Timed out while getting session state")));
+    });
+  }
+
+  async setData(
+    clientId: string,
+    table: string,
+    key: string,
+    value: unknown,
+    options?: CacheSetDataOptions,
+  ): Promise<unknown> {
+    const channel = await this.ensureSessionChannel(clientId);
+    const body: Record<string, unknown> = { table, key, value };
+    if (typeof options?.ttlMs === "number" && options.ttlMs > 0) {
+      body.ttl_ms = options.ttlMs;
+    }
+
+    return new Promise<unknown>((resolve, reject) => {
+      channel
+        .push("set_cache_data", body)
+        .receive("ok", (response?: unknown) => {
+          const data = (response ?? {}) as { value?: unknown };
+          resolve(data.value);
+        })
+        .receive("error", () => reject(new Error("Failed to set cache data")))
+        .receive("timeout", () => reject(new Error("Timed out while setting cache data")));
+    });
+  }
+
+  async getData(clientId: string, table: string, key: string): Promise<unknown> {
+    const channel = await this.ensureSessionChannel(clientId);
+
+    return new Promise<unknown>((resolve, reject) => {
+      channel
+        .push("get_cache_data", { table, key })
+        .receive("ok", (response?: unknown) => {
+          const data = (response ?? {}) as { value?: unknown };
+          resolve(data.value);
+        })
+        .receive("error", () => reject(new Error("Failed to get cache data")))
+        .receive("timeout", () => reject(new Error("Timed out while getting cache data")));
+    });
+  }
+
+  async deleteData(clientId: string, table: string, key: string): Promise<boolean> {
+    const channel = await this.ensureSessionChannel(clientId);
+
+    return new Promise<boolean>((resolve, reject) => {
+      channel
+        .push("delete_cache_data", { table, key })
+        .receive("ok", (response?: unknown) => {
+          const data = (response ?? {}) as { deleted?: unknown };
+          resolve(data.deleted === true);
+        })
+        .receive("error", () => reject(new Error("Failed to delete cache data")))
+        .receive("timeout", () => reject(new Error("Timed out while deleting cache data")));
     });
   }
 

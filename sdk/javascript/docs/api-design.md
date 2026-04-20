@@ -44,13 +44,14 @@ States: `idle | connecting | connected | reconnecting | disconnected | destroyed
 - `unsubscribe(topic: string, handler?: TopicHandler): Promise<void>`
 - `publish(topic: string, event: string, payload: unknown): Promise<void>`
 - `clientCount(topic: string): Promise<number>`
-- `CachePuppyClient` intentionally does **not** expose cache HTTP calls; use `CachePuppyAdminClient` for cache APIs.
+- `setData(table, key, value, options?)` / `getData(table, key)` / `deleteData(table, key)` — cache operations over websocket (`session` channel events `set_cache_data`, `get_cache_data`, `delete_cache_data`).
 
 ### Topic shared state vs connection session state
 
 - `setTopicState(topic, payload)` / `getTopicState(topic)` / `getTopicStateWithMeta(topic)` / `clearTopicState(topic)` — cluster-wide shared state for the topic; subscribers receive `state_updated` only when the stored map actually changes.
 - `configureTopicWebhook(topic, { flush, url?, frequency? })` — enable or disable periodic webhook POSTs of `{ topic, state, ts }` on a timer when state has changed (`configure_topic_webhook` on the channel). `clearTopicState` stops the topic process server-side (Phoenix `close_topic` push).
 - `setSessionState(payload)` / `getSessionState()` — private state on the Phoenix `session` channel (no room topic); other clients do not see it; reconnect starts empty.
+- Cache websocket calls (`setData/getData/deleteData`) also use the `session` channel and mirror `/api/cache/*` semantics.
 
 ### Event APIs
 
@@ -60,7 +61,7 @@ States: `idle | connecting | connected | reconnecting | disconnected | destroyed
 
 ## Admin HTTP client (`CachePuppyAdminClient`)
 
-Use **`createAdminClient(options)`** when calling the server’s **`/api/server/v1`** JSON routes from Node or a backend (no websocket, no `connect()`). Same **`url`** convention as `createClient`: a Phoenix websocket URL; the SDK derives the HTTP origin (see `httpBaseUrl.ts`).
+Use **`createAdminClient(options)`** when calling the server’s **HTTP** routes from Node or a backend (no websocket, no `connect()`). Same **`url`** convention as `createClient`: a Phoenix websocket URL; the SDK derives the HTTP origin (see `httpBaseUrl.ts`).
 
 ### Options
 

@@ -8,6 +8,7 @@ This package provides:
 - Topic publish/subscribe
 - Per-topic shared state helpers (`setTopicState`, `configureTopicWebhook`, `getTopicState`, `clearTopicState`)
 - Per-connection private session state via the fixed `session` channel (`setSessionState`, `getSessionState`; no room topic)
+- Per-connection cache helpers via the fixed `session` channel (`setData`, `getData`, `deleteData`)
 - `onStateUpdated` helper for `state_updated` topic events
 - Mock transport for local development and demo flows
 - **Admin HTTP client** (`createAdminClient` / `CachePuppyAdminClient`) for server-side HTTP APIs without opening a websocket:
@@ -38,3 +39,20 @@ const deleted = await admin.deleteData("users", "alice");
 ```
 
 Server route details and prototype security notes: [`cachepuppy_core/README.md`](../../cachepuppy_core/README.md) (Server HTTP API section).
+
+### Websocket cache calls on `CachePuppyClient`
+
+When using the websocket client (`createClient`), cache operations are also available on the same client through the `session` channel:
+
+```ts
+const client = createClient({ url: "ws://localhost:4000/socket/websocket" });
+await client.connect();
+
+await client.setData("users", "alice", { role: "admin" }, { ttlMs: 30_000 });
+const value = await client.getData("users", "alice");
+const deleted = await client.deleteData("users", "alice");
+```
+
+Use whichever integration shape fits your app:
+- websocket client (`CachePuppyClient`) for connection-oriented realtime flows
+- admin HTTP client (`CachePuppyAdminClient`) for server-side HTTP workflows

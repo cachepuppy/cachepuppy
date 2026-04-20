@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { CachePuppyProvider } from "@cachepuppy/react";
-import { createAdminClient, type CachePuppyAdminClient } from "@cachepuppy/core";
 import { WS_URL } from "../constants";
 import { LoginScreen } from "./LoginScreen";
 import { RoomScreen } from "./RoomScreen";
@@ -20,7 +19,6 @@ export default function App() {
         : null,
     [clientId],
   );
-  const adminClient: CachePuppyAdminClient = useMemo(() => createAdminClient({ url: WS_URL }), []);
 
   function handleLogin(nextClientId: string, nextUserName: string, nextColour: string) {
     setClientId(nextClientId);
@@ -35,7 +33,6 @@ export default function App() {
           clientId={clientId}
           userName={userName}
           colour={colour}
-          adminClient={adminClient}
           onLeave={() => {
             setClientId(null);
             setUserName(null);
