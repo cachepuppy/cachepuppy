@@ -17,6 +17,22 @@ With `mix phx.server`, the app runs on `http://localhost:4000`. With Docker Comp
 - `GET /readyz` is quorum-aware readiness and returns `200` only when cluster quorum is met.
 - `GET /api/health` returns status plus cluster visibility (`node`, `cluster_size`, `connected_nodes`).
 
+## Server HTTP API (prototype)
+
+JSON routes for backends that should not open a websocket per request. **There is no authentication on these routes** (same trust model as `/api/cache/*` and the open `/socket` connect). Do not expose them on the public internet without a reverse proxy, network isolation, or future service auth.
+
+Base path: **`/api/server/v1`**. The `:topic` path segment is the **logical** room name (without the `events:` prefix used on the websocket).
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `PUT` | `/topics/:topic/state` | Replace shared topic state. Request body is the state JSON object (same map as websocket `set_state` inner `payload`). Response: `%{"state" => map}`. When the stored map changes, subscribers receive the same `state_updated` envelope as over the channel. |
+| `GET` | `/topics/:topic/state` | Read current topic state. Response: `%{"state" => map, "meta" => %{...}}` (same shape as websocket `get_state` reply). `404` with `reason` `topic_not_found` if no topic process exists. |
+| `DELETE` | `/topics/:topic` | Stop the topic process (`close_topic`). Response: `%{"closed" => true}` or `%{"closed" => false}` if there was nothing to stop. |
+| `POST` | `/topics/:topic/messages` | Fan out a publish to websocket subscribers. JSON body: `%{"event" => string, "payload" => any}`. Response: `202` and `%{"ok" => true}`. Envelope matches channel publishes; `meta.clientId` is `server_api`. |
+| `GET` | `/topics/:topic/presence` | Presence snapshot for the room. Response: `%{"client_count" => integer, "presence" => map}` (same underlying Presence topic as `events:<topic>` joins). |
+
+These handlers reuse [`TopicManager`](lib/cachepuppy_core/topic_manager.ex) and the same PubSub topic as [`EventChannel`](lib/cachepuppy_core_web/channels/event_channel.ex), via [`TopicRoom`](lib/cachepuppy_core_web/topic_room.ex), so behavior stays aligned with the browser websocket contract.
+
 Required runtime env for quorum:
 
 - `TOTAL_NODES` (required, positive integer)
