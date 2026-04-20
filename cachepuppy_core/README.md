@@ -67,6 +67,13 @@ Supported inbound events on **`session`**:
 
 - `"set_session_state"` with payload `%{"payload" => map}` stores private state for this websocket connection only.
 - `"get_session_state"` returns `%{"state" => map}` for that connection.
+- `"set_cache_data"` with payload `%{"table" => string, "key" => string, "value" => any, "ttl_ms" => pos_integer?}` writes through the same cache pipeline as `/api/cache/setdata`.
+- `"get_cache_data"` with payload `%{"table" => string, "key" => string}` reads through the same cache pipeline as `/api/cache/getdata`.
+- `"delete_cache_data"` with payload `%{"table" => string, "key" => string}` deletes through the same cache pipeline as `/api/cache/deletedata`.
+- Cache replies mirror HTTP JSON bodies:
+  - set/get: `%{"table" => table, "key" => key, "value" => value}`
+  - delete: `%{"table" => table, "key" => key, "deleted" => boolean}`
+- Cache errors reuse the same reasons as HTTP where applicable (`invalid_payload`, `invalid_table_or_key`, `invalid_ttl_ms`, `rehydrating`, `rpc_failed`, `shard_unavailable`).
 
 Broadcast behavior:
 
@@ -110,6 +117,18 @@ Join Phoenix topic `session` (fixed string) for connection-scoped state that doe
   - `%{"state" => %{"draft" => "hello"}}`
 - `get_session_state` reply:
   - `%{"state" => %{"draft" => "hello"}}`
+- `set_cache_data` push:
+  - `%{"table" => "users", "key" => "user_1", "value" => %{"role" => "admin"}, "ttl_ms" => 30_000}`
+- `set_cache_data` reply:
+  - `%{"table" => "users", "key" => "user_1", "value" => %{"role" => "admin"}}`
+- `get_cache_data` push:
+  - `%{"table" => "users", "key" => "user_1"}`
+- `get_cache_data` reply:
+  - `%{"table" => "users", "key" => "user_1", "value" => %{"role" => "admin"}}`
+- `delete_cache_data` push:
+  - `%{"table" => "users", "key" => "user_1"}`
+- `delete_cache_data` reply:
+  - `%{"table" => "users", "key" => "user_1", "deleted" => true}`
 - `close_topic` reply:
   - `%{"closed" => true}`
 
