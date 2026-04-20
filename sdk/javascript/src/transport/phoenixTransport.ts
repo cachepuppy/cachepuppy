@@ -1,8 +1,7 @@
 import { Presence, Socket, type Channel } from "phoenix";
-import { toHttpBaseUrl } from "../httpBaseUrl.js";
 import { nextId } from "../protocol.js";
 import type { CachePuppyEnvelope, TopicWebhookConfigOptions } from "../types.js";
-import type { CacheSetDataOptions, TopicStateResponse, Transport } from "./transport.js";
+import type { TopicStateResponse, Transport } from "./transport.js";
 
 type EnvelopeHandler = (message: CachePuppyEnvelope) => void;
 
@@ -315,76 +314,6 @@ export class PhoenixTransport implements Transport {
     });
   }
 
-  async setData(
-    clientId: string,
-    table: string,
-    key: string,
-    value: unknown,
-    options?: CacheSetDataOptions,
-  ): Promise<unknown> {
-    const resolvedClientId = this.customClientId ?? clientId;
-    const body: Record<string, unknown> = { table, key, value, client_id: resolvedClientId };
-    if (typeof options?.ttlMs === "number" && options.ttlMs > 0) {
-      body.ttl_ms = options.ttlMs;
-    }
-    const response = await fetch(`${toHttpBaseUrl(this.baseUrl)}/api/cache/setdata`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(this.authToken ? { authorization: `Bearer ${this.authToken}` } : {}),
-      },
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const detail = await readErrorReason(response);
-      throw new Error(`Failed to set cache data (status ${response.status}${detail ? `, reason ${detail}` : ""})`);
-    }
-
-    const data = (await response.json()) as { value?: unknown };
-    return data.value;
-  }
-
-  async getData(clientId: string, table: string, key: string): Promise<unknown> {
-    const resolvedClientId = this.customClientId ?? clientId;
-    const response = await fetch(`${toHttpBaseUrl(this.baseUrl)}/api/cache/getdata`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(this.authToken ? { authorization: `Bearer ${this.authToken}` } : {}),
-      },
-      body: JSON.stringify({ table, key, client_id: resolvedClientId }),
-    });
-
-    if (!response.ok) {
-      const detail = await readErrorReason(response);
-      throw new Error(`Failed to get cache data (status ${response.status}${detail ? `, reason ${detail}` : ""})`);
-    }
-
-    const data = (await response.json()) as { value?: unknown };
-    return data.value;
-  }
-
-  async deleteData(clientId: string, table: string, key: string): Promise<boolean> {
-    const resolvedClientId = this.customClientId ?? clientId;
-    const response = await fetch(`${toHttpBaseUrl(this.baseUrl)}/api/cache/deletedata`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(this.authToken ? { authorization: `Bearer ${this.authToken}` } : {}),
-      },
-      body: JSON.stringify({ table, key, client_id: resolvedClientId }),
-    });
-
-    if (!response.ok) {
-      const detail = await readErrorReason(response);
-      throw new Error(`Failed to delete cache data (status ${response.status}${detail ? `, reason ${detail}` : ""})`);
-    }
-
-    const data = (await response.json()) as { deleted?: unknown };
-    return data.deleted === true;
-  }
-
   async setSessionState(clientId: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> {
     const channel = await this.ensureSessionChannel(clientId);
 
@@ -447,13 +376,4 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function joinMetaKey(clientId: string, channelTopic: string): string {
   return `${clientId}::${channelTopic}`;
-}
-
-async function readErrorReason(response: Response): Promise<string | null> {
-  try {
-    const payload = (await response.json()) as { reason?: unknown };
-    return typeof payload.reason === "string" ? payload.reason : null;
-  } catch {
-    return null;
-  }
 }

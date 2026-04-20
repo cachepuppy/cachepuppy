@@ -1,9 +1,3 @@
-export interface DemoSession {
-  clientId: string;
-  userName: string;
-  colour: string;
-}
-
 /** One sticky note in shared topic state (`setTopicState` / `state_updated`). */
 export interface StickyNote {
   id: string;

@@ -10,7 +10,9 @@ This package provides:
 - Per-connection private session state via the fixed `session` channel (`setSessionState`, `getSessionState`; no room topic)
 - `onStateUpdated` helper for `state_updated` topic events
 - Mock transport for local development and demo flows
-- **Admin HTTP client** (`createAdminClient` / `CachePuppyAdminClient`) for server-side `/api/server/v1` topic APIs without opening a websocket
+- **Admin HTTP client** (`createAdminClient` / `CachePuppyAdminClient`) for server-side HTTP APIs without opening a websocket:
+  - `/api/server/v1` topic APIs (`state`, `messages`, `presence`, `clear`)
+  - `/api/cache/*` cache APIs (`setdata`, `getdata`, `deletedata`)
 
 See `docs/api-design.md` for the API contract.
 
@@ -30,6 +32,9 @@ await admin.setTopicState("my_room", { count: 1 });
 const state = await admin.getTopicState("my_room");
 await admin.sendTopicMessage("my_room", { event: "ping", payload: { from: "cron" } });
 const { clientCount } = await admin.getTopicPresence("my_room");
+await admin.setData("users", "alice", { role: "admin" }, { ttlMs: 30_000 });
+const cached = await admin.getData("users", "alice");
+const deleted = await admin.deleteData("users", "alice");
 ```
 
 Server route details and prototype security notes: [`cachepuppy_core/README.md`](../../cachepuppy_core/README.md) (Server HTTP API section).
