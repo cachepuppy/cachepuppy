@@ -42,6 +42,20 @@ export interface ClientOptions {
   transport?: "mock" | "phoenix";
 }
 
+/** Options for `CachePuppyAdminClient` (HTTP `/api/server/v1`, no websocket). */
+export interface AdminClientOptions {
+  /** Same convention as {@link ClientOptions.url}: Phoenix websocket URL; HTTP base is derived. */
+  url: string;
+  authToken?: string;
+  fetchImpl?: typeof fetch;
+}
+
+/** Response shape from `CachePuppyAdminClient.getTopicPresence`. */
+export interface TopicPresenceResponse {
+  clientCount: number;
+  presence: Record<string, unknown>;
+}
+
 /** Options for `configureTopicWebhook` (Phoenix `configure_topic_webhook`). */
 export interface TopicWebhookConfigOptions {
   /** When true, enable periodic POSTs of topic state to `url` every `frequency` seconds if state changed. */
