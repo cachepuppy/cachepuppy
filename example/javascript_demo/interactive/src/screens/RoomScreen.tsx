@@ -22,8 +22,12 @@ export function RoomScreen({
   clientId,
   userName,
   colour,
-  adminClient,
   onLeave,
+}: {
+  clientId: string;
+  userName: string;
+  colour: string;
+  onLeave: () => void;
 }) {
   const {
     client,
@@ -117,15 +121,15 @@ export function RoomScreen({
     value: unknown,
     options?: { ttlMs?: number },
   ): Promise<unknown> {
-    return adminClient.setData(table, key, value, options);
+    return client.setData(table, key, value, options);
   }
 
   async function getCacheData(table: string, key: string): Promise<unknown> {
-    return adminClient.getData(table, key);
+    return client.getData(table, key);
   }
 
   async function deleteCacheData(table: string, key: string): Promise<boolean> {
-    return adminClient.deleteData(table, key);
+    return client.deleteData(table, key);
   }
 
   return (

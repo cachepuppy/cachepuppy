@@ -2,7 +2,11 @@ import { useId, useMemo, useState } from "react";
 
 const DEFAULT_COLOUR = "#6366f1";
 
-export function LoginScreen({ onConnected }) {
+export function LoginScreen({
+  onConnected,
+}: {
+  onConnected: (clientId: string, userName: string, colour: string) => void;
+}) {
   const nameId = useId();
   const colourId = useId();
   const [userName, setUserName] = useState("");
