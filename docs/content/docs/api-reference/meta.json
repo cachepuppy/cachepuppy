@@ -1,4 +1,5 @@
 {
   "title": "API reference",
+  "icon": "BookOpen",
   "pages": ["index", "http", "websocket", "envelope", "typescript-exports"]
 }

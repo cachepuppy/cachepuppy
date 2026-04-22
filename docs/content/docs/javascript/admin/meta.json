@@ -1,4 +1,5 @@
 {
   "title": "Admin HTTP",
+  "icon": "Server",
   "pages": ["index", "when-to-use", "topic-apis", "cache-apis", "security"]
 }

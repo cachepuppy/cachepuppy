@@ -1,27 +1,16 @@
 @import "tailwindcss";
-@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/ocean.css";
 @import "fumadocs-ui/css/preset.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
+/* Home landing: soft grid so the hero feels less flat */
+.home-hero-grid {
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--color-fd-primary) 8%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--color-fd-primary) 8%, transparent) 1px, transparent 1px);
+  background-size: 48px 48px;
 }
