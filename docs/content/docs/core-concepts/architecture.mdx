@@ -1,0 +1,18 @@
+---
+title: Architecture
+description: How browsers, servers, Phoenix channels, and topic processes connect.
+---
+
+At a high level, realtime traffic flows through Phoenix **channels**, while administrative work can flow through **JSON HTTP routes** without opening a websocket.
+
+<Mermaid chart="flowchart LR; browser[Browser]; jobs[ServerJobs]; react[ReactSDK]; core[CachePuppyClient]; admin[AdminHTTP]; phoenix[Phoenix]; browser-->react; react-->core; jobs-->admin; core-->phoenix; admin-->phoenix" />
+
+## Topic owner processes
+
+Each `events:<topic>` logical room is backed by a **single cluster-wide owner process** that holds shared in-memory state. HTTP admin routes and websocket channel events both go through the same topic manager, so semantics stay aligned.
+
+## Where to read next
+
+- [Channels](./channels) — `events:*` vs `session`.
+- [Topic state, session state, and cache](./state-and-cache) — three storage shapes.
+- [Operations](./operations) — health, readiness, and quorum.

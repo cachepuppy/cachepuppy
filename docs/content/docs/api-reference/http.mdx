@@ -1,0 +1,34 @@
+---
+title: HTTP routes
+description: JSON APIs, admin topic routes, and process-level health checks.
+---
+
+## Application JSON (`/api`)
+
+| Method | Path | Controller | Purpose |
+| --- | --- | --- | --- |
+| `GET` | `/api/health` | `HealthController#show` | Node plus cluster visibility JSON. |
+| `POST` | `/api/cache/setdata` | `CacheController#setdata` | Set cache key with optional `ttl_ms`. |
+| `POST` | `/api/cache/getdata` | `CacheController#getdata` | Read cache key. |
+| `POST` | `/api/cache/deletedata` | `CacheController#deletedata` | Delete cache key. |
+
+## Server admin topic API (`/api/server/v1`)
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `PUT` | `/topics/:topic/state` | Replace shared topic state JSON. |
+| `GET` | `/topics/:topic/state` | Read topic state plus `meta`. |
+| `DELETE` | `/topics/:topic` | Close topic / stop owner. |
+| `POST` | `/topics/:topic/messages` | Fan-out publish (`202`). |
+| `GET` | `/topics/:topic/presence` | Presence snapshot. |
+
+## Process health (outside `/api`)
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/healthz` | Liveness — process is up. |
+| `GET` | `/readyz` | Readiness — quorum satisfied. |
+
+<Callout type="info" title="Implementation pointer">
+  See `cachepuppy_core/lib/cachepuppy_core_web/router.ex` for the authoritative route table wired today.
+</Callout>

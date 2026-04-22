@@ -1,0 +1,20 @@
+---
+title: Welcome
+description: Learn CachePuppy — Phoenix realtime, JavaScript SDK, React helpers, and admin HTTP APIs.
+---
+
+CachePuppy is a **topic-first realtime layer** with optional **distributed cache** access. This documentation tracks the implementations in this monorepo:
+
+- **Elixir / Phoenix** (`cachepuppy_core`) — websockets, topic processes, HTTP routes.
+- **`@cachepuppy/core`** — typed client, wire envelopes, Phoenix + mock transports, admin HTTP client.
+- **`@cachepuppy/react`** — provider and hooks built on the core client.
+
+<Cards>
+  <Card title="Quick start" href="/docs/quick-start" description="Run the stack locally and send your first message." />
+  <Card title="Core concepts" href="/docs/core-concepts" description="Channels, envelopes, state models, and operations." />
+  <Card title="API reference" href="/docs/api-reference" description="HTTP, websocket events, envelopes, exports." />
+</Cards>
+
+<Callout title="Source of truth" type="info">
+  When in doubt, prefer the code in `cachepuppy_core` and `sdk/` over prose here. These pages are written to mirror current behavior.
+</Callout>

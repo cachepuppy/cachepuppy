@@ -1,0 +1,30 @@
+---
+title: Topic admin APIs
+description: "HTTP routes under /api/server/v1 mirrored by CachePuppyAdminClient."
+---
+
+Base path: **`/api/server/v1`**. The `:topic` segment is the **logical** topic (`orders`), not the `events:` prefix.
+
+| Client method | HTTP | Notes |
+| --- | --- | --- |
+| `setTopicState(topic, state)` | `PUT /topics/:topic/state` | Body is the JSON object to store. |
+| `getTopicState(topic)` | `GET /topics/:topic/state` | Returns the `state` map. |
+| `getTopicStateWithMeta(topic)` | `GET /topics/:topic/state` | Adds `sourceNode` / `servedByNode` from `meta`. |
+| `clearTopicState(topic)` | `DELETE /topics/:topic` | Returns boolean `closed`. |
+| `sendTopicMessage(topic, { event, payload? })` | `POST /topics/:topic/messages` | Server responds with **`202 Accepted`**. |
+| `getTopicPresence(topic)` | `GET /topics/:topic/presence` | Maps JSON `client_count` to `clientCount`. |
+
+### Example (`curl`)
+
+```bash
+curl -X PUT "http://localhost:4000/api/server/v1/topics/orders/state" \
+  -H 'content-type: application/json' \
+  -d '{"count":1}'
+```
+
+### Example (TypeScript)
+
+```ts
+await admin.setTopicState("orders", { count: 1 });
+await admin.sendTopicMessage("orders", { event: "created", payload: { orderId: "o1" } });
+```

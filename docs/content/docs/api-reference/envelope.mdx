@@ -1,0 +1,31 @@
+---
+title: Envelope schema (v1)
+description: JSON fields used on the wire for CachePuppy messages.
+---
+
+```json
+{
+  "v": 1,
+  "type": "publish",
+  "id": "msg_123",
+  "topic": "orders",
+  "event": "created",
+  "payload": { "orderId": "o1" },
+  "ts": 1770000000000,
+  "meta": { "clientId": "web-1" }
+}
+```
+
+## Required fields by `type`
+
+| `type` | Required fields |
+| --- | --- |
+| `subscribe` | `topic` |
+| `unsubscribe` | `topic` |
+| `publish` | `topic`, `event`, optional `payload` |
+
+Additional transport-specific types (`set_state`, `get_state`, `close_topic`, `system`, …) are emitted by the server or higher-level client helpers — treat unknown values defensively in application code.
+
+## TypeScript mirror
+
+The `CachePuppyEnvelope` and `MessageType` types in `@cachepuppy/core` track the same vocabulary used in documentation and validation.

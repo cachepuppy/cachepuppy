@@ -1,0 +1,4 @@
+{
+  "title": "React SDK (wrapper)",
+  "pages": ["index", "provider", "hooks"]
+}

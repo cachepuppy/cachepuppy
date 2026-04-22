@@ -1,0 +1,14 @@
+---
+title: Presence and client counts
+description: How Phoenix Presence surfaces member counts to subscribers and the SDK.
+---
+
+When a socket joins `events:<topic>`, the server tracks presence metadata for that topic.
+
+## What you will observe
+
+- Phoenix pushes a `presence_state` snapshot after a successful join.
+- The JavaScript client emits a **`topicPresence`** event when it decodes a `system` envelope with `event: "presence_change"` for a subscribed topic.
+- `client.clientCount(topic)` asks the channel for the current integer member count.
+
+These mechanisms are intentionally small: you get **occupancy signals** without leaking unnecessary per-member data through the SDK unless you handle raw envelopes yourself.

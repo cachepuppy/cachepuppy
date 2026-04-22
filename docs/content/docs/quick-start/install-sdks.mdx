@@ -1,0 +1,26 @@
+---
+title: Install and build the SDKs
+description: "Build @cachepuppy/core before @cachepuppy/react in this repository layout."
+---
+
+This monorepo does **not** use an npm workspace at the repository root. Build each package from its own directory.
+
+## Build order
+
+```bash
+cd sdk/javascript
+npm ci
+npm run build
+
+cd ../react
+npm ci
+npm run build
+```
+
+The React package depends on the core package via a local `file:../javascript` reference, so **always build core first**.
+
+## TypeScript consumers
+
+Point your application at the built `dist` outputs or configure `package.json` dependencies to match your internal publishing model.
+
+For local experimentation inside this repo, the interactive demo under `example/javascript_demo` already wires these packages together.

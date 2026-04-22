@@ -1,0 +1,12 @@
+---
+title: Core concepts
+description: Mental models for channels, state, cache, envelopes, presence, and operations.
+---
+
+CachePuppy combines three ideas that look similar in code but behave very differently:
+
+1. **Shared topic state** — one logical map per `events:<topic>` room, coordinated cluster-wide.
+2. **Per-socket session state** — private to a single websocket connection on the `session` channel.
+3. **Distributed cache tables** — key/value storage accessed through HTTP or the `session` channel, routed through the cache layer.
+
+The following pages explain how Phoenix channels, the wire protocol, and the SDK surface line up.

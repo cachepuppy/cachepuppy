@@ -1,0 +1,4 @@
+{
+  "title": "Admin HTTP client",
+  "pages": ["index", "when-to-use", "topic-apis", "cache-apis", "security"]
+}

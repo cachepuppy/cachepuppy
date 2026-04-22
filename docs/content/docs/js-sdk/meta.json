@@ -1,0 +1,4 @@
+{
+  "title": "JavaScript SDK (core)",
+  "pages": ["index", "lifecycle", "topics", "topic-state", "session", "cache", "transports", "events"]
+}

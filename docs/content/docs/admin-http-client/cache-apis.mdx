@@ -1,0 +1,21 @@
+---
+title: Cache admin APIs
+description: "JSON POST routes under /api/cache/* mirrored by CachePuppyAdminClient."
+---
+
+These routes share semantics with the websocket `session` channel cache events.
+
+| Client method | HTTP route | Body highlights |
+| --- | --- | --- |
+| `setData(table, key, value, options?)` | `POST /api/cache/setdata` | `{ table, key, value, ttl_ms? }` |
+| `getData(table, key)` | `POST /api/cache/getdata` | `{ table, key }` |
+| `deleteData(table, key)` | `POST /api/cache/deletedata` | `{ table, key }` |
+
+## Common error reasons
+
+The Elixir controller maps failures to stable string reasons, including:
+
+- `invalid_payload`, `invalid_table_or_key`, `invalid_ttl_ms`
+- `rehydrating`, `rpc_failed`, `shard_unavailable`
+
+The admin client throws a JavaScript `Error` when the HTTP status is unexpected, optionally appending a JSON `reason` when the server provides one.

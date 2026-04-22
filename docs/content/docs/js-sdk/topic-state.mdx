@@ -1,0 +1,36 @@
+---
+title: Topic shared state and webhooks
+description: "setTopicState, getTopicState, metadata, webhooks, and clearing a topic."
+---
+
+These helpers target the **`events:<topic>`** channel and assume a Phoenix transport that implements the extended RPC surface.
+
+## Reading and writing state
+
+```ts
+const state = await client.setTopicState("orders", { count: 1 });
+const latest = await client.getTopicState("orders");
+const withMeta = await client.getTopicStateWithMeta("orders");
+```
+
+`getTopicStateWithMeta` includes routing metadata when the transport exposes it.
+
+## Webhooks
+
+```ts
+await client.configureTopicWebhook("orders", {
+  flush: true,
+  url: "https://example.com/hooks/orders",
+  frequency: 10,
+});
+```
+
+Set `flush: false` to disable periodic posts. Misconfigured options surface as transport errors with the server-provided `reason` fields.
+
+## Clearing a topic
+
+```ts
+const closed = await client.clearTopicState("orders");
+```
+
+This maps to the channel `close_topic` operation and stops the topic owner when the server accepts the request.

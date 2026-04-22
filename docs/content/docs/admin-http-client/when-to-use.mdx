@@ -1,0 +1,18 @@
+---
+title: When to use admin HTTP versus CachePuppyClient
+description: Pick the integration shape that matches your process lifetime and scaling model.
+---
+
+## Prefer `CachePuppyClient` when…
+
+- You already have a browser tab or long-lived service that benefits from **bidirectional** traffic.
+- You want **presence**, subscriptions, and low-latency fan-out without polling.
+- You are comfortable managing reconnect and backoff (the SDK does most of this for you).
+
+## Prefer `CachePuppyAdminClient` when…
+
+- A **short-lived** process (serverless function, CLI, migration script) needs to nudge shared topic state or enqueue a fan-out message.
+- You want to hit **`/api/cache/*`** from Node without joining the `session` channel.
+- You are integrating from infrastructure that forbids outbound websocket connections.
+
+Both clients ultimately talk to the same Phoenix processes — they only differ in **transport shape** (websocket envelopes versus JSON HTTP).

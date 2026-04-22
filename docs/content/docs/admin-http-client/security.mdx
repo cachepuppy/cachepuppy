@@ -1,0 +1,20 @@
+---
+title: Security posture
+description: Prototype defaults, network placement, and optional websocket JWT enforcement.
+---
+
+<Callout type="warn" title="Prototype HTTP trust model">
+  The JSON routes under `/api/server/v1` and `/api/cache/*` are documented in `cachepuppy_core/README.md` as **not authenticated** in the default configuration, matching the same trust assumptions as an open `/socket` unless you add controls.
+</Callout>
+
+## What you should do before exposing anything publicly
+
+- Place Phoenix behind a **reverse proxy** that enforces your org’s authn/z story.
+- Restrict admin routes to **private networks** or service meshes.
+- Terminate TLS at the edge and only speak TLS to Phoenix in production.
+
+## Optional websocket JWT mode
+
+`UserSocket` supports an authenticated connect path when `websocket_auth_enabled` is `true`, requiring explicit `client_id` and `token` parameters verified with `websocket_jwt_secret` and `websocket_jwt_identity_claim`.
+
+HTTP admin routes are **separate** from that mechanism — plan authentication for each surface explicitly.

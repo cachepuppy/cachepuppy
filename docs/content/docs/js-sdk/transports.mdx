@@ -1,0 +1,17 @@
+---
+title: Transports
+description: Phoenix versus mock transports and how to choose between them.
+---
+
+## `transport: "phoenix"` (default)
+
+Connects to the configured websocket URL, negotiates Phoenix channels, and sends CachePuppy envelopes over the wire. This is what you use in staging and production.
+
+## `transport: "mock"`
+
+Uses an in-memory **`MockTransport`** that simulates envelopes without any network I/O. Ideal for:
+
+- deterministic unit tests around your application logic, and
+- UI demos that should run without a running Phoenix cluster.
+
+Switch transports by passing `transport: "mock"` to `createClient`.

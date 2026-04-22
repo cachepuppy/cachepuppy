@@ -1,0 +1,5 @@
+{
+  "title": "Quick start",
+  "defaultOpen": true,
+  "pages": ["index", "prerequisites", "run-backend", "install-sdks", "hello-realtime", "demo"]
+}
