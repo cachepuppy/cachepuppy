@@ -1,4 +1,5 @@
 {
   "title": "Core concepts",
+  "icon": "Layers",
   "pages": ["index", "architecture", "channels", "state-and-cache", "envelopes", "presence", "operations"]
 }

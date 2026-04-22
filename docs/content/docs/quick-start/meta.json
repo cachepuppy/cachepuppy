@@ -1,5 +1,6 @@
 {
   "title": "Quick start",
+  "icon": "Rocket",
   "defaultOpen": true,
   "pages": ["index", "run-with-docker", "javascript"]
 }

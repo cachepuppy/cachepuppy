@@ -1,4 +1,5 @@
 {
   "title": "Core (@cachepuppy/core)",
+  "icon": "Package",
   "pages": ["index", "lifecycle", "topics", "topic-state", "session", "cache", "transports", "events"]
 }

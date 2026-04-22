@@ -4,6 +4,16 @@ import { DocsBody, DocsDescription, DocsPage, DocsTitle } from "fumadocs-ui/layo
 import { createRelativeLink } from "fumadocs-ui/mdx";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import type { ComponentType } from "react";
+import type { TOCItemType } from "fumadocs-core/toc";
+
+type DocPageRenderData = {
+  body: ComponentType<Record<string, unknown>>;
+  toc?: TOCItemType[];
+  full?: boolean;
+  title: string;
+  description?: string;
+};
 
 type PageParams = { slug?: string[] };
 
@@ -14,12 +24,13 @@ export default async function Page(props: { params: Promise<PageParams> }) {
     notFound();
   }
 
-  const MDX = page.data.body;
+  const data = page.data as DocPageRenderData;
+  const MDX = data.body;
 
   return (
-    <DocsPage toc={page.data.toc} full={page.data.full}>
-      <DocsTitle>{page.data.title}</DocsTitle>
-      <DocsDescription>{page.data.description}</DocsDescription>
+    <DocsPage toc={data.toc} full={data.full}>
+      <DocsTitle>{data.title}</DocsTitle>
+      <DocsDescription>{data.description}</DocsDescription>
       <DocsBody>
         <MDX
           components={getMDXComponents({
@@ -42,8 +53,9 @@ export async function generateMetadata(props: { params: Promise<PageParams> }): 
     notFound();
   }
 
+  const data = page.data as DocPageRenderData;
   return {
-    title: page.data.title,
-    description: page.data.description,
+    title: data.title,
+    description: data.description,
   };
 }

@@ -25,8 +25,18 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
-      <body className="flex min-h-screen flex-col bg-background text-foreground antialiased">
-        <RootProvider search={{ enabled: true }}>{children}</RootProvider>
+      <body className="flex min-h-screen flex-col bg-fd-background text-fd-foreground antialiased">
+        <RootProvider
+          search={{ enabled: true }}
+          theme={{
+            enabled: true,
+            attribute: "class",
+            defaultTheme: "system",
+            enableSystem: true,
+          }}
+        >
+          {children}
+        </RootProvider>
       </body>
     </html>
   );
