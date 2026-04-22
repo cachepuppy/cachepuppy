@@ -1,0 +1,19 @@
+---
+title: Envelopes and message types
+description: Versioned envelopes used by the JavaScript client and Phoenix broadcasts.
+---
+
+The TypeScript types in `@cachepuppy/core` describe the on-wire JSON:
+
+- **`v`**: protocol version, currently **`1`**.
+- **`type`**: one of `subscribe`, `unsubscribe`, `publish`, `set_state`, `get_state`, `close_topic`, `system`, …
+- **`id`**: string identifier allocated per message.
+- **`topic`**: logical topic name for topic-scoped messages.
+- **`event`**: application event name for publishes and some system messages.
+- **`payload`**: arbitrary JSON-compatible payload.
+- **`ts`**: millisecond timestamp.
+- **`meta`**: optional map — Phoenix adds fields such as `clientId` for publishes.
+
+<Callout type="info" title="Design document">
+  The original SDK-first contract lives in `sdk/javascript/docs/api-design.md` inside the monorepo. This site summarizes the parts that ship today.
+</Callout>

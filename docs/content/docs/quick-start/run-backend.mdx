@@ -1,0 +1,27 @@
+---
+title: Run the Elixir backend
+description: Install dependencies and start the Phoenix server for CachePuppy.
+---
+
+## Install and run
+
+From the `cachepuppy_core` directory in this monorepo:
+
+```bash
+cd cachepuppy_core
+mix setup
+export TOTAL_NODES=1
+mix phx.server
+```
+
+The API listens on **`http://localhost:4000`**.
+
+## Quick health checks
+
+- JSON health: `GET /api/health`
+- Process liveness: `GET /healthz`
+- Quorum-aware readiness: `GET /readyz`
+
+<Callout type="warn" title="Quorum and readiness">
+  Readiness reflects cluster quorum. If `TOTAL_NODES` is misconfigured, `/readyz` may not behave the way you expect during local experiments.
+</Callout>

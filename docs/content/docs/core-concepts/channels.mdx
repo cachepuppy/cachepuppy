@@ -1,0 +1,22 @@
+---
+title: Channels
+description: "events:<topic> for shared rooms versus session for per-connection state and cache RPCs."
+---
+
+Phoenix exposes a websocket at **`/socket/websocket`**. Clients negotiate two channel shapes:
+
+## `events:<topic_name>`
+
+- Join topic **`events:orders`** when your SDK logical topic is `orders`.
+- Supports publish/subscribe, topic shared state, optional webhooks, presence, and explicit topic shutdown.
+- This is the path for **multi-user rooms** and **shared topic maps**.
+
+## `session`
+
+- Fixed channel name **`session`** — no room suffix.
+- Stores **per-connection** session state only visible to that socket.
+- Proxies **cache** operations (`set_cache_data`, `get_cache_data`, `delete_cache_data`) through the same pipeline as `/api/cache/*`.
+
+<Callout type="info" title="SDK mapping">
+  `CachePuppyClient` hides the `events:` prefix for topic helpers — you pass `"orders"` and the transport joins `events:orders`.
+</Callout>

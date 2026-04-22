@@ -1,0 +1,40 @@
+---
+title: Hooks
+description: "useTopic, usePresence, useTopicState, and useCachePuppyClient patterns."
+---
+
+All hooks assume a surrounding **`CachePuppyProvider`**.
+
+## `useCachePuppyClient`
+
+Returns `{ client, state, error, connect, disconnect, destroy }` — the same object as `useCachePuppyContext`.
+
+## `useTopic(topic, options?)`
+
+Subscribes when `enabled` (default `true`) **and** the client state is `connected`.
+
+```tsx
+const { error } = useTopic("orders", {
+  onMessage: (message) => {
+    console.log(message);
+  },
+});
+```
+
+Cleanup unsubscribes automatically on dependency changes or unmount.
+
+## `usePresence(topic, enabled?)`
+
+Tracks **`clientCount`** for a topic by combining an initial `clientCount()` RPC with `onPresenceChange` updates.
+
+## `useTopicState(topic, enabled?)`
+
+Loads topic state when connected, listens for `state_updated`, and exposes imperative helpers:
+
+- **`setState(next)`** — wraps `client.setTopicState`.
+- **`refresh()`** — wraps `client.getTopicState`.
+- **`clear()`** — wraps `client.clearTopicState`.
+
+<Callout type="warn" title="Server Components">
+  These hooks are **client hooks**. Keep them in client components or files marked with `"use client"` at the module top when using the Next.js App Router.
+</Callout>

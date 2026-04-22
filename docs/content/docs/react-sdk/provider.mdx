@@ -1,0 +1,38 @@
+---
+title: CachePuppyProvider
+description: "Context wiring, autoConnect, and what is safe to put in options."
+---
+
+Wrap any subtree that should share a single websocket client:
+
+```tsx
+import { CachePuppyProvider } from "@cachepuppy/react";
+
+export function App() {
+  return (
+    <CachePuppyProvider
+      options={{ url: "ws://localhost:4000/socket/websocket" }}
+      autoConnect
+    >
+      <Shell />
+    </CachePuppyProvider>
+  );
+}
+```
+
+## Context value
+
+`useCachePuppyContext()` (and the `useCachePuppyClient()` alias) expose:
+
+- **`client`** — the underlying `CachePuppyClient`.
+- **`state`** — latest `ConnectionState` string union.
+- **`error`** — last surfaced `Error`, or `null` when clean.
+- **`connect` / `disconnect` / `destroy`** — imperative wrappers that also clear or assign `error`.
+
+## `autoConnect`
+
+When `autoConnect` is `true`, the provider schedules `client.connect()` on mount. Failures are captured into `error` instead of crashing the tree.
+
+## Memoization rules
+
+The provider recreates the client when any **memo key** changes — today that includes `url`, `clientId`, auth fields, `transport`, and individual reconnect fields. Keep `options` stable (for example with `useMemo`) to avoid accidental reconnect storms.

@@ -1,0 +1,31 @@
+---
+title: Topics, publish, and presence helpers
+description: "subscribe, publish, clientCount, onPresenceChange, and onStateUpdated."
+---
+
+## Subscribe and publish
+
+```ts
+await client.connect();
+
+const off = await client.subscribe("orders", (message) => {
+  if (message.type === "publish") {
+    // handle application events
+  }
+});
+
+await client.publish("orders", "created", { orderId: "o1" });
+
+off();
+```
+
+`subscribe` returns an unsubscribe function. When the last handler for a topic is removed, the client sends an **`unsubscribe`** envelope automatically.
+
+## Presence helpers
+
+- **`client.clientCount(topic)`** — async call that asks the channel for the current member count.
+- **`client.onPresenceChange(topic, ({ clientCount }) => { ... })`** — listens to SDK `topicPresence` events filtered for a single topic.
+
+## Observing shared state
+
+- **`client.onStateUpdated(topic, handler)`** — convenience wrapper that listens for envelopes where `event === "state_updated"` on the given topic.

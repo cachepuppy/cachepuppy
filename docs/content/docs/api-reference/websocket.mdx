@@ -1,0 +1,32 @@
+---
+title: Websocket channels and events
+description: "Inbound events on events:<topic> and session channels."
+---
+
+Socket path: **`/socket/websocket`**.
+
+## `events:<topic>` — inbound events
+
+| Event | Payload shape | Purpose |
+| --- | --- | --- |
+| `publish` | `{ "event": string, "payload": any }` | Fan-out a publish to subscribers. |
+| `message` | `{ "type": "publish", "event": any, "payload": any }` | Alternate publish envelope accepted by the channel. |
+| `set_state` | `{ "payload": { ... } }` | Replace shared topic state map. |
+| `configure_topic_webhook` | `{ "flush": boolean, "url"?: string, "frequency"?: number }` | Enable/disable periodic webhook posts. |
+| `get_state` | `{}` | Read `{ state, meta }` from the topic owner. |
+| `close_topic` | `{}` | Stop topic process; returns `{ closed: boolean }`. |
+| `client_count` | `{}` | Returns `{ client_count: integer }` from Presence. |
+
+Server pushes application data using the Phoenix **`message`** event carrying CachePuppy envelopes (including `state_updated`).
+
+## `session` — inbound events
+
+| Event | Payload | Purpose |
+| --- | --- | --- |
+| `set_session_state` | `{ "payload": { ... } }` | Store per-socket session JSON. |
+| `get_session_state` | `{}` | Read current per-socket JSON. |
+| `set_cache_data` | `{ "table", "key", "value", "ttl_ms"? }` | Cache set via same pipeline as HTTP. |
+| `get_cache_data` | `{ "table", "key" }` | Cache get. |
+| `delete_cache_data` | `{ "table", "key" }` | Cache delete. |
+
+Unknown events receive `{ reason: "unsupported_event" }`.

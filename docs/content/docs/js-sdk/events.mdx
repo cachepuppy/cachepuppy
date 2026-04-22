@@ -1,0 +1,18 @@
+---
+title: Client events (client.on)
+description: "The ClientEventMap keys emitted by CachePuppyClient."
+---
+
+`client.on(event, handler)` returns an unsubscribe function.
+
+| Event | Payload | When it fires |
+| --- | --- | --- |
+| `connected` | `undefined` | After `connect()` succeeds. |
+| `disconnected` | `{ reason?: string }` | After the socket closes. |
+| `reconnecting` | `{ attempt: number; delayMs: number }` | Before sleeping for backoff. |
+| `stateChange` | `{ state: ConnectionState }` | Whenever the connection state machine moves. |
+| `message` | `CachePuppyEnvelope` | For every decoded envelope from the transport. |
+| `topicPresence` | `{ topic: string; clientCount: number }` | When presence-derived occupancy changes for a subscribed topic. |
+| `error` | `Error` | Protocol issues, transport failures surfaced as `Error`, etc. |
+
+Prefer **`topicPresence`** and the topic helpers when you only care about occupancy. Subscribe to **`message`** when you are building lower-level tooling.

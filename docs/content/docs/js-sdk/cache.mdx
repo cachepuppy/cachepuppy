@@ -1,0 +1,16 @@
+---
+title: Cache helpers over websocket
+description: "setData, getData, and deleteData mirroring /api/cache/* semantics."
+---
+
+The same distributed cache that backs HTTP `POST /api/cache/*` routes is available on the **`session`** channel for connected clients.
+
+```ts
+await client.connect();
+
+await client.setData("users", "alice", { role: "admin" }, { ttlMs: 30_000 });
+const value = await client.getData("users", "alice");
+const deleted = await client.deleteData("users", "alice");
+```
+
+TTL values must be positive integers within the server-configured maximum. When shards are unavailable or the cache is rehydrating, calls fail with the same string `reason` codes documented for HTTP.

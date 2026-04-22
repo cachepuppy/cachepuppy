@@ -1,0 +1,38 @@
+---
+title: Hello realtime
+description: "Minimal createClient example — connect, subscribe, publish."
+---
+
+This example uses **`@cachepuppy/core`** with the default Phoenix transport.
+
+```ts
+import { createClient } from "@cachepuppy/core";
+
+const client = createClient({
+  url: "ws://localhost:4000/socket/websocket",
+  // Optional stable label for this connection:
+  // clientId: "demo_browser_1",
+});
+
+await client.connect();
+
+const off = await client.subscribe("orders", (message) => {
+  console.log("topic message", message);
+});
+
+await client.publish("orders", "created", { orderId: "o1" });
+
+// Later:
+off();
+await client.disconnect();
+```
+
+## What happens on the wire
+
+- The client joins the Phoenix channel topic `events:orders` when you subscribe to the logical topic `orders`.
+- `publish` sends a versioned envelope with `type: "publish"` for that topic.
+- Other subscribers receive a `"message"` push whose payload follows the [envelope schema](/docs/api-reference/envelope).
+
+<Callout type="info" title="Mock transport">
+  For unit tests and offline demos you can pass `transport: "mock"` to `createClient` — see [Transports](/docs/js-sdk/transports).
+</Callout>

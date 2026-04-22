@@ -1,0 +1,4 @@
+{
+  "title": "API reference",
+  "pages": ["index", "http", "websocket", "envelope", "typescript-exports"]
+}

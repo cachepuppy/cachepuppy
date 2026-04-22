@@ -1,0 +1,24 @@
+---
+title: Topic state, session state, and cache
+description: Compare shared topic maps, per-socket session maps, and distributed cache tables.
+---
+
+## Shared topic state (`events:<topic>`)
+
+- Updated with `set_state` on the channel or `PUT /api/server/v1/topics/:topic/state` over HTTP.
+- Broadcasts `state_updated` **only when the stored JSON map actually changes** — identical payloads are acknowledged without a broadcast.
+- Visible to **every subscriber** on that topic.
+
+## Session state (`session` channel)
+
+- Updated with `set_session_state` / read with `get_session_state`.
+- **Private** to the websocket connection — other clients never see it.
+- Reconnecting starts from an empty session until you set values again.
+
+## Distributed cache (`/api/cache/*` or `session` cache events)
+
+- Organized by **`table`** and **`key`** string identifiers with arbitrary JSON-compatible values.
+- Optional **`ttl_ms`** on writes, bounded by server configuration.
+- Errors such as `rehydrating`, `rpc_failed`, and `shard_unavailable` mirror across HTTP and websocket replies.
+
+Use topic state when you want **room semantics** with broadcasts. Use cache when you want **durable-ish key/value** semantics routed through the cache layer.

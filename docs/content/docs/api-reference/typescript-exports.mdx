@@ -1,0 +1,43 @@
+---
+title: TypeScript public exports
+description: "What ships from @cachepuppy/core and @cachepuppy/react."
+---
+
+## `@cachepuppy/core`
+
+| Export | Kind | Summary |
+| --- | --- | --- |
+| `createClient` | function | Factory for `CachePuppyClient`. |
+| `CachePuppyClient` | class | Websocket-first SDK entry point. |
+| `createAdminClient` | function | Factory for `CachePuppyAdminClient`. |
+| `CachePuppyAdminClient` | class | HTTP admin APIs. |
+| `createEnvelope` | function | Build versioned envelopes. |
+| `isEnvelope` | function | Runtime shape guard. |
+| `nextId` | function | Allocate message ids. |
+| `PhoenixTransport` | class | Phoenix-backed transport implementation. |
+| `AdminClientOptions` | type | Admin client configuration. |
+| `CachePuppyEnvelope` | type | Wire envelope JSON. |
+| `ClientEventMap` | type | `client.on` event typing. |
+| `ClientOptions` | type | `createClient` configuration. |
+| `ConnectionState` | type | Connection lifecycle union. |
+| `MessageType` | type | Envelope `type` union. |
+| `TopicHandler` | type | Subscription callback signature. |
+| `TopicPresenceResponse` | type | HTTP presence snapshot typing. |
+| `TopicWebhookConfigOptions` | type | Webhook configuration object. |
+| `CacheSetDataOptions` | type | TTL options for cache writes. |
+| `TopicStateResponse` | type | Topic state + optional routing metadata. |
+
+## `@cachepuppy/react`
+
+| Export | Kind | Summary |
+| --- | --- | --- |
+| `CachePuppyProvider` | component | Context provider wrapping `createClient`. |
+| `CachePuppyProviderProps` | type | Provider props (`options`, `autoConnect`, …). |
+| `useCachePuppyContext` | hook | Low-level access to provider value. |
+| `useCachePuppyClient` | hook | Alias of `useCachePuppyContext`. |
+| `useTopic` | hook | Managed subscription lifecycle. |
+| `UseTopicOptions` | type | `enabled`, `onMessage`, … |
+| `usePresence` | hook | Presence count helper. |
+| `UsePresenceResult` | type | `{ clientCount, error }`. |
+| `useTopicState` | hook | Topic state + mutations. |
+| `UseTopicStateResult` | type | `{ state, loading, error, setState, refresh, clear }`. |

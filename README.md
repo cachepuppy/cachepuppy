@@ -9,6 +9,10 @@ This repository contains the API-first scaffold for Beamline.
 - `sdk/react` (`@cachepuppy/react`): React hooks/provider wrapper over the core JavaScript SDK.
 - `example/javascript_demo`: Interactive React demo app that uses the SDK packages.
 
+## Documentation site
+
+The Fumadocs + Next.js documentation lives in `docs/`. Run `cd docs && npm install && npm run dev` to preview it locally.
+
 ## JavaScript (SDK + demo)
 
 There is no npm workspace at the repository root. Build and run from each package directory (use `npm ci` in CI, `npm install` locally).

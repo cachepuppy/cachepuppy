@@ -1,0 +1,37 @@
+---
+title: Client lifecycle
+description: "createClient, connection states, reconnect backoff, and teardown."
+---
+
+## Creating a client
+
+```ts
+import { createClient } from "@cachepuppy/core";
+
+const client = createClient({
+  url: "ws://localhost:4000/socket/websocket",
+  clientId: "optional_stable_id",
+  authToken: "optional_static_token",
+  getAuthToken: async () => "optional_rotating_token",
+  reconnect: {
+    enabled: true,
+    initialDelayMs: 500,
+    maxDelayMs: 10_000,
+    factor: 2,
+  },
+});
+```
+
+## States
+
+`getState()` returns one of:
+
+`idle` → `connecting` → `connected` → (`reconnecting` → `connected`)\* → `disconnected` → `destroyed`
+
+## Methods
+
+- **`connect()`** — opens the websocket transport and replays topic subscriptions.
+- **`disconnect(reason?)`** — closes the socket and stops processing envelopes.
+- **`destroy()`** — disconnects with reason `"destroy"` and moves to the terminal **`destroyed`** state.
+
+Reconnect uses exponential backoff capped by `maxDelayMs` when `reconnect.enabled` is true.

@@ -1,0 +1,15 @@
+---
+title: Session channel helpers
+description: "setSessionState and getSessionState for per-connection private maps."
+---
+
+Session helpers talk to the fixed Phoenix **`session`** channel. State is **scoped to the current websocket** — it is not shared with other tabs or users.
+
+```ts
+await client.connect();
+
+await client.setSessionState({ cartId: "c42" });
+const snapshot = await client.getSessionState();
+```
+
+If the active transport does not implement session RPCs, these methods throw a **`TransportError`** with a clear message.

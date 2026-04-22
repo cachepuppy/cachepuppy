@@ -1,0 +1,15 @@
+---
+title: React SDK (@cachepuppy/react)
+description: "Provider plus hooks that wrap @cachepuppy/core with React-friendly ergonomics."
+---
+
+The React package is intentionally thin: it **does not** fork protocol logic. Instead it:
+
+- memoizes a `CachePuppyClient` instance from `ClientOptions`,
+- mirrors connection state and last transport error into context, and
+- exposes composable hooks for topics, presence, and topic state.
+
+<Cards>
+  <Card title="Provider" href="/docs/react-sdk/provider" description="Context shape, auto-connect, and error handling." />
+  <Card title="Hooks" href="/docs/react-sdk/hooks" description="useTopic, usePresence, useTopicState, useCachePuppyClient." />
+</Cards>
