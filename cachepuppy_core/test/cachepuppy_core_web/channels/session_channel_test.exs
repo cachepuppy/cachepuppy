@@ -57,7 +57,11 @@ defmodule CachePuppyCoreWeb.SessionChannelTest do
 
   test "set/get/delete cache data through session channel" do
     {:ok, _reply, chan} =
-      subscribe_and_join(user_socket("session_cache_client"), CachePuppyCoreWeb.SessionChannel, "session")
+      subscribe_and_join(
+        user_socket("session_cache_client"),
+        CachePuppyCoreWeb.SessionChannel,
+        "session"
+      )
 
     set_payload = %{
       "table" => "users",
@@ -66,33 +70,40 @@ defmodule CachePuppyCoreWeb.SessionChannelTest do
     }
 
     assert eventually_ok_reply(chan, "set_cache_data", set_payload) == %{
-      "table" => "users",
-      "key" => "alice",
-      "value" => %{"role" => "admin"}
-    }
+             "table" => "users",
+             "key" => "alice",
+             "value" => %{"role" => "admin"}
+           }
 
-    assert eventually_ok_reply(chan, "get_cache_data", %{"table" => "users", "key" => "alice"}) == %{
-      "table" => "users",
-      "key" => "alice",
-      "value" => %{"role" => "admin"}
-    }
+    assert eventually_ok_reply(chan, "get_cache_data", %{"table" => "users", "key" => "alice"}) ==
+             %{
+               "table" => "users",
+               "key" => "alice",
+               "value" => %{"role" => "admin"}
+             }
 
-    assert eventually_ok_reply(chan, "delete_cache_data", %{"table" => "users", "key" => "alice"}) == %{
-      "table" => "users",
-      "key" => "alice",
-      "deleted" => true
-    }
+    assert eventually_ok_reply(chan, "delete_cache_data", %{"table" => "users", "key" => "alice"}) ==
+             %{
+               "table" => "users",
+               "key" => "alice",
+               "deleted" => true
+             }
 
-    assert eventually_ok_reply(chan, "get_cache_data", %{"table" => "users", "key" => "alice"}) == %{
-      "table" => "users",
-      "key" => "alice",
-      "value" => nil
-    }
+    assert eventually_ok_reply(chan, "get_cache_data", %{"table" => "users", "key" => "alice"}) ==
+             %{
+               "table" => "users",
+               "key" => "alice",
+               "value" => nil
+             }
   end
 
   test "set_cache_data validates ttl_ms and payload" do
     {:ok, _reply, chan} =
-      subscribe_and_join(user_socket("session_cache_ttl_client"), CachePuppyCoreWeb.SessionChannel, "session")
+      subscribe_and_join(
+        user_socket("session_cache_ttl_client"),
+        CachePuppyCoreWeb.SessionChannel,
+        "session"
+      )
 
     bad_ttl_ref =
       push(chan, "set_cache_data", %{
