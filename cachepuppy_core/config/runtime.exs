@@ -51,6 +51,30 @@ end
 config :cachepuppy_core, CachePuppyCoreWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+websocket_auth_enabled =
+  String.downcase(System.get_env("AUTH_ENABLED", "false")) == "true"
+
+websocket_jwt_identity_claim = System.get_env("JWT_IDENTITY_CLAIM", "sub")
+
+if websocket_auth_enabled do
+  jwt_secret =
+    System.get_env("JWT_SECRET") ||
+      raise """
+      environment variable JWT_SECRET is missing.
+      It is required when AUTH_ENABLED=true (HS256 signing key for websocket connect).
+      """
+
+  config :cachepuppy_core,
+    websocket_auth_enabled: true,
+    websocket_jwt_secret: jwt_secret,
+    websocket_jwt_identity_claim: websocket_jwt_identity_claim
+else
+  config :cachepuppy_core,
+    websocket_auth_enabled: false,
+    websocket_jwt_secret: nil,
+    websocket_jwt_identity_claim: websocket_jwt_identity_claim
+end
+
 if String.downcase(System.get_env("CACHE_PERSISTENCE_TEST_MODE", "false")) == "true" do
   config :cachepuppy_core,
     cache_wal_segment_max_bytes: 200,

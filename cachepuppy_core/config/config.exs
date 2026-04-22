@@ -9,6 +9,9 @@ import Config
 
 config :cachepuppy_core,
   generators: [timestamp_type: :utc_datetime],
+  websocket_auth_enabled: false,
+  websocket_jwt_secret: nil,
+  websocket_jwt_identity_claim: "sub",
   topic_idle_timeout_ms: 120_000,
   cache_shard_count: 64,
   cache_ring_virtual_nodes: 128,
