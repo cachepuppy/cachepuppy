@@ -1,20 +1,24 @@
 ---
 title: Welcome
-description: Learn CachePuppy — Phoenix realtime, JavaScript SDK, React helpers, and admin HTTP APIs.
+description: "Product docs for CachePuppy: realtime topics, distributed cache, and JavaScript clients."
 ---
 
-CachePuppy is a **topic-first realtime layer** with optional **distributed cache** access. This documentation tracks the implementations in this monorepo:
+**CachePuppy** combines **realtime messaging** and a **distributed cache** in one system you run yourself (or with your vendor). The service is built on the **BEAM** (Erlang VM) using **Elixir**, so scaling is a matter of adding nodes: processes migrate, sockets stay coherent across the cluster, and cache partitions follow the same routing rules wherever your code touches them.
 
-- **Elixir / Phoenix** (`cachepuppy_core`) — websockets, topic processes, HTTP routes.
-- **`@cachepuppy/core`** — typed client, wire envelopes, Phoenix + mock transports, admin HTTP client.
-- **`@cachepuppy/react`** — provider and hooks built on the core client.
+Use this site to:
+
+- **Ship quickly** — [Quick start](/docs/quick-start) with Docker and a short JavaScript example.
+- **Understand behavior** — [Core concepts](/docs/core-concepts) for channels, envelopes, topic state, session state, and cache semantics.
+- **Integrate from JS** — [JavaScript](/docs/javascript) covers **`@cachepuppy/core`**, **`@cachepuppy/react`**, and the **admin HTTP** client.
+- **Look up contracts** — [API reference](/docs/api-reference) for HTTP paths, websocket events, and exports.
 
 <Cards>
-  <Card title="Quick start" href="/docs/quick-start" description="Run the stack locally and send your first message." />
-  <Card title="Core concepts" href="/docs/core-concepts" description="Channels, envelopes, state models, and operations." />
-  <Card title="API reference" href="/docs/api-reference" description="HTTP, websocket events, envelopes, exports." />
+  <Card title="Quick start" href="/docs/quick-start" description="Docker, make compose-up, then connect from JavaScript." />
+  <Card title="Core concepts" href="/docs/core-concepts" description="How topics, cache, and the cluster fit together." />
+  <Card title="JavaScript" href="/docs/javascript" description="Core SDK, React wrapper, and admin HTTP in one place." />
+  <Card title="API reference" href="/docs/api-reference" description="Routes, events, envelopes, and TypeScript surface." />
 </Cards>
 
-<Callout title="Source of truth" type="info">
-  When in doubt, prefer the code in `cachepuppy_core` and `sdk/` over prose here. These pages are written to mirror current behavior.
+<Callout title="Need the wire format?" type="info">
+  When you are integrating a non-JavaScript client, start from the API reference and mirror the JSON envelopes described there.
 </Callout>

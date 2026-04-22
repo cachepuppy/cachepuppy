@@ -1,0 +1,34 @@
+---
+title: Run with Docker
+description: Install Docker, clone the project, and start the stack with make compose-up.
+---
+
+## Prerequisites
+
+- **Docker** with the Compose plugin (Docker Desktop or Docker Engine + `docker compose`).
+
+## Start the server
+
+1. **Clone** the CachePuppy repository (or your fork).
+2. From the **repository root**, run:
+
+```bash
+make compose-up
+```
+
+This runs `docker compose up --build` under `cachepuppy_core`, builds the release image, starts **three** BEAM nodes plus **nginx** on port **4000**, and waits until nodes pass `/readyz`.
+
+## Endpoints you will use
+
+| What | URL |
+| --- | --- |
+| HTTP (health, JSON APIs) | `http://localhost:4000` |
+| Websocket (Phoenix) | `ws://localhost:4000/socket/websocket` |
+
+Nginx load‑balances new HTTP and websocket connections across the cluster; cache and topic logic stay consistent across nodes.
+
+<Callout type="info" title="Stopping the stack">
+  Press `Ctrl+C` in the terminal where Compose is running, or run `docker compose down` from `cachepuppy_core` when you are finished.
+</Callout>
+
+When `http://localhost:4000/api/health` responds, continue to [JavaScript quick start](./javascript).

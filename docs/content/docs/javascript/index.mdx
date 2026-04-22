@@ -1,0 +1,14 @@
+---
+title: JavaScript
+description: "Browser and Node.js clients: @cachepuppy/core, @cachepuppy/react, and the admin HTTP API."
+---
+
+CachePuppy ships a small, explicit JavaScript surface so you can use **websockets** for realtime, **HTTP** for server-to-server calls, and **React** without re‑implementing the protocol.
+
+<Cards>
+  <Card title="Core (@cachepuppy/core)" href="/docs/javascript/core" description="Websocket client, envelopes, topics, cache, session, transports, and events." />
+  <Card title="React (@cachepuppy/react)" href="/docs/javascript/react" description="Provider and hooks built on the core client." />
+  <Card title="Admin HTTP client" href="/docs/javascript/admin" description="Topic and cache routes without opening a websocket." />
+</Cards>
+
+Pick **Core** when you are wiring any JS runtime. Add **React** when you want context and hooks. Use **Admin** from backends, workers, or jobs that should stay request/response shaped.

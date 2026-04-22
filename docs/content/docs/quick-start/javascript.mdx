@@ -1,0 +1,47 @@
+---
+title: JavaScript quick start
+description: Connect with createClient, subscribe and publish, then set and get cache data.
+---
+
+## Add the SDK
+
+Install **`@cachepuppy/core`** the way your team distributes it (private npm registry, tarball, git URL, or a vendored build). The snippets below assume you can import from `"@cachepuppy/core"` in your bundler or Node project.
+
+<Callout type="info" title="Building from a git checkout">
+  If you are working inside the CachePuppy repository itself, build the package under `sdk/javascript` (`npm ci && npm run build`) and point your app at the local `dist` output or a `file:` dependency — same import path.
+</Callout>
+
+## Minimal example
+
+Point at the websocket URL from [Run with Docker](./run-with-docker): **`ws://localhost:4000/socket/websocket`**.
+
+```ts
+import { createClient } from "@cachepuppy/core";
+
+const client = createClient({
+  url: "ws://localhost:4000/socket/websocket",
+});
+
+await client.connect();
+
+// Realtime topics: subscribe and publish logical topic "orders"
+const off = await client.subscribe("orders", (message) => {
+  console.log("message", message);
+});
+await client.publish("orders", "created", { orderId: "o1" });
+
+// Distributed cache via the session channel (same semantics as HTTP /api/cache/*)
+await client.setData("demo", "greeting", "hello", { ttlMs: 60_000 });
+const value = await client.getData("demo", "greeting");
+console.log("cached value", value);
+
+off();
+await client.disconnect();
+```
+
+## Next steps
+
+- Deeper **Core** API: [JavaScript / Core](/docs/javascript/core).
+- **React** integration: [JavaScript / React](/docs/javascript/react).
+- **HTTP admin** from servers: [JavaScript / Admin](/docs/javascript/admin).
+- **Contracts**: [API reference](/docs/api-reference).

@@ -1,14 +1,5 @@
 {
   "title": "Documentation",
   "root": true,
-  "pages": [
-    "index",
-    "quick-start",
-    "core-concepts",
-    "js-sdk",
-    "react-sdk",
-    "admin-http-client",
-    "api-reference",
-    "changelog"
-  ]
+  "pages": ["index", "quick-start", "core-concepts", "javascript", "api-reference", "changelog"]
 }

@@ -1,0 +1,25 @@
+---
+title: Core (@cachepuppy/core)
+description: "Websocket client, protocol helpers, transports, topic and cache APIs, and typed client events."
+---
+
+The **`@cachepuppy/core`** package is what you import in browsers, servers, and tools. It gives you:
+
+- **`createClient` / `CachePuppyClient`** — connect over Phoenix websockets (or a **`mock`** transport for tests), subscribe to **topics**, **publish** events, and observe **presence**.
+- **Topic shared state** — `setTopicState`, `getTopicState`, `getTopicStateWithMeta`, `configureTopicWebhook`, `clearTopicState`, plus `onStateUpdated` for `state_updated` broadcasts.
+- **Per-connection session state** — `setSessionState` / `getSessionState` on the fixed `session` channel.
+- **Distributed cache** — `setData`, `getData`, `deleteData` over the same `session` channel (same semantics as the HTTP cache API).
+- **Admin HTTP** — `createAdminClient` / `CachePuppyAdminClient` for server-side JSON calls (covered under [Admin HTTP](/docs/javascript/admin)).
+- **Protocol surface** — `createEnvelope`, `isEnvelope`, `nextId`, and **`PhoenixTransport`**.
+
+Add the package to your project the way your team ships it (private registry, tarball, git dependency, or vendored build). The package name is **`@cachepuppy/core`**.
+
+<Cards>
+  <Card title="Lifecycle" href="/docs/javascript/core/lifecycle" description="Connect, reconnect, disconnect, and destroy." />
+  <Card title="Topics" href="/docs/javascript/core/topics" description="Subscribe, publish, presence helpers." />
+  <Card title="Topic state" href="/docs/javascript/core/topic-state" description="Shared maps, webhooks, clear topic." />
+  <Card title="Session" href="/docs/javascript/core/session" description="Private per-socket JSON state." />
+  <Card title="Cache" href="/docs/javascript/core/cache" description="setData, getData, deleteData over websocket." />
+  <Card title="Transports" href="/docs/javascript/core/transports" description="Phoenix vs mock." />
+  <Card title="Events" href="/docs/javascript/core/events" description="Typed client.on event map." />
+</Cards>

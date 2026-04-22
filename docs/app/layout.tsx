@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     default: "CachePuppy",
     template: "%s · CachePuppy",
   },
-  description: "Realtime topics, shared state, and cache — Elixir backend, JavaScript core SDK, React wrapper.",
+  description: "CachePuppy — realtime topics and distributed cache on the BEAM, with JavaScript and React clients.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
