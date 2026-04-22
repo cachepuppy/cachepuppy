@@ -1,4 +1,4 @@
 {
-  "title": "React SDK (wrapper)",
+  "title": "React (@cachepuppy/react)",
   "pages": ["index", "provider", "hooks"]
 }

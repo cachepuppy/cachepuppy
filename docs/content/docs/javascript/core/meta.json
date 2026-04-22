@@ -1,4 +1,4 @@
 {
-  "title": "JavaScript SDK (core)",
+  "title": "Core (@cachepuppy/core)",
   "pages": ["index", "lifecycle", "topics", "topic-state", "session", "cache", "transports", "events"]
 }
