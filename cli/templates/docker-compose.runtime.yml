@@ -1,0 +1,118 @@
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "${CACHEPUPPY_HTTP_PORT:-4000}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      app1:
+        condition: service_healthy
+      app2:
+        condition: service_healthy
+      app3:
+        condition: service_healthy
+    restart: unless-stopped
+
+  app1:
+    image: ${CACHEPUPPY_IMAGE}
+    environment:
+      PHX_SERVER: "true"
+      PORT: "4000"
+      PHX_HOST: "localhost"
+      CACHE_PERSISTENCE_TEST_MODE: "true"
+      SECRET_KEY_BASE: "local-dev-secret-key-base-local-dev-secret-key-base"
+      RELEASE_COOKIE: "cachepuppy-dev-cookie"
+      RELEASE_DISTRIBUTION: "name"
+      LIBCLUSTER_DNS_QUERY: "cachepuppy-core"
+      LIBCLUSTER_NODE_BASENAME: "cachepuppy_core"
+      TOTAL_NODES: "3"
+      QUORUM_POLL_INTERVAL_MS: "2000"
+      QUORUM_GRACE_MS: "20000"
+    command: >
+      /bin/sh -lc 'export RELEASE_NODE="cachepuppy_core@$(hostname -i | awk "{print \$1}")";
+      exec bin/cachepuppy_core start'
+    ports:
+      - "${CACHEPUPPY_NODE1_PORT:-4001}:4000"
+    volumes:
+      - cache_shards_data:/app/tmp/cache_shards
+    networks:
+      default:
+        aliases:
+          - cachepuppy-core
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 40s
+
+  app2:
+    image: ${CACHEPUPPY_IMAGE}
+    environment:
+      PHX_SERVER: "true"
+      PORT: "4000"
+      PHX_HOST: "localhost"
+      CACHE_PERSISTENCE_TEST_MODE: "true"
+      SECRET_KEY_BASE: "local-dev-secret-key-base-local-dev-secret-key-base"
+      RELEASE_COOKIE: "cachepuppy-dev-cookie"
+      RELEASE_DISTRIBUTION: "name"
+      LIBCLUSTER_DNS_QUERY: "cachepuppy-core"
+      LIBCLUSTER_NODE_BASENAME: "cachepuppy_core"
+      TOTAL_NODES: "3"
+      QUORUM_POLL_INTERVAL_MS: "2000"
+      QUORUM_GRACE_MS: "20000"
+    command: >
+      /bin/sh -lc 'export RELEASE_NODE="cachepuppy_core@$(hostname -i | awk "{print \$1}")";
+      exec bin/cachepuppy_core start'
+    ports:
+      - "${CACHEPUPPY_NODE2_PORT:-4002}:4000"
+    volumes:
+      - cache_shards_data:/app/tmp/cache_shards
+    networks:
+      default:
+        aliases:
+          - cachepuppy-core
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 40s
+
+  app3:
+    image: ${CACHEPUPPY_IMAGE}
+    environment:
+      PHX_SERVER: "true"
+      PORT: "4000"
+      PHX_HOST: "localhost"
+      CACHE_PERSISTENCE_TEST_MODE: "true"
+      SECRET_KEY_BASE: "local-dev-secret-key-base-local-dev-secret-key-base"
+      RELEASE_COOKIE: "cachepuppy-dev-cookie"
+      RELEASE_DISTRIBUTION: "name"
+      LIBCLUSTER_DNS_QUERY: "cachepuppy-core"
+      LIBCLUSTER_NODE_BASENAME: "cachepuppy_core"
+      TOTAL_NODES: "3"
+      QUORUM_POLL_INTERVAL_MS: "2000"
+      QUORUM_GRACE_MS: "20000"
+    command: >
+      /bin/sh -lc 'export RELEASE_NODE="cachepuppy_core@$(hostname -i | awk "{print \$1}")";
+      exec bin/cachepuppy_core start'
+    ports:
+      - "${CACHEPUPPY_NODE3_PORT:-4003}:4000"
+    volumes:
+      - cache_shards_data:/app/tmp/cache_shards
+    networks:
+      default:
+        aliases:
+          - cachepuppy-core
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 40s
+
+volumes:
+  cache_shards_data:
+    name: ${CACHEPUPPY_VOLUME_NAME:-cachepuppy_cache_shards_data}

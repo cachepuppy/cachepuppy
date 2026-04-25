@@ -8,6 +8,7 @@ This repository contains the API-first scaffold for Beamline.
 - `sdk/javascript` (`@cachepuppy/core`): TypeScript SDK for Node.js and browser clients.
 - `sdk/react` (`@cachepuppy/react`): React hooks/provider wrapper over the core JavaScript SDK.
 - `example/javascript_demo`: Interactive React demo app that uses the SDK packages.
+- `cli` (`cachepuppy-cli`): Docker runtime CLI with `init/start/stop/reset/update/status/logs`.
 
 ## Documentation site
 
