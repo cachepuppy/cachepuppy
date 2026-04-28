@@ -67,7 +67,7 @@ export function registerUpdateCommand(program: Command): void {
         const readyUrl = `http://localhost:${updated.httpPort}/readyz`;
         const healthSpinner = ora("Waiting for readiness").start();
         await waitForReady(readyUrl, 90);
-        healthSpinner.succeed("Cluster is ready");
+        healthSpinner.succeed("Server is ready");
       }
 
       success(`Updated to ${imageRepo}:${nextTag}`);

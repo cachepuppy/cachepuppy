@@ -52,7 +52,6 @@ export function registerInitCommand(program: Command): void {
         channel: "stable",
         currentTag,
         httpPort: Number.isFinite(httpPort) ? httpPort : 4000,
-        nodePorts: [4001, 4002, 4003],
         volumeName: "cachepuppy_cache_shards_data",
       };
 
