@@ -57,7 +57,7 @@ export function registerResetCommand(program: Command): void {
         const readyUrl = `http://localhost:${config.httpPort}/readyz`;
         const healthSpinner = ora("Waiting for readiness").start();
         await waitForReady(readyUrl, 90);
-        healthSpinner.succeed("Cluster is ready");
+        healthSpinner.succeed("Server is ready");
       }
 
       success("CachePuppy reset complete.");

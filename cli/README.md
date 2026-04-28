@@ -20,7 +20,7 @@ After linking, use `cachepuppy` from any project directory.
 - `cachepuppy reset [--yes] [--no-pull] [--no-start]`
 - `cachepuppy update [--image cachepuppy/cachepuppy:sha-xxxx] [--no-restart]`
 - `cachepuppy status`
-- `cachepuppy logs [--service app1] [--tail 100] [--since 10m]`
+- `cachepuppy logs [--service app] [--tail 100] [--since 10m]`
 
 ## Runtime files
 
@@ -29,7 +29,6 @@ The CLI writes local runtime state to:
 - `.cachepuppy/config.json`
 - `.cachepuppy/.env`
 - `.cachepuppy/docker-compose.runtime.yml`
-- `.cachepuppy/nginx/nginx.conf`
 
 ## Expected flow
 
@@ -40,6 +39,10 @@ cachepuppy status
 cachepuppy logs
 cachepuppy stop
 ```
+
+Runtime uses a **single** Phoenix container plus a named volume for cache shards (lower RAM than a multi-node stack).
+
+If you previously used an older CLI with nginx and three nodes, remove `.cachepuppy/docker-compose.runtime.yml` (and the `nginx` folder if present), then run `cachepuppy init --no-pull` to regenerate the compose file.
 
 ## Exit codes
 

@@ -11,7 +11,6 @@ const configSchema = z.object({
   channel: z.enum(["stable"]).default("stable"),
   currentTag: z.string().min(1),
   httpPort: z.number().int().positive().default(4000),
-  nodePorts: z.array(z.number().int().positive()).default([4001, 4002, 4003]),
   volumeName: z.string().min(1).default("cachepuppy_cache_shards_data"),
 });
 
@@ -23,8 +22,6 @@ export interface RuntimePaths {
   configPath: string;
   composePath: string;
   envPath: string;
-  nginxDir: string;
-  nginxConfigPath: string;
 }
 
 export function resolveRuntimePaths(rootDir: string = process.cwd()): RuntimePaths {
@@ -32,10 +29,8 @@ export function resolveRuntimePaths(rootDir: string = process.cwd()): RuntimePat
   const configPath = path.join(stateDir, "config.json");
   const composePath = path.join(stateDir, "docker-compose.runtime.yml");
   const envPath = path.join(stateDir, ".env");
-  const nginxDir = path.join(stateDir, "nginx");
-  const nginxConfigPath = path.join(nginxDir, "nginx.conf");
 
-  return { rootDir, stateDir, configPath, composePath, envPath, nginxDir, nginxConfigPath };
+  return { rootDir, stateDir, configPath, composePath, envPath };
 }
 
 export async function ensureStateDir(paths: RuntimePaths): Promise<void> {
@@ -76,9 +71,6 @@ export async function writeComposeEnv(paths: RuntimePaths, config: CliConfig): P
   const content = [
     `CACHEPUPPY_IMAGE=${image}`,
     `CACHEPUPPY_HTTP_PORT=${config.httpPort}`,
-    `CACHEPUPPY_NODE1_PORT=${config.nodePorts[0] ?? 4001}`,
-    `CACHEPUPPY_NODE2_PORT=${config.nodePorts[1] ?? 4002}`,
-    `CACHEPUPPY_NODE3_PORT=${config.nodePorts[2] ?? 4003}`,
     `CACHEPUPPY_VOLUME_NAME=${config.volumeName}`,
     "",
   ].join("\n");
@@ -88,26 +80,13 @@ export async function writeComposeEnv(paths: RuntimePaths, config: CliConfig): P
 
 export async function ensureRuntimeCompose(paths: RuntimePaths): Promise<void> {
   await ensureStateDir(paths);
-  await mkdir(paths.nginxDir, { recursive: true });
   const templatePath = path.join(resolveCliRoot(), "templates", "docker-compose.runtime.yml");
-  const nginxTemplatePath = path.join(resolveCliRoot(), "templates", "nginx.conf");
 
   try {
     await access(paths.composePath);
   } catch (error: unknown) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") {
       await copyFile(templatePath, paths.composePath);
-      return;
-    }
-
-    throw error;
-  }
-
-  try {
-    await access(paths.nginxConfigPath);
-  } catch (error: unknown) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      await copyFile(nginxTemplatePath, paths.nginxConfigPath);
       return;
     }
 

@@ -27,7 +27,7 @@ export function registerStartCommand(program: Command): void {
 
       if (!options.skipPortCheck) {
         const portSpinner = ora("Checking local ports").start();
-        await assertPortsAvailable([config.httpPort, ...config.nodePorts]);
+        await assertPortsAvailable([config.httpPort]);
         portSpinner.succeed("Required ports are available");
       }
 
@@ -40,7 +40,7 @@ export function registerStartCommand(program: Command): void {
       const readyUrl = `http://localhost:${config.httpPort}/readyz`;
       const healthSpinner = ora(`Waiting for readiness (${readyUrl})`).start();
       await waitForReady(readyUrl, Number.isFinite(timeoutSeconds) ? timeoutSeconds : 90);
-      healthSpinner.succeed("Cluster is ready");
+      healthSpinner.succeed("Server is ready");
 
       success("CachePuppy is running.");
       info(`HTTP: http://localhost:${config.httpPort}`);
