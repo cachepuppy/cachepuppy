@@ -1,0 +1,43 @@
+# Single Phoenix node for local dev and k6 load tests (no nginx, no multi-replica LB).
+# Use: docker compose -f docker-compose.single.yml up --build
+# Or from repo root: make compose-single-up
+
+services:
+  app:
+    build: .
+    image: cachepuppy_core_app:latest
+    environment:
+      PHX_SERVER: "true"
+      PORT: "4000"
+      PHX_HOST: "localhost"
+      CACHE_PERSISTENCE_TEST_MODE: "true"
+      SECRET_KEY_BASE: "local-dev-secret-key-base-local-dev-secret-key-base"
+      RELEASE_COOKIE: "cachepuppy-dev-cookie"
+      RELEASE_DISTRIBUTION: "name"
+      LIBCLUSTER_DNS_QUERY: "cachepuppy-core"
+      LIBCLUSTER_NODE_BASENAME: "cachepuppy_core"
+      TOTAL_NODES: "1"
+      QUORUM_POLL_INTERVAL_MS: "2000"
+      QUORUM_GRACE_MS: "20000"
+    command: >
+      /bin/sh -lc 'export RELEASE_NODE="cachepuppy_core@$(hostname -i | awk "{print \$1}")";
+      exec bin/cachepuppy_core start'
+    ports:
+      - "4000:4000"
+    volumes:
+      - cache_shards_data_single:/app/tmp/cache_shards
+    networks:
+      default:
+        aliases:
+          - cachepuppy-core
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+
+volumes:
+  cache_shards_data_single:
+    name: cachepuppy_cache_shards_data_single

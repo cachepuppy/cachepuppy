@@ -132,6 +132,15 @@ Join Phoenix topic `session` (fixed string) for connection-scoped state that doe
 - `close_topic` reply:
   - `%{"closed" => true}`
 
+## Local single-node Docker
+
+For local debugging or when you do not need a multi-node cluster, run one Phoenix container on **host port 4000** (no nginx):
+
+- From the repository root: `make compose-single-up` (foreground with build) or `make compose-single-down`
+- From `cachepuppy_core/`: `docker compose -f docker-compose.single.yml up -d --build`
+
+This stack sets `TOTAL_NODES=1`, uses a dedicated volume (`cachepuppy_cache_shards_data_single`), and keeps the `cachepuppy-core` network alias for libcluster DNS. WebSockets: `ws://127.0.0.1:4000/socket/websocket`.
+
 ## Local libcluster multi-node testing
 
 This project supports local 3-node clustering via `libcluster` and Docker Compose. An **nginx** service load-balances HTTP and WebSockets across `app1`, `app2`, and `app3` on **port 4000** (non-sticky round-robin).
