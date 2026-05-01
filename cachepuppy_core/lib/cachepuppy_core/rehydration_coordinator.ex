@@ -1,6 +1,10 @@
 defmodule CachePuppyCore.RehydrationCoordinator do
   @moduledoc false
 
+  # Registered locally on each node — not via Horde.Registry. A unique Horde key
+  # would allow only one coordinator cluster-wide; starting one per node caused
+  # naming-conflict exits and application shutdown in multi-node Docker.
+
   use GenServer
   require Logger
 
@@ -10,11 +14,7 @@ defmodule CachePuppyCore.RehydrationCoordinator do
   @registry CachePuppyCore.CacheShardRegistry
 
   def start_link(opts \\ []) do
-    GenServer.start_link(
-      __MODULE__,
-      opts,
-      name: {:via, Horde.Registry, {@registry, :rehydration_coordinator}}
-    )
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
   def child_spec(opts \\ []) do
