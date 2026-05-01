@@ -3,6 +3,7 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
 
   use GenServer
   require Logger
+  alias CachePuppyCore.RehydrationLog
   alias CachePuppyCore.Persistence.CacheConfig
   alias CachePuppyCore.Persistence.CacheEntry
   alias CachePuppyCore.Persistence.CacheShardRead
@@ -100,8 +101,8 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
     true = Process.link(sweeper)
     state = %{state | ttl_sweeper_pid: sweeper}
 
-    Logger.info(
-      "cache_shard init shard_id=#{shard_id} node=#{node()} owner_epoch=#{owner_epoch} owner_valid=#{owner_valid?} rehydration_phase=none storage_dir=#{storage_dir}"
+    RehydrationLog.line(
+      "shard_id=#{shard_id} node=#{node()} owner_epoch=#{owner_epoch} owner_valid=#{owner_valid?} phase=none (init, awaiting rehydrate_sync) storage_dir=#{storage_dir}"
     )
 
     {:ok, schedule_owner_check(state)}
@@ -317,6 +318,10 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
   defp rehydrate_from_none(%State{rehydration_phase: :none} = state) do
     s0 = %{state | rehydration_phase: :progress}
 
+    RehydrationLog.line(
+      "shard_id=#{state.shard_id} node=#{node()} phase none->progress (wal sync close + snapshot/wal recovery)"
+    )
+
     with {:ok, flush_closed} <- CacheFlushEngine.sync_and_close_wal(s0.flush) do
       s1 = %{s0 | flush: flush_closed}
 
@@ -345,15 +350,15 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
 
         recovered_size = :ets.info(recovered, :size)
 
-        Logger.info(
-          "cache_shard ready shard_id=#{s2.shard_id} node=#{node()} recovered_entries=#{recovered_size}"
+        RehydrationLog.line(
+          "shard_id=#{s2.shard_id} node=#{node()} phase progress->success (ready) recovered_entries=#{recovered_size}"
         )
 
         {:ok, s2}
       rescue
         error ->
-          Logger.error(
-            "cache_rehydrate failed shard_id=#{state.shard_id} node=#{node()} reason=#{inspect(error)}"
+          RehydrationLog.line(
+            "shard_id=#{state.shard_id} node=#{node()} phase progress->none (recovery failed) reason=#{inspect(error)}"
           )
 
           {:ok, flush_reopen} = CacheFlushEngine.open(state.shard_id, state.owner_epoch)
@@ -368,6 +373,10 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
       end
     else
       {:error, reason} ->
+        RehydrationLog.line(
+          "shard_id=#{state.shard_id} node=#{node()} phase progress->none (wal sync/close failed) reason=#{inspect(reason)}"
+        )
+
         {:error, reason, %{s0 | rehydration_phase: :none}}
     end
   end
