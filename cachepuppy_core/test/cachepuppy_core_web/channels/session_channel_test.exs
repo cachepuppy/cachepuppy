@@ -1,6 +1,7 @@
 defmodule CachePuppyCoreWeb.SessionChannelTest do
   use ExUnit.Case, async: true
   import Phoenix.ChannelTest
+  alias CachePuppyCore.CacheShardSync
   alias CachePuppyCore.Persistence.CacheRouter
   alias CachePuppyCore.Persistence.CacheShardRead
 
@@ -62,6 +63,8 @@ defmodule CachePuppyCoreWeb.SessionChannelTest do
         CachePuppyCoreWeb.SessionChannel,
         "session"
       )
+
+    :ok = CacheShardSync.sync!("users", "alice")
 
     set_payload = %{
       "table" => "users",

@@ -13,6 +13,7 @@ defmodule CachePuppyCore.Persistence.CacheConfig do
   @default_quorum_grace_ms 20_000
   @default_ttl_sweep_interval_ms 10_000
   @default_ttl_ms_max 86_400_000 * 30
+  @default_rehydration_coordinator_tick_ms 500
 
   def shard_count do
     Application.get_env(:cachepuppy_core, :cache_shard_count, @default_shard_count)
@@ -100,5 +101,13 @@ defmodule CachePuppyCore.Persistence.CacheConfig do
 
   def ttl_ms_max do
     Application.get_env(:cachepuppy_core, :cache_ttl_ms_max, @default_ttl_ms_max)
+  end
+
+  def rehydration_coordinator_tick_ms do
+    Application.get_env(
+      :cachepuppy_core,
+      :cache_rehydration_coordinator_tick_ms,
+      @default_rehydration_coordinator_tick_ms
+    )
   end
 end

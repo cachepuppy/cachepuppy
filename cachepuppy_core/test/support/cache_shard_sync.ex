@@ -3,6 +3,7 @@ defmodule CachePuppyCore.CacheShardSync do
 
   import ExUnit.Assertions
 
+  alias CachePuppyCore.CacheShardRehydrate
   alias CachePuppyCore.Persistence.CacheRouter
   alias CachePuppyCore.Persistence.CacheShardRead
 
@@ -31,7 +32,8 @@ defmodule CachePuppyCore.CacheShardSync do
   end
 
   @doc """
-  Starts the shard for `table` + `key` (if needed) and blocks until:
+  Starts the shard for `table` + `key` (if needed), runs synchronous rehydration on the
+  shard pid (does not wait on `RehydrationCoordinator` ticks), then blocks until:
 
   * `CacheShardProcess` is `ready?: true` and `owner_valid?: true`
   * `CacheShardRead.shard_meta/1` reports `ready?: true` for the same owner pid
@@ -42,6 +44,7 @@ defmodule CachePuppyCore.CacheShardSync do
   def sync!(table, key) when is_binary(table) and is_binary(key) do
     {:ok, shard_id} = CacheRouter.shard_id_for_entry(table, key)
     {:ok, pid} = CacheRouter.ensure_shard_started(shard_id)
+    :ok = CacheShardRehydrate.rehydrate_and_wait_ready!(pid)
     assert_process_ready!(pid)
     assert_public_meta_ready!(shard_id, pid)
   end

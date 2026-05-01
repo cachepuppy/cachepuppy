@@ -29,6 +29,13 @@ defmodule CachePuppyCore.Persistence.CacheOwnerMeta do
       Map.get(meta, "rehydrating") == false
   end
 
+  @spec claim_holder?(String.t(), non_neg_integer(), non_neg_integer(), String.t()) :: boolean()
+  def claim_holder?(storage_dir, shard_id, epoch, owner_node) do
+    meta = read_meta(storage_dir, shard_id)
+
+    Map.get(meta, "epoch") == epoch and Map.get(meta, "owner_node") == owner_node
+  end
+
   defp base_meta(epoch, owner_node, rehydrating) do
     %{
       "epoch" => epoch,

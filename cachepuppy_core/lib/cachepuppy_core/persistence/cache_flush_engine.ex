@@ -41,6 +41,22 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
   @spec close(%FlushState{}) :: %FlushState{}
   def close(%FlushState{} = state), do: close_wal(state)
 
+  @spec sync_and_close_wal(%FlushState{}) :: {:ok, %FlushState{}} | {:error, term()}
+  def sync_and_close_wal(%FlushState{current_wal_fd: nil} = flush), do: {:ok, flush}
+
+  def sync_and_close_wal(%FlushState{current_wal_fd: fd} = flush) do
+    with :ok <- :file.sync(fd),
+         :ok <- :file.close(fd) do
+      {:ok,
+       %{
+         flush
+         | current_wal_fd: nil,
+           current_wal_bytes: 0,
+           pending_sync_bytes: 0
+       }}
+    end
+  end
+
   @spec persist_set(%FlushState{}, boolean(), String.t(), String.t(), term(), nil | pos_integer()) ::
           {:ok, %FlushState{}, pos_integer()} | {:error, term()}
   def persist_set(%FlushState{} = flush, owner_valid?, table, key, value, ttl_ms \\ nil)
@@ -83,10 +99,17 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
     end
   end
 
-  @spec on_flush_tick(%FlushState{}, boolean()) :: %FlushState{}
-  def on_flush_tick(%FlushState{} = flush, owner_valid?) when is_boolean(owner_valid?) do
+  @spec on_flush_tick(%FlushState{}, boolean(), boolean(), atom()) :: %FlushState{}
+  def on_flush_tick(
+        %FlushState{} = flush,
+        wal_sync_allowed?,
+        owner_valid?,
+        rehydration_phase
+      )
+      when is_boolean(wal_sync_allowed?) and is_boolean(owner_valid?) and
+             is_atom(rehydration_phase) do
     flush =
-      if owner_valid? do
+      if wal_sync_allowed? do
         case maybe_sync(flush) |> maybe_rotate_result() do
           {:ok, f} -> f
           {:error, _} -> flush
@@ -95,17 +118,17 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
         flush
       end
 
-    maybe_start_snapshot(flush, owner_valid?)
+    maybe_start_snapshot(flush, owner_valid?, rehydration_phase)
   end
 
-  @spec on_snapshot_message(%FlushState{}, term(), boolean()) :: %FlushState{}
-  def on_snapshot_message(%FlushState{} = flush, message, owner_valid?)
-      when is_boolean(owner_valid?) do
+  @spec on_snapshot_message(%FlushState{}, term(), boolean(), atom()) :: %FlushState{}
+  def on_snapshot_message(%FlushState{} = flush, message, owner_valid?, rehydration_phase)
+      when is_boolean(owner_valid?) and is_atom(rehydration_phase) do
     case message do
       {:snapshot_done, :ok, finalize_cutoff} ->
         flush_cleared = %{flush | snapshot_task_ref: nil}
 
-        if snapshot_allowed?() do
+        if snapshot_allowed?(rehydration_phase) do
           with_valid_owner(flush_cleared, owner_valid?, fn s ->
             {:ok, next} = finalize_snapshot(s, finalize_cutoff)
 
@@ -117,7 +140,7 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
           end)
         else
           Logger.warning(
-            "cache_snapshot skipped_finalize shard_id=#{flush.shard_id} node=#{node()} reason=quorum_snapshot_blocked"
+            "cache_snapshot skipped_finalize shard_id=#{flush.shard_id} node=#{node()} reason=rehydration_phase_blocked"
           )
 
           flush_cleared
@@ -279,12 +302,12 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
     :ok = File.rename(tmp_path, path)
   end
 
-  defp maybe_start_snapshot(%FlushState{snapshot_task_ref: ref} = flush, _owner_valid?)
+  defp maybe_start_snapshot(%FlushState{snapshot_task_ref: ref} = flush, _owner_valid?, _phase)
        when not is_nil(ref),
        do: flush
 
-  defp maybe_start_snapshot(%FlushState{} = flush, owner_valid?) do
-    if snapshot_allowed?() and owner_valid? and should_snapshot?(flush) do
+  defp maybe_start_snapshot(%FlushState{} = flush, owner_valid?, rehydration_phase) do
+    if snapshot_allowed?(rehydration_phase) and owner_valid? and should_snapshot?(flush) do
       storage_dir = CacheConfig.storage_dir()
       checkpoint_seq = CacheRecoveryEngine.read_checkpoint_seq(storage_dir, flush.shard_id)
 
@@ -368,9 +391,7 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngine do
     end
   end
 
-  defp snapshot_allowed? do
-    not CachePuppyCore.ClusterQuorumGuard.snapshot_blocked?()
-  end
+  defp snapshot_allowed?(rehydration_phase), do: rehydration_phase == :success
 
   defp with_valid_owner(flush, owner_valid?, fun) do
     if owner_valid? do

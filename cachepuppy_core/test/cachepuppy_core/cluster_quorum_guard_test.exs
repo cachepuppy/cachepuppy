@@ -9,7 +9,6 @@ defmodule CachePuppyCore.ClusterQuorumGuardTest do
       _ = :sys.get_state(ClusterQuorumGuard)
 
       assert ClusterQuorumGuard.mode() == :healthy
-      refute ClusterQuorumGuard.snapshot_blocked?()
       assert ClusterQuorumGuard.quorum_status().quorum_met
     end)
   end
@@ -19,10 +18,8 @@ defmodule CachePuppyCore.ClusterQuorumGuardTest do
       _pid = start_supervised!({ClusterQuorumGuard, []})
 
       wait_until(fn -> ClusterQuorumGuard.mode() == :grace end)
-      assert ClusterQuorumGuard.snapshot_blocked?()
 
       wait_until(fn -> ClusterQuorumGuard.mode() == :fenced end)
-      assert ClusterQuorumGuard.snapshot_blocked?()
     end)
   end
 
@@ -33,9 +30,7 @@ defmodule CachePuppyCore.ClusterQuorumGuardTest do
       wait_until(fn -> ClusterQuorumGuard.mode() == :grace end)
       Application.put_env(:cachepuppy_core, :cache_expected_nodes, 1)
 
-      wait_until(fn ->
-        ClusterQuorumGuard.mode() == :healthy and not ClusterQuorumGuard.snapshot_blocked?()
-      end)
+      wait_until(fn -> ClusterQuorumGuard.mode() == :healthy end)
     end)
   end
 
@@ -57,7 +52,6 @@ defmodule CachePuppyCore.ClusterQuorumGuardTest do
       restore_env(:cache_quorum_poll_interval_ms, old_poll)
       restore_env(:cache_quorum_grace_ms, old_grace)
       restore_env(:cache_quorum_stop_enabled, old_stop_enabled)
-      :persistent_term.put({CachePuppyCore.ClusterQuorumGuard, :snapshot_blocked}, false)
       :persistent_term.put({CachePuppyCore.ClusterQuorumGuard, :mode}, :healthy)
     end
   end

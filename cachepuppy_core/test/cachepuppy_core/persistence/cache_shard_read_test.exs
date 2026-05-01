@@ -1,6 +1,7 @@
 defmodule CachePuppyCore.Persistence.CacheShardReadTest do
   use ExUnit.Case, async: false
 
+  alias CachePuppyCore.CacheShardRehydrate
   alias CachePuppyCore.Persistence.CacheShardProcess
   alias CachePuppyCore.Persistence.CacheShardRead
 
@@ -56,19 +57,7 @@ defmodule CachePuppyCore.Persistence.CacheShardReadTest do
     CachePuppyCore.TestTmpDir.path("cache_shard_read_#{label}")
   end
 
-  defp wait_until_ready(pid, attempts \\ 200)
-  defp wait_until_ready(_pid, 0), do: flunk("shard did not become ready in time")
-
-  defp wait_until_ready(pid, attempts) do
-    state = :sys.get_state(pid)
-
-    if state.ready? do
-      :ok
-    else
-      receive do
-      after
-        10 -> wait_until_ready(pid, attempts - 1)
-      end
-    end
+  defp wait_until_ready(pid, attempts \\ 200) do
+    CacheShardRehydrate.rehydrate_and_wait_ready!(pid, attempts: attempts)
   end
 end

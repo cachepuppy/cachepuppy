@@ -1,14 +1,15 @@
 defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
   use ExUnit.Case, async: false
 
+  alias CachePuppyCore.CacheShardRehydrate
   alias CachePuppyCore.Persistence.CacheEntry
+  alias CachePuppyCore.Persistence.CacheShardRead
   alias CachePuppyCore.Persistence.CacheFlushEngine
   alias CachePuppyCore.Persistence.CacheUtils
-  alias CachePuppyCore.Persistence.CacheShardRead
   alias CachePuppyCore.Persistence.CacheShardProcess
   alias CachePuppyCore.Persistence.CacheShardTtlSweeper
 
-  test "rehydrates from snapshot and WAL on startup" do
+  test "rehydrates from snapshot and WAL after rehydrate_sync" do
     shard_id = 7
     storage_dir = unique_storage_dir("rehydrate")
 
@@ -114,6 +115,41 @@ defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
     end)
   end
 
+  test "in :none WAL accepts set and fast_get returns :rehydrating until rehydrate_sync" do
+    shard_id = 30
+    storage_dir = unique_storage_dir("none_wal_read")
+
+    with_cache_config(storage_dir, 1_048_576, 100_000, fn ->
+      pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
+      assert :none == :sys.get_state(pid).rehydration_phase
+      assert {:error, :rehydrating} = CacheShardRead.fast_get(shard_id, "users", "k1")
+
+      assert {:ok, "v"} = GenServer.call(pid, {:set, "users", "k1", "v"})
+      assert {:error, :rehydrating} = CacheShardRead.fast_get(shard_id, "users", "k1")
+
+      CacheShardRehydrate.rehydrate_and_wait_ready!(pid)
+      assert {:ok, "v"} = CacheShardRead.fast_get(shard_id, "users", "k1")
+    end)
+  end
+
+  test "rehydrate_sync returns error and phase returns to :none when WAL sync fails" do
+    shard_id = 31
+    storage_dir = unique_storage_dir("rehydrate_wal_fail")
+
+    with_cache_config(storage_dir, 1_048_576, 100_000, fn ->
+      pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
+      assert :none == :sys.get_state(pid).rehydration_phase
+
+      # Invalid io_device(): sync_and_close_wal returns {:error, :badarg} without cross-process FD issues.
+      bad_io = 999_999
+
+      _ = :sys.replace_state(pid, fn s -> %{s | flush: %{s.flush | current_wal_fd: bad_io}} end)
+
+      assert {:error, _reason} = GenServer.call(pid, :rehydrate_sync)
+      assert :none == :sys.get_state(pid).rehydration_phase
+    end)
+  end
+
   defp write_owner_meta(storage_dir, shard_id, epoch) do
     File.mkdir_p!(storage_dir)
 
@@ -153,19 +189,7 @@ defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
     CachePuppyCore.TestTmpDir.path("cache_shard_process_#{label}")
   end
 
-  defp wait_until_ready(pid, attempts \\ 200)
-  defp wait_until_ready(_pid, 0), do: flunk("shard did not become ready in time")
-
-  defp wait_until_ready(pid, attempts) do
-    state = :sys.get_state(pid)
-
-    if state.ready? do
-      :ok
-    else
-      receive do
-      after
-        10 -> wait_until_ready(pid, attempts - 1)
-      end
-    end
+  defp wait_until_ready(pid, attempts \\ 200) do
+    CacheShardRehydrate.rehydrate_and_wait_ready!(pid, attempts: attempts)
   end
 end
