@@ -1,23 +1,21 @@
 defmodule CachePuppyCore.RehydrationCoordinatorTest do
   use ExUnit.Case, async: false
 
+  alias CachePuppyCore.RehydrationCoordinator
   alias CachePuppyCore.Persistence.CacheRouter
-
-  @registry CachePuppyCore.CacheShardRegistry
-  @coord_key :rehydration_coordinator
 
   setup do
     :ok = CachePuppyCore.CacheShardSync.reset_horde_shards!()
 
-    case Horde.Registry.lookup(@registry, @coord_key) do
-      [{coord_pid, _}] ->
+    case Process.whereis(RehydrationCoordinator) do
+      coord_pid when is_pid(coord_pid) ->
         :ok = :sys.suspend(coord_pid)
 
         on_exit(fn ->
           _ = :sys.resume(coord_pid)
         end)
 
-      [] ->
+      _ ->
         :ok
     end
 
@@ -38,7 +36,8 @@ defmodule CachePuppyCore.RehydrationCoordinatorTest do
 
       assert :none == :sys.get_state(pid).rehydration_phase
 
-      [{coord_pid, _}] = Horde.Registry.lookup(@registry, @coord_key)
+      coord_pid = Process.whereis(RehydrationCoordinator)
+      assert is_pid(coord_pid)
       :ok = :sys.resume(coord_pid)
       send(coord_pid, :tick)
 
@@ -66,7 +65,8 @@ defmodule CachePuppyCore.RehydrationCoordinatorTest do
 
       assert {:ok, :skipped} = GenServer.call(pid, :rehydrate_sync)
 
-      [{coord_pid, _}] = Horde.Registry.lookup(@registry, @coord_key)
+      coord_pid = Process.whereis(RehydrationCoordinator)
+      assert is_pid(coord_pid)
       :ok = :sys.resume(coord_pid)
       send(coord_pid, :tick)
 
