@@ -1,6 +1,7 @@
 defmodule CachePuppyCore.Persistence.CacheFlushEngineTest do
   use ExUnit.Case, async: false
 
+  alias CachePuppyCore.CacheShardRehydrate
   alias CachePuppyCore.Persistence.CacheEntry
   alias CachePuppyCore.Persistence.CacheShardProcess
   alias CachePuppyCore.Persistence.CacheFlushEngine
@@ -31,11 +32,12 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngineTest do
       File.write!(CacheUtils.wal_path(storage_dir, shard_id, 2), "abcdef")
       write_owner_meta(storage_dir, shard_id, 1)
       pid = start_shard(shard_id)
-      wait_until_ready(pid)
 
-      state = :sys.get_state(pid)
-      assert state.flush.current_seq == 2
-      assert state.flush.current_wal_bytes == 6
+      state_before = :sys.get_state(pid)
+      assert state_before.flush.current_seq == 2
+      assert state_before.flush.current_wal_bytes == 6
+
+      wait_until_ready(pid)
     end)
   end
 
@@ -107,7 +109,6 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngineTest do
     with_cache_config(storage_dir, 64, fn ->
       old_flush_ms = Application.get_env(:cachepuppy_core, :cache_flush_interval_ms)
       Application.put_env(:cachepuppy_core, :cache_flush_interval_ms, 86_400_000)
-      set_snapshot_blocked(true)
 
       try do
         write_owner_meta(storage_dir, shard_id, 11)
@@ -120,7 +121,6 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngineTest do
         assert state.flush.current_seq == 2
         assert File.exists?(CacheUtils.wal_path(storage_dir, shard_id, 2))
       after
-        set_snapshot_blocked(false)
         restore_env(:cache_flush_interval_ms, old_flush_ms)
       end
     end)
@@ -242,18 +242,15 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngineTest do
     end)
   end
 
-  test "snapshot creation is blocked while quorum snapshot fence is active but WAL appends continue" do
+  test "flush tick does not snapshot until rehydration completes" do
     shard_id = 11
-    storage_dir = unique_storage_dir("snapshot_blocked_start")
+    storage_dir = unique_storage_dir("snapshot_before_rehydrate")
 
     with_cache_config(storage_dir, 1_048_576, fn ->
+      write_owner_meta(storage_dir, shard_id, 11)
+      pid = start_shard(shard_id)
+
       with_snapshot_thresholds(0, 1, fn ->
-        write_owner_meta(storage_dir, shard_id, 11)
-        set_snapshot_blocked(true)
-
-        pid = start_shard(shard_id)
-        wait_until_ready(pid)
-
         assert {:ok, "blr"} = GenServer.call(pid, {:set, "users", "city", "blr"})
         send(pid, :flush_tick)
         _ = :sys.get_state(pid)
@@ -262,31 +259,40 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngineTest do
         refute File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id))
         refute File.exists?(CacheUtils.checkpoint_path(storage_dir, shard_id))
       end)
+
+      CacheShardRehydrate.rehydrate_and_wait_ready!(pid)
+
+      with_snapshot_thresholds(0, 1, fn ->
+        assert {:ok, "del"} = GenServer.call(pid, {:set, "users", "k2", "del"})
+        send(pid, :flush_tick)
+
+        wait_until(fn ->
+          File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id)) and
+            File.exists?(CacheUtils.checkpoint_path(storage_dir, shard_id))
+        end)
+      end)
     end)
   end
 
-  test "snapshot finalize and prune are blocked while quorum snapshot fence is active" do
+  test "on_snapshot_message skips finalize when rehydration_phase is not success" do
     shard_id = 12
-    storage_dir = unique_storage_dir("snapshot_blocked_finalize")
-    ref = make_ref()
+    storage_dir = unique_storage_dir("skip_finalize_phase")
 
     with_cache_config(storage_dir, 1_048_576, fn ->
       write_owner_meta(storage_dir, shard_id, 11)
-      pid = start_shard(shard_id)
-      wait_until_ready(pid)
+      {:ok, flush} = flush_open(shard_id, 11)
 
-      File.write!(CacheUtils.wal_path(storage_dir, shard_id, 1), "old-wal-segment")
+      flush_after =
+        CacheFlushEngine.on_snapshot_message(
+          flush,
+          {:snapshot_done, :ok, 2},
+          true,
+          :none
+        )
 
-      :sys.replace_state(pid, fn state ->
-        %{state | flush: %{state.flush | snapshot_task_ref: ref}}
-      end)
-
-      set_snapshot_blocked(true)
-      send(pid, {ref, {:snapshot_done, :ok, 2}})
-      _ = :sys.get_state(pid)
-
-      assert File.exists?(CacheUtils.wal_path(storage_dir, shard_id, 1))
+      assert flush_after.snapshot_task_ref == nil
       refute File.exists?(CacheUtils.checkpoint_path(storage_dir, shard_id))
+      _ = CacheFlushEngine.close(flush_after)
     end)
   end
 
@@ -319,7 +325,6 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngineTest do
     try do
       fun.()
     after
-      set_snapshot_blocked(false)
       restore_env(:cache_storage_dir, old_storage)
       restore_env(:cache_wal_segment_max_bytes, old_wal_bytes)
     end
@@ -350,20 +355,8 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngineTest do
     )
   end
 
-  defp wait_until_ready(pid, attempts \\ 200)
-  defp wait_until_ready(_pid, 0), do: flunk("shard did not become ready in time")
-
-  defp wait_until_ready(pid, attempts) do
-    state = :sys.get_state(pid)
-
-    if state.ready? do
-      :ok
-    else
-      receive do
-      after
-        10 -> wait_until_ready(pid, attempts - 1)
-      end
-    end
+  defp wait_until_ready(pid, attempts \\ 200) do
+    CacheShardRehydrate.rehydrate_and_wait_ready!(pid, attempts: attempts)
   end
 
   defp wait_until(fun, attempts \\ 100)
@@ -378,9 +371,5 @@ defmodule CachePuppyCore.Persistence.CacheFlushEngineTest do
         10 -> wait_until(fun, attempts - 1)
       end
     end
-  end
-
-  defp set_snapshot_blocked(value) do
-    :persistent_term.put({CachePuppyCore.ClusterQuorumGuard, :snapshot_blocked}, value)
   end
 end

@@ -7,7 +7,6 @@ defmodule CachePuppyCore.ClusterQuorumGuard do
   alias CachePuppyCore.Persistence.CacheConfig
 
   @mode_key {__MODULE__, :mode}
-  @snapshot_blocked_key {__MODULE__, :snapshot_blocked}
 
   @type mode :: :healthy | :grace | :fenced
 
@@ -22,11 +21,6 @@ defmodule CachePuppyCore.ClusterQuorumGuard do
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
-  end
-
-  @spec snapshot_blocked?() :: boolean()
-  def snapshot_blocked? do
-    :persistent_term.get(@snapshot_blocked_key, false)
   end
 
   @spec mode() :: mode()
@@ -78,12 +72,12 @@ defmodule CachePuppyCore.ClusterQuorumGuard do
   defp transition(state, %{quorum_met: true}) do
     case state.mode do
       :healthy ->
-        publish_state(:healthy, false)
+        publish_state(:healthy)
         %{state | mode: :healthy, grace_deadline_ms: nil}
 
       :grace ->
         Logger.warning("quorum_restored node=#{node()}")
-        publish_state(:healthy, false)
+        publish_state(:healthy)
         %{state | mode: :healthy, grace_deadline_ms: nil}
 
       :fenced ->
@@ -102,7 +96,7 @@ defmodule CachePuppyCore.ClusterQuorumGuard do
           "quorum_lost_enter_grace node=#{node()} current_nodes=#{status.current_nodes} quorum_threshold=#{status.quorum_threshold} grace_ms=#{state.grace_ms}"
         )
 
-        publish_state(:grace, true)
+        publish_state(:grace)
         %{state | mode: :grace, grace_deadline_ms: deadline}
 
       :grace ->
@@ -111,7 +105,7 @@ defmodule CachePuppyCore.ClusterQuorumGuard do
             "quorum_grace_expired_node_stopping node=#{node()} current_nodes=#{status.current_nodes} quorum_threshold=#{status.quorum_threshold}"
           )
 
-          publish_state(:fenced, true)
+          publish_state(:fenced)
 
           if CacheConfig.quorum_stop_enabled?() do
             # Hard-abort the VM with NO port flush.
@@ -137,18 +131,17 @@ defmodule CachePuppyCore.ClusterQuorumGuard do
 
           %{state | mode: :fenced, grace_deadline_ms: state.grace_deadline_ms}
         else
-          publish_state(:grace, true)
+          publish_state(:grace)
           %{state | mode: :grace}
         end
 
       :fenced ->
-        publish_state(:fenced, true)
+        publish_state(:fenced)
         state
     end
   end
 
-  defp publish_state(mode, snapshot_blocked) do
+  defp publish_state(mode) do
     :persistent_term.put(@mode_key, mode)
-    :persistent_term.put(@snapshot_blocked_key, snapshot_blocked)
   end
 end
