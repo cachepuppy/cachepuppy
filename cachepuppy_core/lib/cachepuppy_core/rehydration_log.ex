@@ -18,7 +18,7 @@ defmodule CachePuppyCore.RehydrationLog do
   end
 
   @doc """
-  Same marker, one line (e.g. coordinator follow-up after a full `line/1` banner).
+  Same marker, one line (e.g., coordinator follow-up after a full `line/1` banner).
   """
   @spec single_line(String.t()) :: :ok
   def single_line(detail) when is_binary(detail) do
