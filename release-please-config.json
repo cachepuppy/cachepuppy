@@ -1,0 +1,45 @@
+{
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "cachepuppy",
+      "include-component-in-tag": false,
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "cachepuppy_core/mix.exs"
+        },
+        {
+          "type": "json",
+          "path": "cli/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "sdk/javascript/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "sdk/react/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "docs/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "example/javascript_demo/interactive/package.json",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "json",
+          "path": "example/javascript_demo/webhook-server/package.json",
+          "jsonpath": "$.version"
+        }
+      ]
+    }
+  }
+}
