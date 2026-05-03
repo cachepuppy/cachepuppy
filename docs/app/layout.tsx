@@ -19,15 +19,20 @@ export const metadata: Metadata = {
     default: "CachePuppy",
     template: "%s · CachePuppy",
   },
-  description: "CachePuppy — realtime topics and distributed cache on the BEAM, with JavaScript and React clients.",
+  description:
+    "CachePuppy — realtime topics and distributed cache on the BEAM, with JavaScript and React clients.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable}`}
+      suppressHydrationWarning
+    >
       <body className="flex min-h-screen flex-col bg-fd-background text-fd-foreground antialiased">
         <RootProvider
-          search={{ enabled: true }}
+          search={{ enabled: true, options: { type: "static" } }}
           theme={{
             enabled: true,
             attribute: "class",
