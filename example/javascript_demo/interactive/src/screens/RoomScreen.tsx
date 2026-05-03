@@ -10,6 +10,7 @@ import { TOPIC } from "../constants";
 import { DeleteDataModal } from "./components/DeleteDataModal";
 import { GetDataModal } from "./components/GetDataModal";
 import { InsertDataModal } from "./components/InsertDataModal";
+import { UpdateDataModal } from "./components/UpdateDataModal";
 import type { StickyNote } from "../types";
 import { notesFromState } from "../types";
 import { attachBoardCursorTracking } from "../utils/boardCursorPublish";
@@ -43,6 +44,7 @@ export function RoomScreen({
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [showInsertModal, setShowInsertModal] = useState(false);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [showGetModal, setShowGetModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const topicEnabled = connectionState === "connected";
@@ -128,6 +130,15 @@ export function RoomScreen({
     return client.getData(table, key);
   }
 
+  async function updateCacheData(
+    table: string,
+    key: string,
+    patch: Record<string, unknown>,
+    options?: { ttlMs?: number },
+  ): Promise<unknown> {
+    return client.updateData(table, key, patch, options);
+  }
+
   async function deleteCacheData(table: string, key: string): Promise<boolean> {
     return client.deleteData(table, key);
   }
@@ -157,6 +168,13 @@ export function RoomScreen({
           onClick={() => setShowInsertModal(true)}
         >
           Insert data
+        </button>
+        <button
+          type="button"
+          className="btn"
+          onClick={() => setShowUpdateModal(true)}
+        >
+          Update data
         </button>
         <button
           type="button"
@@ -231,6 +249,13 @@ export function RoomScreen({
         <InsertDataModal
           onClose={() => setShowInsertModal(false)}
           onSubmit={insertCacheData}
+        />
+      ) : null}
+
+      {showUpdateModal ? (
+        <UpdateDataModal
+          onClose={() => setShowUpdateModal(false)}
+          onSubmit={updateCacheData}
         />
       ) : null}
 
