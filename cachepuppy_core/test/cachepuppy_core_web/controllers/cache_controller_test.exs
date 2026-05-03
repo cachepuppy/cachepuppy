@@ -94,4 +94,114 @@ defmodule CachePuppyCoreWeb.CacheControllerTest do
     assert get_resp_header(conn, "access-control-allow-origin") == ["*"]
     assert get_resp_header(conn, "access-control-allow-methods") == ["GET,POST,OPTIONS"]
   end
+
+  test "updatedata merges patch and returns full value", %{conn: conn} do
+    table = "users"
+    key = "upd_http_#{System.unique_integer([:positive])}"
+    :ok = CacheShardSync.sync!(table, key)
+
+    conn =
+      post(conn, ~p"/api/cache/setdata", %{
+        "table" => table,
+        "key" => key,
+        "value" => %{"a" => 1}
+      })
+
+    assert json_response(conn, 200)
+
+    conn =
+      post(build_conn(), ~p"/api/cache/updatedata", %{
+        "table" => table,
+        "key" => key,
+        "patch" => %{"b" => 2}
+      })
+
+    assert %{"table" => ^table, "key" => ^key, "value" => %{"a" => 1, "b" => 2}} =
+             json_response(conn, 200)
+  end
+
+  test "updatedata rejects invalid payload", %{conn: conn} do
+    conn =
+      post(conn, ~p"/api/cache/updatedata", %{
+        "table" => "users",
+        "key" => "k",
+        "patch" => []
+      })
+
+    assert %{"reason" => "invalid_payload"} = json_response(conn, 400)
+
+    conn =
+      post(build_conn(), ~p"/api/cache/updatedata", %{"table" => "users", "key" => "k2"})
+
+    assert %{"reason" => "invalid_payload"} = json_response(conn, 400)
+  end
+
+  test "updatedata returns not_found when key missing", %{conn: conn} do
+    table = "users"
+    key = "upd_nf_#{System.unique_integer([:positive])}"
+    :ok = CacheShardSync.sync!(table, key)
+
+    conn =
+      post(conn, ~p"/api/cache/updatedata", %{
+        "table" => table,
+        "key" => key,
+        "patch" => %{"x" => 1}
+      })
+
+    assert %{"reason" => "not_found"} = json_response(conn, 404)
+  end
+
+  test "updatedata returns value_not_mergeable for non-map stored value", %{conn: conn} do
+    table = "users"
+    key = "upd_vm_#{System.unique_integer([:positive])}"
+    :ok = CacheShardSync.sync!(table, key)
+
+    conn =
+      post(conn, ~p"/api/cache/setdata", %{
+        "table" => table,
+        "key" => key,
+        "value" => "scalar"
+      })
+
+    assert json_response(conn, 200)
+
+    conn =
+      post(build_conn(), ~p"/api/cache/updatedata", %{
+        "table" => table,
+        "key" => key,
+        "patch" => %{"x" => 1}
+      })
+
+    assert %{"reason" => "value_not_mergeable"} = json_response(conn, 400)
+  end
+
+  test "updatedata rejects invalid ttl_ms", %{conn: conn} do
+    table = "users"
+    key = "upd_ttl_http_#{System.unique_integer([:positive])}"
+    :ok = CacheShardSync.sync!(table, key)
+
+    _ =
+      post(conn, ~p"/api/cache/setdata", %{
+      "table" => table,
+      "key" => key,
+      "value" => %{"a" => 1}
+      })
+
+    conn =
+      post(build_conn(), ~p"/api/cache/updatedata", %{
+        "table" => table,
+        "key" => key,
+        "patch" => %{},
+        "ttl_ms" => 0
+      })
+
+    assert %{"reason" => "invalid_ttl_ms"} = json_response(conn, 400)
+  end
+
+  test "cors preflight works for updatedata", %{conn: conn} do
+    conn = options(conn, ~p"/api/cache/updatedata")
+    assert response(conn, 204)
+    assert get_resp_header(conn, "access-control-allow-origin") == ["*"]
+    assert get_resp_header(conn, "access-control-allow-methods") == ["GET,POST,OPTIONS"]
+  end
 end
