@@ -70,6 +70,11 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
     GenServer.call(via_shard(shard_id), {:delete, table, key})
   end
 
+  def update(shard_id, table, key, patch, opts \\ [])
+      when is_integer(shard_id) and is_list(opts) do
+    GenServer.call(via_shard(shard_id), {:update, table, key, patch, opts})
+  end
+
   @impl true
   def init(opts) do
     shard_id = Keyword.fetch!(opts, :shard_id)
@@ -181,6 +186,99 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
   end
 
   def handle_call({:set, _table, _key, _value, _opts}, _from, state) do
+    {:reply, {:error, :invalid_table_or_key}, state}
+  end
+
+  def handle_call({:update, table, key, patch}, from, state)
+      when is_binary(table) and is_binary(key) do
+    handle_call({:update, table, key, patch, []}, from, state)
+  end
+
+  def handle_call({:update, table, key, patch, opts}, _from, state)
+      when is_binary(table) and is_binary(key) and is_list(opts) do
+    ttl_ms_opt = Keyword.get(opts, :ttl_ms)
+
+    cond do
+      state.rehydration_phase == :progress ->
+        {:reply, {:error, :rehydrating}, state}
+
+      state.rehydration_phase == :none ->
+        {:reply, {:error, :rehydrating}, state}
+
+      not is_map(patch) ->
+        {:reply, {:error, :invalid_patch}, state}
+
+      not (ttl_ms_opt == nil or (is_integer(ttl_ms_opt) and ttl_ms_opt > 0)) ->
+        {:reply, {:error, :invalid_ttl}, state}
+
+      state.rehydration_phase == :success ->
+        cond do
+          not state.owner_valid? ->
+            {:reply, {:error, :stale_owner}, state}
+
+          true ->
+            storage_key = {table, key}
+            now_ms = System.system_time(:millisecond)
+
+            case :ets.lookup(state.table, storage_key) do
+              [] ->
+                {:reply, {:error, :not_found}, state}
+
+              [{^storage_key, %CacheEntry{} = entry}] ->
+                cond do
+                  cache_entry_expired?(entry, now_ms) ->
+                    {:reply, {:error, :not_found}, state}
+
+                  not is_map(entry.value) ->
+                    {:reply, {:error, :value_not_mergeable}, state}
+
+                  true ->
+                    merged = Map.merge(entry.value, patch)
+
+                    persist_ttl_ms =
+                      case ttl_ms_opt do
+                        nil ->
+                          case entry.expires_at_ms do
+                            nil ->
+                              nil
+
+                            exp when is_integer(exp) ->
+                              now_for_ttl = System.system_time(:millisecond)
+                              max(1, exp - now_for_ttl)
+                          end
+
+                        t ->
+                          t
+                      end
+
+                    case CacheFlushEngine.persist_set(
+                           state.flush,
+                           state.owner_valid?,
+                           table,
+                           key,
+                           merged,
+                           persist_ttl_ms
+                         ) do
+                      {:ok, new_flush, wal_ts_ms} ->
+                        new_entry = CacheEntry.from_wal(merged, wal_ts_ms, persist_ttl_ms)
+                        :ets.insert(state.table, {storage_key, new_entry})
+
+                        Logger.debug(
+                          "cache_update execute shard_id=#{state.shard_id} node=#{node()} table=#{inspect(table)} key=#{inspect(key)}"
+                        )
+
+                        {:reply, {:ok, merged}, %{state | flush: new_flush}}
+
+                      {:error, reason} ->
+                        {:reply, {:error, reason}, state}
+                    end
+                end
+            end
+        end
+    end
+  end
+
+  def handle_call({:update, _table, _key, _patch, _opts}, _from, state) do
     {:reply, {:error, :invalid_table_or_key}, state}
   end
 
@@ -438,4 +536,10 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
   defp via_shard(shard_id) do
     {:via, Horde.Registry, {CachePuppyCore.CacheShardRegistry, shard_id}}
   end
+
+  defp cache_entry_expired?(%CacheEntry{expires_at_ms: nil}, _now_ms), do: false
+
+  defp cache_entry_expired?(%CacheEntry{expires_at_ms: exp}, now_ms)
+       when is_integer(exp) and is_integer(now_ms),
+       do: exp <= now_ms
 end

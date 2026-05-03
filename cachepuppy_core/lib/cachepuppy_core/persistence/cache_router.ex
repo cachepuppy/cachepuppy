@@ -50,6 +50,23 @@ defmodule CachePuppyCore.Persistence.CacheRouter do
 
   def deldata(_table, _key), do: {:error, :invalid_table_or_key}
 
+  def updatedata(table, key, patch, opts \\ [])
+
+  def updatedata(table, key, patch, opts)
+      when is_binary(table) and is_binary(key) and is_list(opts) do
+    with {:ok, shard_id} <- shard_id_for_entry(table, key),
+         {:ok, pid} <- ensure_shard_started(shard_id),
+         {:ok, owner_node} <- owner_node_for_pid(pid) do
+      Logger.info(
+        "cache_update route table=#{inspect(table)} key=#{inspect(key)} shard_id=#{shard_id} requested_by=#{node()} owner_node=#{owner_node}"
+      )
+
+      dispatch_update(owner_node, pid, shard_id, table, key, patch, opts)
+    end
+  end
+
+  def updatedata(_table, _key, _patch, _opts), do: {:error, :invalid_table_or_key}
+
   def shard_id_for_key(key) when is_binary(key) do
     shard_count = CacheConfig.shard_count()
 
@@ -93,6 +110,9 @@ defmodule CachePuppyCore.Persistence.CacheRouter do
 
   def remote_deldata(pid, table, key), do: call_shard(pid, {:delete, table, key})
 
+  def remote_updatedata(pid, table, key, patch, opts \\ []),
+    do: call_shard(pid, {:update, table, key, patch, opts})
+
   defp dispatch_set(owner_node, pid, shard_id, table, key, value, opts)
        when owner_node == node() do
     Logger.info("cache_set local_execute shard_id=#{shard_id} node=#{node()}")
@@ -118,6 +138,37 @@ defmodule CachePuppyCore.Persistence.CacheRouter do
       kind, reason ->
         Logger.warning(
           "cache_set rpc_failed shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node} kind=#{inspect(kind)} reason=#{inspect(reason)}"
+        )
+
+        {:error, {:rpc_failed, {kind, reason}}}
+    end
+  end
+
+  defp dispatch_update(owner_node, pid, shard_id, table, key, patch, opts)
+       when owner_node == node() do
+    Logger.info("cache_update local_execute shard_id=#{shard_id} node=#{node()}")
+    call_shard(pid, {:update, table, key, patch, opts})
+  end
+
+  defp dispatch_update(owner_node, pid, shard_id, table, key, patch, opts) do
+    rpc_timeout_ms = CacheConfig.rpc_timeout_ms()
+
+    Logger.info(
+      "cache_update rpc_execute shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node}"
+    )
+
+    try do
+      :erpc.call(
+        owner_node,
+        __MODULE__,
+        :remote_updatedata,
+        [pid, table, key, patch, opts],
+        rpc_timeout_ms
+      )
+    catch
+      kind, reason ->
+        Logger.warning(
+          "cache_update rpc_failed shard_id=#{shard_id} from_node=#{node()} to_node=#{owner_node} kind=#{inspect(kind)} reason=#{inspect(reason)}"
         )
 
         {:error, {:rpc_failed, {kind, reason}}}

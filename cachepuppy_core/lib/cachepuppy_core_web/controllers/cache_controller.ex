@@ -60,6 +60,45 @@ defmodule CachePuppyCoreWeb.CacheController do
     conn |> put_status(:bad_request) |> json(%{reason: "invalid_payload"})
   end
 
+  def updatedata(conn, %{"table" => table, "key" => key, "patch" => patch} = params)
+      when is_binary(table) and is_binary(key) and is_map(patch) do
+    with {:ok, opts} <- ttl_opts_from_params(params),
+         {:ok, stored_value} <- CacheRouter.updatedata(table, key, patch, opts) do
+      json(conn, %{"table" => table, "key" => key, "value" => stored_value})
+    else
+      {:error, :invalid_ttl} ->
+        conn |> put_status(:bad_request) |> json(%{reason: "invalid_ttl_ms"})
+
+      {:error, :invalid_patch} ->
+        conn |> put_status(:bad_request) |> json(%{reason: "invalid_patch"})
+
+      {:error, :value_not_mergeable} ->
+        conn |> put_status(:bad_request) |> json(%{reason: "value_not_mergeable"})
+
+      {:error, :not_found} ->
+        conn |> put_status(:not_found) |> json(%{reason: "not_found"})
+
+      {:error, :invalid_table_or_key} ->
+        conn |> put_status(:bad_request) |> json(%{reason: "invalid_table_or_key"})
+
+      {:error, {:rpc_failed, _reason}} ->
+        conn |> put_status(:service_unavailable) |> json(%{reason: "rpc_failed"})
+
+      {:error, {:shard_unavailable, _reason}} ->
+        conn |> put_status(:service_unavailable) |> json(%{reason: "shard_unavailable"})
+
+      {:error, :rehydrating} ->
+        conn |> put_status(:service_unavailable) |> json(%{reason: "rehydrating"})
+
+      {:error, _reason} ->
+        conn |> put_status(:internal_server_error) |> json(%{reason: "updatedata_failed"})
+    end
+  end
+
+  def updatedata(conn, _params) do
+    conn |> put_status(:bad_request) |> json(%{reason: "invalid_payload"})
+  end
+
   def deletedata(conn, %{"table" => table, "key" => key})
       when is_binary(table) and is_binary(key) do
     case CacheRouter.deldata(table, key) do

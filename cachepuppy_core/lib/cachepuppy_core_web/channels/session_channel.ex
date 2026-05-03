@@ -65,6 +65,26 @@ defmodule CachePuppyCoreWeb.SessionChannel do
   end
 
   @impl true
+  def handle_in(
+        "update_cache_data",
+        %{"table" => table, "key" => key, "patch" => patch} = payload,
+        socket
+      )
+      when is_binary(table) and is_binary(key) and is_map(patch) do
+    with {:ok, opts} <- ttl_opts_from_payload(payload),
+         {:ok, stored_value} <- CacheRouter.updatedata(table, key, patch, opts) do
+      {:reply, {:ok, %{"table" => table, "key" => key, "value" => stored_value}}, socket}
+    else
+      {:error, reason} ->
+        {:reply, {:error, %{reason: map_cache_error_reason(reason)}}, socket}
+    end
+  end
+
+  def handle_in("update_cache_data", _payload, socket) do
+    {:reply, {:error, %{reason: "invalid_payload"}}, socket}
+  end
+
+  @impl true
   def handle_in("delete_cache_data", %{"table" => table, "key" => key}, socket)
       when is_binary(table) and is_binary(key) do
     case CacheRouter.deldata(table, key) do
@@ -101,6 +121,9 @@ defmodule CachePuppyCoreWeb.SessionChannel do
   end
 
   defp map_cache_error_reason(:invalid_ttl), do: "invalid_ttl_ms"
+  defp map_cache_error_reason(:invalid_patch), do: "invalid_patch"
+  defp map_cache_error_reason(:value_not_mergeable), do: "value_not_mergeable"
+  defp map_cache_error_reason(:not_found), do: "not_found"
   defp map_cache_error_reason(:invalid_table_or_key), do: "invalid_table_or_key"
   defp map_cache_error_reason(:rehydrating), do: "rehydrating"
   defp map_cache_error_reason({:rpc_failed, _reason}), do: "rpc_failed"
