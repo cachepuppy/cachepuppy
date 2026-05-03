@@ -8,12 +8,12 @@ This package provides:
 - Topic publish/subscribe
 - Per-topic shared state helpers (`setTopicState`, `configureTopicWebhook`, `getTopicState`, `clearTopicState`)
 - Per-connection private session state via the fixed `session` channel (`setSessionState`, `getSessionState`; no room topic)
-- Per-connection cache helpers via the fixed `session` channel (`setData`, `getData`, `deleteData`)
+- Per-connection cache helpers via the fixed `session` channel (`setData`, `getData`, `updateData`, `deleteData`)
 - `onStateUpdated` helper for `state_updated` topic events
 - Mock transport for local development and demo flows
 - **Admin HTTP client** (`createAdminClient` / `CachePuppyAdminClient`) for server-side HTTP APIs without opening a websocket:
   - `/api/server/v1` topic APIs (`state`, `messages`, `presence`, `clear`)
-  - `/api/cache/*` cache APIs (`setdata`, `getdata`, `deletedata`)
+  - `/api/cache/*` cache APIs (`setdata`, `getdata`, `updatedata`, `deletedata`)
 
 See `docs/api-design.md` for the API contract.
 
@@ -35,6 +35,7 @@ await admin.sendTopicMessage("my_room", { event: "ping", payload: { from: "cron"
 const { clientCount } = await admin.getTopicPresence("my_room");
 await admin.setData("users", "alice", { role: "admin" }, { ttlMs: 30_000 });
 const cached = await admin.getData("users", "alice");
+await admin.updateData("users", "alice", { role: "superadmin" });
 const deleted = await admin.deleteData("users", "alice");
 ```
 
@@ -50,6 +51,7 @@ await client.connect();
 
 await client.setData("users", "alice", { role: "admin" }, { ttlMs: 30_000 });
 const value = await client.getData("users", "alice");
+await client.updateData("users", "alice", { role: "superadmin" });
 const deleted = await client.deleteData("users", "alice");
 ```
 

@@ -18,7 +18,9 @@ description: Compare shared topic maps, per-socket session maps, and distributed
 ## Distributed cache (`/api/cache/*` or `session` cache events)
 
 - Organized by **`table`** and **`key`** string identifiers with arbitrary JSON-compatible values.
-- Optional **`ttl_ms`** on writes, bounded by server configuration.
-- Errors such as `rehydrating`, `rpc_failed`, and `shard_unavailable` mirror across HTTP and websocket replies.
+- **`setdata` / `set_cache_data`** replaces the entire stored value for that key.
+- **`updatedata` / `update_cache_data`** shallow-merges a JSON **`patch`** object into an existing **object** value (add or overwrite top-level keys). It does not create keys from scratch; use `setdata` for inserts or full replacement.
+- Optional **`ttl_ms`** on writes and updates, bounded by server configuration.
+- Errors such as `rehydrating`, `rpc_failed`, and `shard_unavailable` mirror across HTTP and websocket replies; partial updates can also return `not_found`, `invalid_patch`, or `value_not_mergeable`.
 
 Use topic state when you want **room semantics** with broadcasts. Use cache when you want **durable-ish key/value** semantics routed through the cache layer.

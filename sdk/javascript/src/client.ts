@@ -209,6 +209,19 @@ export class CachePuppyClient {
     return this.transport.getData(this.clientId, table, key);
   }
 
+  async updateData(
+    table: string,
+    key: string,
+    patch: Record<string, unknown>,
+    options?: CacheSetDataOptions,
+  ): Promise<unknown> {
+    if (!this.transport.updateData) {
+      throw new Error("TransportError: updateData is not supported by this transport");
+    }
+
+    return this.transport.updateData(this.clientId, table, key, patch, options);
+  }
+
   async deleteData(table: string, key: string): Promise<boolean> {
     if (!this.transport.deleteData) {
       throw new Error("TransportError: deleteData is not supported by this transport");

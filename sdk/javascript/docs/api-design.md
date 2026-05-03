@@ -44,14 +44,14 @@ States: `idle | connecting | connected | reconnecting | disconnected | destroyed
 - `unsubscribe(topic: string, handler?: TopicHandler): Promise<void>`
 - `publish(topic: string, event: string, payload: unknown): Promise<void>`
 - `clientCount(topic: string): Promise<number>`
-- `setData(table, key, value, options?)` / `getData(table, key)` / `deleteData(table, key)` — cache operations over websocket (`session` channel events `set_cache_data`, `get_cache_data`, `delete_cache_data`).
+- `setData(table, key, value, options?)` / `getData(table, key)` / `updateData(table, key, patch, options?)` / `deleteData(table, key)` — cache operations over websocket (`session` channel events `set_cache_data`, `get_cache_data`, `update_cache_data`, `delete_cache_data`). `updateData` shallow-merges `patch` into the existing JSON object (same semantics as `POST /api/cache/updatedata`).
 
 ### Topic shared state vs connection session state
 
 - `setTopicState(topic, payload)` / `getTopicState(topic)` / `getTopicStateWithMeta(topic)` / `clearTopicState(topic)` — cluster-wide shared state for the topic; subscribers receive `state_updated` only when the stored map actually changes.
 - `configureTopicWebhook(topic, { flush, url?, frequency? })` — enable or disable periodic webhook POSTs of `{ topic, state, ts }` on a timer when state has changed (`configure_topic_webhook` on the channel). `clearTopicState` stops the topic process server-side (Phoenix `close_topic` push).
 - `setSessionState(payload)` / `getSessionState()` — private state on the Phoenix `session` channel (no room topic); other clients do not see it; reconnect starts empty.
-- Cache websocket calls (`setData/getData/deleteData`) also use the `session` channel and mirror `/api/cache/*` semantics.
+- Cache websocket calls (`setData` / `getData` / `updateData` / `deleteData`) also use the `session` channel and mirror `/api/cache/*` semantics.
 
 ### Event APIs
 
@@ -79,6 +79,7 @@ Use **`createAdminClient(options)`** when calling the server’s **HTTP** routes
 - `getTopicPresence(topic)` — `GET …/presence`; returns `{ clientCount, presence }` (maps `client_count` from JSON).
 - `setData(table, key, value, options?)` — `POST /api/cache/setdata`; returns stored `value`.
 - `getData(table, key)` — `POST /api/cache/getdata`; returns `value` (or `undefined` if not found/expired).
+- `updateData(table, key, patch, options?)` — `POST /api/cache/updatedata`; shallow-merges `patch` into the stored map; returns the full merged `value`.
 - `deleteData(table, key)` — `POST /api/cache/deletedata`; returns `deleted` as boolean.
 
 Non-success HTTP responses throw `Error` with status and optional `reason` from JSON.

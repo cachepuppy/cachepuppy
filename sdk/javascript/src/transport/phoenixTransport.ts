@@ -369,6 +369,31 @@ export class PhoenixTransport implements Transport {
     });
   }
 
+  async updateData(
+    clientId: string,
+    table: string,
+    key: string,
+    patch: Record<string, unknown>,
+    options?: CacheSetDataOptions,
+  ): Promise<unknown> {
+    const channel = await this.ensureSessionChannel(clientId);
+    const body: Record<string, unknown> = { table, key, patch };
+    if (typeof options?.ttlMs === "number" && options.ttlMs > 0) {
+      body.ttl_ms = options.ttlMs;
+    }
+
+    return new Promise<unknown>((resolve, reject) => {
+      channel
+        .push("update_cache_data", body)
+        .receive("ok", (response?: unknown) => {
+          const data = (response ?? {}) as { value?: unknown };
+          resolve(data.value);
+        })
+        .receive("error", () => reject(new Error("Failed to update cache data")))
+        .receive("timeout", () => reject(new Error("Timed out while updating cache data")));
+    });
+  }
+
   async getData(clientId: string, table: string, key: string): Promise<unknown> {
     const channel = await this.ensureSessionChannel(clientId);
 
