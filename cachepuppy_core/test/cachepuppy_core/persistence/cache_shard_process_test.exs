@@ -150,6 +150,83 @@ defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
     end)
   end
 
+  test "update merges map fields when shard is ready" do
+    shard_id = 40
+    storage_dir = unique_storage_dir("update_merge")
+
+    with_cache_config(storage_dir, 1_048_576, 100_000, fn ->
+      pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
+      wait_until_ready(pid)
+      assert {:ok, %{"a" => 1}} = GenServer.call(pid, {:set, "users", "doc", %{"a" => 1}})
+
+      assert {:ok, %{"a" => 1, "b" => 2}} =
+               GenServer.call(pid, {:update, "users", "doc", %{"b" => 2}, []})
+
+      assert {:ok, %{"a" => 1, "b" => 2}} = CacheShardRead.fast_get(shard_id, "users", "doc")
+    end)
+  end
+
+  test "update returns rehydrating in :none before rehydrate_sync" do
+    shard_id = 41
+    storage_dir = unique_storage_dir("update_none")
+
+    with_cache_config(storage_dir, 1_048_576, 100_000, fn ->
+      pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
+      assert :none == :sys.get_state(pid).rehydration_phase
+      assert {:error, :rehydrating} = GenServer.call(pid, {:update, "users", "k", %{}, []})
+    end)
+  end
+
+  test "update returns not_found for missing key when ready" do
+    shard_id = 42
+    storage_dir = unique_storage_dir("update_nf")
+
+    with_cache_config(storage_dir, 1_048_576, 100_000, fn ->
+      pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
+      wait_until_ready(pid)
+      assert {:error, :not_found} = GenServer.call(pid, {:update, "users", "nope", %{"x" => 1}, []})
+    end)
+  end
+
+  test "update returns value_not_mergeable when stored value is not a map" do
+    shard_id = 43
+    storage_dir = unique_storage_dir("update_not_map")
+
+    with_cache_config(storage_dir, 1_048_576, 100_000, fn ->
+      pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
+      wait_until_ready(pid)
+      assert {:ok, "plain"} = GenServer.call(pid, {:set, "users", "plain", "plain"})
+      assert {:error, :value_not_mergeable} = GenServer.call(pid, {:update, "users", "plain", %{"x" => 1}, []})
+    end)
+  end
+
+  test "update returns invalid_patch when patch is not a map" do
+    shard_id = 44
+    storage_dir = unique_storage_dir("update_bad_patch")
+
+    with_cache_config(storage_dir, 1_048_576, 100_000, fn ->
+      pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
+      wait_until_ready(pid)
+      assert {:ok, %{}} = GenServer.call(pid, {:set, "users", "doc", %{}})
+      assert {:error, :invalid_patch} = GenServer.call(pid, {:update, "users", "doc", "bad", []})
+    end)
+  end
+
+  test "update appends to WAL" do
+    shard_id = 45
+    storage_dir = unique_storage_dir("update_wal")
+
+    with_cache_config(storage_dir, 1_048_576, 100_000, fn ->
+      pid = start_supervised!({CacheShardProcess, shard_id: shard_id, name: nil})
+      wait_until_ready(pid)
+      assert {:ok, _} = GenServer.call(pid, {:set, "users", "waldoc", %{"a" => 1}})
+      before = :sys.get_state(pid).flush.current_wal_bytes
+      assert {:ok, _} = GenServer.call(pid, {:update, "users", "waldoc", %{"b" => 2}, []})
+      after_bytes = :sys.get_state(pid).flush.current_wal_bytes
+      assert after_bytes > before
+    end)
+  end
+
   defp write_owner_meta(storage_dir, shard_id, epoch) do
     File.mkdir_p!(storage_dir)
 

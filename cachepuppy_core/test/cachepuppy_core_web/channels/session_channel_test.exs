@@ -146,6 +146,150 @@ defmodule CachePuppyCoreWeb.SessionChannelTest do
     end
   end
 
+  test "update_cache_data merges patch into existing document" do
+    client_id = "session_upd_ok_#{System.unique_integer([:positive])}"
+    table = "users"
+    key = "chan_upd_#{System.unique_integer([:positive])}"
+
+    {:ok, _reply, chan} =
+      subscribe_and_join(user_socket(client_id), CachePuppyCoreWeb.SessionChannel, "session")
+
+    :ok = CacheShardSync.sync!(table, key)
+
+    assert eventually_ok_reply(chan, "set_cache_data", %{
+             "table" => table,
+             "key" => key,
+             "value" => %{"a" => 1}
+           }) == %{"table" => table, "key" => key, "value" => %{"a" => 1}}
+
+    upd_ref =
+      push(chan, "update_cache_data", %{
+        "table" => table,
+        "key" => key,
+        "patch" => %{"b" => 2}
+      })
+
+    assert_reply upd_ref, :ok, %{
+      "table" => ^table,
+      "key" => ^key,
+      "value" => %{"a" => 1, "b" => 2}
+    }
+  end
+
+  test "update_cache_data rejects invalid payload" do
+    client_id = "session_upd_bad_#{System.unique_integer([:positive])}"
+
+    {:ok, _reply, chan} =
+      subscribe_and_join(user_socket(client_id), CachePuppyCoreWeb.SessionChannel, "session")
+
+    ref1 = push(chan, "update_cache_data", %{"table" => "users", "key" => "k"})
+    assert_reply ref1, :error, %{reason: "invalid_payload"}
+
+    ref2 =
+      push(chan, "update_cache_data", %{
+        "table" => "users",
+        "key" => "k2",
+        "patch" => []
+      })
+
+    assert_reply ref2, :error, %{reason: "invalid_payload"}
+  end
+
+  test "update_cache_data maps value_not_mergeable and not_found" do
+    client_id = "session_upd_err_#{System.unique_integer([:positive])}"
+    table = "users"
+    key_scalar = "chan_scalar_#{System.unique_integer([:positive])}"
+    key_missing = "chan_miss_#{System.unique_integer([:positive])}"
+
+    {:ok, _reply, chan} =
+      subscribe_and_join(user_socket(client_id), CachePuppyCoreWeb.SessionChannel, "session")
+
+    :ok = CacheShardSync.sync!(table, key_scalar)
+
+    assert eventually_ok_reply(chan, "set_cache_data", %{
+             "table" => table,
+             "key" => key_scalar,
+             "value" => "plain"
+           }) == %{"table" => table, "key" => key_scalar, "value" => "plain"}
+
+    ref_vm =
+      push(chan, "update_cache_data", %{
+        "table" => table,
+        "key" => key_scalar,
+        "patch" => %{"x" => 1}
+      })
+
+    assert_reply ref_vm, :error, %{reason: "value_not_mergeable"}
+
+    :ok = CacheShardSync.sync!(table, key_missing)
+
+    ref_nf =
+      push(chan, "update_cache_data", %{
+        "table" => table,
+        "key" => key_missing,
+        "patch" => %{"a" => 1}
+      })
+
+    assert_reply ref_nf, :error, %{reason: "not_found"}
+  end
+
+  test "update_cache_data maps invalid_ttl_ms" do
+    client_id = "session_upd_ttl_#{System.unique_integer([:positive])}"
+    table = "users"
+    key = "chan_ttl_#{System.unique_integer([:positive])}"
+
+    {:ok, _reply, chan} =
+      subscribe_and_join(user_socket(client_id), CachePuppyCoreWeb.SessionChannel, "session")
+
+    :ok = CacheShardSync.sync!(table, key)
+
+    assert eventually_ok_reply(chan, "set_cache_data", %{
+             "table" => table,
+             "key" => key,
+             "value" => %{"a" => 1}
+           }) == %{"table" => table, "key" => key, "value" => %{"a" => 1}}
+
+    ref =
+      push(chan, "update_cache_data", %{
+        "table" => table,
+        "key" => key,
+        "patch" => %{},
+        "ttl_ms" => 0
+      })
+
+    assert_reply ref, :error, %{reason: "invalid_ttl_ms"}
+  end
+
+  test "update_cache_data maps rehydrating errors" do
+    table = "rehydrating_upd_table_#{System.unique_integer([:positive])}"
+    key = "rehydrating_upd_key"
+    {:ok, shard_id} = CacheRouter.shard_id_for_entry(table, key)
+    table_tid = :ets.new(__MODULE__, [:set, :protected])
+
+    CacheShardRead.publish_rehydrating(shard_id, table_tid, 1)
+
+    try do
+      {:ok, _reply, chan} =
+        subscribe_and_join(
+          user_socket("session_cache_rehydrating_upd_client"),
+          CachePuppyCoreWeb.SessionChannel,
+          "session"
+        )
+
+      ref =
+        push(chan, "update_cache_data", %{
+          "table" => table,
+          "key" => key,
+          "patch" => %{"a" => 1}
+        })
+
+      assert_reply ref, :error, %{reason: "rehydrating"}
+    after
+      CacheShardRead.clear(self())
+      :ets.delete(table_tid)
+    end
+  end
+
   defp user_socket(client_id) do
     Phoenix.ChannelTest.socket(CachePuppyCoreWeb.UserSocket, "usersocket:#{client_id}", %{
       client_id: client_id
