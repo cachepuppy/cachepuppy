@@ -9,13 +9,14 @@ These routes share semantics with the websocket `session` channel cache events.
 | --- | --- | --- |
 | `setData(table, key, value, options?)` | `POST /api/cache/setdata` | `{ table, key, value, ttl_ms? }` |
 | `getData(table, key)` | `POST /api/cache/getdata` | `{ table, key }` |
+| `updateData(table, key, patch, options?)` | `POST /api/cache/updatedata` | `{ table, key, patch, ttl_ms? }` — shallow-merge `patch` into the existing object; fails when the key is missing or the stored value is not an object |
 | `deleteData(table, key)` | `POST /api/cache/deletedata` | `{ table, key }` |
 
 ## Common error reasons
 
 The Elixir controller maps failures to stable string reasons, including:
 
-- `invalid_payload`, `invalid_table_or_key`, `invalid_ttl_ms`
+- `invalid_payload`, `invalid_table_or_key`, `invalid_ttl_ms`, `invalid_patch`, `value_not_mergeable`, `not_found`
 - `rehydrating`, `rpc_failed`, `shard_unavailable`
 
 The admin client throws a JavaScript `Error` when the HTTP status is unexpected, optionally appending a JSON `reason` when the server provides one.

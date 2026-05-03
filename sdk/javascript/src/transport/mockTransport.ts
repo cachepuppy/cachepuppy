@@ -186,6 +186,24 @@ class MockBus {
     return this.cacheData.delete(cacheDataKey(table, key));
   }
 
+  updateData(table: string, key: string, patch: Record<string, unknown>, options?: CacheSetDataOptions): unknown {
+    if (typeof patch !== "object" || patch === null || Array.isArray(patch)) {
+      throw new Error("Invalid cache patch: expected a plain object");
+    }
+
+    const current = this.getData(table, key);
+    if (current === undefined) {
+      throw new Error("Cache key not found or expired");
+    }
+
+    if (typeof current !== "object" || current === null || Array.isArray(current)) {
+      throw new Error("Stored cache value is not mergeable (expected a plain object)");
+    }
+
+    const merged = { ...(current as Record<string, unknown>), ...patch };
+    return this.setData(table, key, merged, options);
+  }
+
   setSessionState(clientId: string, payload: Record<string, unknown>): Record<string, unknown> {
     const next = { ...payload };
     this.sessionStates.set(clientId, next);
@@ -261,6 +279,16 @@ export class MockTransport implements Transport {
 
   async getData(_clientId: string, table: string, key: string): Promise<unknown> {
     return globalBus.getData(table, key);
+  }
+
+  async updateData(
+    _clientId: string,
+    table: string,
+    key: string,
+    patch: Record<string, unknown>,
+    options?: CacheSetDataOptions,
+  ): Promise<unknown> {
+    return globalBus.updateData(table, key, patch, options);
   }
 
   async deleteData(_clientId: string, table: string, key: string): Promise<boolean> {

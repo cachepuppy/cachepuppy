@@ -17,6 +17,17 @@ With `mix phx.server`, the app runs on `http://localhost:4000`. With Docker Comp
 - `GET /readyz` is quorum-aware readiness and returns `200` only when cluster quorum is met.
 - `GET /api/health` returns status plus cluster visibility (`node`, `cluster_size`, `connected_nodes`).
 
+## JSON cache API (`/api/cache/*`)
+
+Stateless `POST` routes for backends (same trust model as the server API section below: **no authentication** on these routes).
+
+| Path | Body | Response |
+|------|------|----------|
+| `/api/cache/setdata` | `%{"table" => string, "key" => string, "value" => any, "ttl_ms" => pos_integer?}` | `%{"table", "key", "value"}` — full replace of the stored value |
+| `/api/cache/getdata` | `%{"table" => string, "key" => string}` | `%{"table", "key", "value"}` — `value` is `null` when missing or expired |
+| `/api/cache/updatedata` | `%{"table" => string, "key" => string, "patch" => map, "ttl_ms" => pos_integer?}` | `%{"table", "key", "value"}` — shallow-merge `patch` into the existing **map** value; `404` / `not_found` when the key is missing or expired; use `setdata` for full replacement |
+| `/api/cache/deletedata` | `%{"table" => string, "key" => string}` | `%{"table", "key", "deleted" => boolean}` |
+
 ## Server HTTP API (prototype)
 
 JSON routes for backends that should not open a websocket per request. **There is no authentication on these routes** (same trust model as `/api/cache/*` and the open `/socket` connect). Do not expose them on the public internet without a reverse proxy, network isolation, or future service auth.
@@ -69,11 +80,12 @@ Supported inbound events on **`session`**:
 - `"get_session_state"` returns `%{"state" => map}` for that connection.
 - `"set_cache_data"` with payload `%{"table" => string, "key" => string, "value" => any, "ttl_ms" => pos_integer?}` writes through the same cache pipeline as `/api/cache/setdata`.
 - `"get_cache_data"` with payload `%{"table" => string, "key" => string}` reads through the same cache pipeline as `/api/cache/getdata`.
+- `"update_cache_data"` with payload `%{"table" => string, "key" => string, "patch" => map, "ttl_ms" => pos_integer?}` merges through the same cache pipeline as `/api/cache/updatedata` (stored value must be a JSON object; `patch` is shallow-merged).
 - `"delete_cache_data"` with payload `%{"table" => string, "key" => string}` deletes through the same cache pipeline as `/api/cache/deletedata`.
 - Cache replies mirror HTTP JSON bodies:
-  - set/get: `%{"table" => table, "key" => key, "value" => value}`
+  - set/get/update: `%{"table" => table, "key" => key, "value" => value}`
   - delete: `%{"table" => table, "key" => key, "deleted" => boolean}`
-- Cache errors reuse the same reasons as HTTP where applicable (`invalid_payload`, `invalid_table_or_key`, `invalid_ttl_ms`, `rehydrating`, `rpc_failed`, `shard_unavailable`).
+- Cache errors reuse the same reasons as HTTP where applicable (`invalid_payload`, `invalid_table_or_key`, `invalid_ttl_ms`, `invalid_patch`, `value_not_mergeable`, `not_found`, `rehydrating`, `rpc_failed`, `shard_unavailable`).
 
 Broadcast behavior:
 
@@ -125,6 +137,10 @@ Join Phoenix topic `session` (fixed string) for connection-scoped state that doe
   - `%{"table" => "users", "key" => "user_1"}`
 - `get_cache_data` reply:
   - `%{"table" => "users", "key" => "user_1", "value" => %{"role" => "admin"}}`
+- `update_cache_data` push:
+  - `%{"table" => "users", "key" => "user_1", "patch" => %{"role" => "superadmin"}, "ttl_ms" => 30_000}`
+- `update_cache_data` reply:
+  - `%{"table" => "users", "key" => "user_1", "value" => %{"role" => "superadmin"}}`
 - `delete_cache_data` push:
   - `%{"table" => "users", "key" => "user_1"}`
 - `delete_cache_data` reply:

@@ -84,6 +84,22 @@ export class CachePuppyAdminClient {
     return data.value;
   }
 
+  async updateData(
+    table: string,
+    key: string,
+    patch: Record<string, unknown>,
+    options?: CacheSetDataOptions,
+  ): Promise<unknown> {
+    const body: Record<string, unknown> = { table, key, patch };
+    if (typeof options?.ttlMs === "number" && options.ttlMs > 0) {
+      body.ttl_ms = options.ttlMs;
+    }
+    const data = await this.requestJson<{ value?: unknown }>("POST", "/api/cache/updatedata", body, {
+      useServerApiPrefix: false,
+    });
+    return data.value;
+  }
+
   async deleteData(table: string, key: string): Promise<boolean> {
     const data = await this.requestJson<{ deleted?: unknown }>(
       "POST",

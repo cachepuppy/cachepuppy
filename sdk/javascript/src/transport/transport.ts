@@ -32,6 +32,14 @@ export interface Transport {
     options?: CacheSetDataOptions,
   ): Promise<unknown>;
   getData?(clientId: string, table: string, key: string): Promise<unknown>;
+  /** Shallow-merge `patch` into the existing map value; mirrors `POST /api/cache/updatedata` / `update_cache_data`. */
+  updateData?(
+    clientId: string,
+    table: string,
+    key: string,
+    patch: Record<string, unknown>,
+    options?: CacheSetDataOptions,
+  ): Promise<unknown>;
   deleteData?(clientId: string, table: string, key: string): Promise<boolean>;
   /** Per-websocket private state on the fixed `session` channel (no room topic). */
   setSessionState?(clientId: string, payload: Record<string, unknown>): Promise<Record<string, unknown>>;

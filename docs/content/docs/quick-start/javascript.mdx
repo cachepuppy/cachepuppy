@@ -31,8 +31,9 @@ const off = await client.subscribe("orders", (message) => {
 await client.publish("orders", "created", { orderId: "o1" });
 
 // Distributed cache via the session channel (same semantics as HTTP /api/cache/*)
-await client.setData("demo", "greeting", "hello", { ttlMs: 60_000 });
+await client.setData("demo", "greeting", { text: "hello" }, { ttlMs: 60_000 });
 const value = await client.getData("demo", "greeting");
+await client.updateData("demo", "greeting", { text: "hi" });
 console.log("cached value", value);
 
 off();
