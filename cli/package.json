@@ -1,6 +1,6 @@
 {
   "name": "cachepuppy-cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "CLI for running CachePuppy locally with Docker Compose",
   "license": "AGPL-3.0-or-later",
   "type": "module",

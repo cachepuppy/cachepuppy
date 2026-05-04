@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.0](https://github.com/cachepuppy/cachepuppy/compare/v0.2.0...v0.3.0) (2026-05-04)
+
+
+### Features
+
+* **cache:** add partial updatedata merge path and WAL persist ([7cde37d](https://github.com/cachepuppy/cachepuppy/commit/7cde37d707357eb2400c223e37615c70a8a637fe))
+* **demo:** add update data modal for cache partial merge ([a7e2773](https://github.com/cachepuppy/cachepuppy/commit/a7e2773e40159d3606603fd0f14351ae55e73a57))
+* **docs:** add CachePuppy theme, static images, and shared logo ([1bf042d](https://github.com/cachepuppy/cachepuppy/commit/1bf042de1f1829abdde0201537d72700382693ff))
+* **sdk:** add updateData and document cache partial update ([8a04946](https://github.com/cachepuppy/cachepuppy/commit/8a0494631d89a18f7bb79118ca32da7876dd9ade))
+
+
+### Bug Fixes
+
+* **docs:** Converted docs to static rendering ([c5d1487](https://github.com/cachepuppy/cachepuppy/commit/c5d1487e2d860388c1deba279547fac1436272cd))
+
 ## [0.2.0](https://github.com/cachepuppy/cachepuppy/compare/v0.1.0...v0.2.0) (2026-05-02)
 
 
