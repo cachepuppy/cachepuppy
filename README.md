@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://cachepuppy.com/logo.png" alt="CachePuppy" width="120" />
+<img src="assets/logo.png" alt="CachePuppy" width="96" />
 
 # CachePuppy
 
