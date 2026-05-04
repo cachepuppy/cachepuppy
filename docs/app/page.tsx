@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BookOpen, Braces, History, Layers, Rocket } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { SiteLogo } from "@/components/site-logo";
 
 type Card = {
   title: string;
@@ -49,10 +50,9 @@ export default function HomePage() {
       <div className="pointer-events-none absolute inset-0 -z-10 home-hero-grid opacity-70" />
       <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-12 px-6 py-16 sm:py-24">
         <header className="space-y-6 text-center sm:text-left">
-          <p className="inline-flex items-center gap-2 text-sm font-medium text-fd-muted-foreground">
-            <span className="inline-flex size-2 rounded-full bg-fd-primary shadow-[0_0_12px_color-mix(in_oklab,var(--color-fd-primary)_60%,transparent)]" />
-            CachePuppy
-          </p>
+          <Link href="/" className="inline-flex justify-center sm:justify-start">
+            <SiteLogo priority />
+          </Link>
           <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl">
             Realtime and cache, together
           </h1>

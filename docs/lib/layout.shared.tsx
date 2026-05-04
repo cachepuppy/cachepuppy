@@ -1,19 +1,15 @@
 import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
-import { BookOpen, Boxes, Braces, Rocket } from "lucide-react";
+import { BookOpen, Braces, Rocket } from "lucide-react";
+import { SiteLogo } from "@/components/site-logo";
 
 export function baseOptions(): BaseLayoutProps {
   return {
     nav: {
-      title: (
-        <span className="flex items-center gap-2 font-semibold tracking-tight">
-          <Boxes className="size-5 shrink-0 text-fd-primary" aria-hidden />
-          CachePuppy
-        </span>
-      ),
+      title: <SiteLogo priority />,
       url: "/",
     },
     themeSwitch: {
-      enabled: true,
+      enabled: false,
     },
     links: [
       {
