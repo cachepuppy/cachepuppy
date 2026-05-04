@@ -12,8 +12,13 @@ defmodule CachePuppyCore.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
-      listeners: [Phoenix.CodeReloader]
+      listeners: [Phoenix.CodeReloader],
+      package: package()
     ]
+  end
+
+  defp package do
+    [licenses: ["AGPL-3.0-or-later"]]
   end
 
   # Configuration for the OTP application.
