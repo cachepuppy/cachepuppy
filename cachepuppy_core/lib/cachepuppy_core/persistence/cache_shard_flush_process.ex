@@ -1,4 +1,4 @@
-defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardFlushProcess do
+defmodule CachePuppyCore.Persistence.CacheShardFlushProcess do
   @moduledoc false
 
   # WAL batching with pause for maintenance. While paused, ops accumulate in pause_q
@@ -8,7 +8,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardFlushProcess do
   require Logger
 
   alias CachePuppyCore.Persistence.CacheConfig
-  alias CachePuppyCore.Persistence.Experimental.NewCacheUtils
+  alias CachePuppyCore.Persistence.CacheUtils
 
   @default_batch_max 100
   @default_batch_max_ms 20
@@ -293,7 +293,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardFlushProcess do
          :ok <- :file.close(state.current_wal_fd) do
       next_seq = state.current_seq + 1
       storage_dir = CacheConfig.storage_dir()
-      path = NewCacheUtils.wal_path(storage_dir, state.shard_id, next_seq)
+      path = CacheUtils.wal_path(storage_dir, state.shard_id, next_seq)
 
       case :file.open(String.to_charlist(path), [:append, :binary, :raw]) do
         {:ok, fd} ->
@@ -336,12 +336,12 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardFlushProcess do
   end
 
   defp open_wal_at_seq(storage_dir, shard_id, seq) do
-    path = NewCacheUtils.wal_path(storage_dir, shard_id, seq)
+    path = CacheUtils.wal_path(storage_dir, shard_id, seq)
     :file.open(String.to_charlist(path), [:append, :binary, :raw])
   end
 
   defp wal_file_size(storage_dir, shard_id, seq) do
-    path = NewCacheUtils.wal_path(storage_dir, shard_id, seq)
+    path = CacheUtils.wal_path(storage_dir, shard_id, seq)
 
     case File.stat(path) do
       {:ok, %{size: size}} -> size
@@ -352,7 +352,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardFlushProcess do
   defp open_latest_wal(shard_id) do
     storage_dir = CacheConfig.storage_dir()
     {seq, size} = latest_wal_segment(storage_dir, shard_id)
-    path = NewCacheUtils.wal_path(storage_dir, shard_id, seq)
+    path = CacheUtils.wal_path(storage_dir, shard_id, seq)
 
     case :file.open(String.to_charlist(path), [:append, :binary, :raw]) do
       {:ok, fd} -> {:ok, fd, seq, size}
@@ -361,7 +361,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardFlushProcess do
   end
 
   defp latest_wal_segment(storage_dir, shard_id) do
-    case NewCacheUtils.wal_segments(storage_dir, shard_id) do
+    case CacheUtils.wal_segments(storage_dir, shard_id) do
       [] -> {1, 0}
       segments -> segments |> List.last() |> then(fn {seq, _path, size} -> {seq, size} end)
     end

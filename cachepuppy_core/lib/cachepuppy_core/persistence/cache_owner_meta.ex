@@ -1,4 +1,4 @@
-defmodule CachePuppyCore.Persistence.Experimental.NewCacheOwnerMeta do
+defmodule CachePuppyCore.Persistence.CacheOwnerMeta do
   @moduledoc false
 
   @spec claim_ownership(String.t(), non_neg_integer(), String.t()) :: non_neg_integer()

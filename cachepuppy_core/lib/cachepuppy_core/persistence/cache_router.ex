@@ -1,9 +1,9 @@
-defmodule CachePuppyCore.Persistence.Experimental.NewCacheRouter do
+defmodule CachePuppyCore.Persistence.CacheRouter do
   @moduledoc false
 
   require Logger
   alias CachePuppyCore.Persistence.CacheConfig
-  alias CachePuppyCore.Persistence.Experimental.NewCacheShardRead
+  alias CachePuppyCore.Persistence.CacheShardRead
 
   def setdata(table, key, value, opts \\ [])
 
@@ -106,7 +106,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheRouter do
   def remote_setdata(pid, table, key, value, opts \\ []),
     do: call_shard(pid, {:set, table, key, value, opts})
 
-  def remote_getdata(shard_id, table, key), do: NewCacheShardRead.fast_get(shard_id, table, key)
+  def remote_getdata(shard_id, table, key), do: CacheShardRead.fast_get(shard_id, table, key)
 
   def remote_deldata(pid, table, key), do: call_shard(pid, {:delete, table, key})
 
@@ -201,7 +201,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheRouter do
 
   defp dispatch_get(owner_node, _pid, shard_id, table, key) when owner_node == node() do
     Logger.info("cache_get local_execute shard_id=#{shard_id} node=#{node()}")
-    NewCacheShardRead.fast_get(shard_id, table, key)
+    CacheShardRead.fast_get(shard_id, table, key)
   end
 
   defp dispatch_get(owner_node, _pid, shard_id, table, key) do
@@ -234,7 +234,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheRouter do
 
     case Horde.DynamicSupervisor.start_child(
            CachePuppyCore.CacheShardSupervisor,
-           {CachePuppyCore.Persistence.Experimental.NewCacheShardProcess, child_spec}
+           {CachePuppyCore.Persistence.CacheShardProcess, child_spec}
          ) do
       {:ok, pid} -> {:ok, pid}
       {:error, {:already_started, pid}} -> {:ok, pid}

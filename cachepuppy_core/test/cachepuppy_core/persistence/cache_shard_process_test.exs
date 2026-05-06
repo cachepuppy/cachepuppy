@@ -1,21 +1,21 @@
-defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcessTest do
-  use CachePuppyCore.ExperimentalPersistenceCase, async: false
+defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
+  use CachePuppyCore.CachePersistenceCase, async: false
 
-  alias CachePuppyCore.Persistence.Experimental.NewCacheOwnerMeta
-  alias CachePuppyCore.Persistence.Experimental.NewCacheShardProcess
-  alias CachePuppyCore.Persistence.Experimental.NewCacheShardRead
+  alias CachePuppyCore.Persistence.CacheOwnerMeta
+  alias CachePuppyCore.Persistence.CacheShardProcess
+  alias CachePuppyCore.Persistence.CacheShardRead
 
   test "startup rehydrate remains stable across repeated boots" do
     Enum.each(1..20, fn offset ->
       shard_id = 10_000 + offset
-      {:ok, pid} = start_supervised({NewCacheShardProcess, [shard_id: shard_id, name: nil]})
+      {:ok, pid} = start_supervised({CacheShardProcess, [shard_id: shard_id, name: nil]})
       assert_shard_ready!(pid)
       assert Process.alive?(pid)
     end)
   end
 
   test "rehydrate_sync is idempotent and swapped table is owned by shard" do
-    {:ok, pid} = start_supervised({NewCacheShardProcess, [shard_id: 20_001, name: nil]})
+    {:ok, pid} = start_supervised({CacheShardProcess, [shard_id: 20_001, name: nil]})
     assert_shard_ready!(pid)
     assert :ok = GenServer.call(pid, :rehydrate_sync)
     assert :ok = GenServer.call(pid, :rehydrate_sync)
@@ -27,7 +27,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcessTest do
   end
 
   test "readiness gate rejects writes while rehydrating" do
-    {:ok, pid} = start_supervised({NewCacheShardProcess, [shard_id: 20_002, name: nil]})
+    {:ok, pid} = start_supervised({CacheShardProcess, [shard_id: 20_002, name: nil]})
     assert_shard_ready!(pid)
 
     :sys.replace_state(pid, fn st -> %{st | ready?: false} end)
@@ -38,11 +38,11 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcessTest do
 
   test "owner invalidation rejects mutations and snapshot", %{storage_dir: storage_dir} do
     shard_id = 20_003
-    {:ok, pid} = start_supervised({NewCacheShardProcess, [shard_id: shard_id, name: nil]})
+    {:ok, pid} = start_supervised({CacheShardProcess, [shard_id: shard_id, name: nil]})
     assert_shard_ready!(pid)
 
     state = :sys.get_state(pid)
-    _new_epoch = NewCacheOwnerMeta.claim_ownership(storage_dir, shard_id, to_string(node()))
+    _new_epoch = CacheOwnerMeta.claim_ownership(storage_dir, shard_id, to_string(node()))
 
     send(pid, :owner_check_tick)
     Process.sleep(10)
@@ -60,7 +60,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcessTest do
   end
 
   test "mutation contract coverage for ttl, patching, not_found and delete idempotence" do
-    {:ok, pid} = start_supervised({NewCacheShardProcess, [shard_id: 20_004, name: nil]})
+    {:ok, pid} = start_supervised({CacheShardProcess, [shard_id: 20_004, name: nil]})
     assert_shard_ready!(pid)
 
     assert {:error, :invalid_ttl} = GenServer.call(pid, {:set, "t", "k", 1, [ttl_ms: -1]})
@@ -75,7 +75,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcessTest do
   end
 
   test "ttl max boundary accepts max and rejects max plus one" do
-    {:ok, pid} = start_supervised({NewCacheShardProcess, [shard_id: 20_007, name: nil]})
+    {:ok, pid} = start_supervised({CacheShardProcess, [shard_id: 20_007, name: nil]})
     assert_shard_ready!(pid)
 
     max = CachePuppyCore.Persistence.CacheConfig.ttl_ms_max()
@@ -84,7 +84,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcessTest do
   end
 
   test "update carries ttl forward when ttl_ms omitted" do
-    {:ok, pid} = start_supervised({NewCacheShardProcess, [shard_id: 20_005, name: nil]})
+    {:ok, pid} = start_supervised({CacheShardProcess, [shard_id: 20_005, name: nil]})
     assert_shard_ready!(pid)
 
     assert {:ok, %{"a" => 1}} =
@@ -103,7 +103,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcessTest do
   end
 
   test "update on expired entry returns not_found and does not revive" do
-    {:ok, pid} = start_supervised({NewCacheShardProcess, [shard_id: 20_008, name: nil]})
+    {:ok, pid} = start_supervised({CacheShardProcess, [shard_id: 20_008, name: nil]})
     assert_shard_ready!(pid)
     assert {:ok, %{"a" => 1}} = GenServer.call(pid, {:set, "t", "exp", %{"a" => 1}, [ttl_ms: 1]})
     Process.sleep(5)
@@ -114,10 +114,10 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcessTest do
     storage_dir: storage_dir
   } do
     shard_id = 20_009
-    {:ok, pid} = start_supervised({NewCacheShardProcess, [shard_id: shard_id, name: nil]})
+    {:ok, pid} = start_supervised({CacheShardProcess, [shard_id: shard_id, name: nil]})
     assert_shard_ready!(pid)
 
-    _ = NewCacheOwnerMeta.claim_ownership(storage_dir, shard_id, to_string(node()))
+    _ = CacheOwnerMeta.claim_ownership(storage_dir, shard_id, to_string(node()))
     send(pid, :owner_check_tick)
     Process.sleep(10)
     refute :sys.get_state(pid).owner_valid?
@@ -128,7 +128,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcessTest do
   end
 
   test "snapshot succeeds when owner valid" do
-    {:ok, pid} = start_supervised({NewCacheShardProcess, [shard_id: 20_006, name: nil]})
+    {:ok, pid} = start_supervised({CacheShardProcess, [shard_id: 20_006, name: nil]})
     assert_shard_ready!(pid)
 
     assert {:ok, %{"v" => 1}} = GenServer.call(pid, {:set, "snap", "k", %{"v" => 1}, []})
@@ -137,15 +137,15 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcessTest do
 
   test "termination clears only metadata owned by process" do
     tid = :ets.new(__MODULE__, [:set, :protected])
-    :ok = NewCacheShardRead.publish_ready(98_001, tid, 1)
+    :ok = CacheShardRead.publish_ready(98_001, tid, 1)
 
-    {:ok, pid} = start_supervised({NewCacheShardProcess, [shard_id: 20_010, name: nil]})
+    {:ok, pid} = start_supervised({CacheShardProcess, [shard_id: 20_010, name: nil]})
     assert_shard_ready!(pid)
     sid = :sys.get_state(pid).shard_id
 
     GenServer.stop(pid)
-    assert :undefined == NewCacheShardRead.shard_meta(sid)
-    assert NewCacheShardRead.shard_meta(98_001) != :undefined
+    assert :undefined == CacheShardRead.shard_meta(sid)
+    assert CacheShardRead.shard_meta(98_001) != :undefined
   end
 
   defp assert_shard_ready!(pid, attempts \\ 200)
@@ -156,7 +156,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcessTest do
 
     cond do
       state.ready? and state.owner_valid? ->
-        assert %{ready?: true, owner_pid: ^pid} = NewCacheShardRead.shard_meta(state.shard_id)
+        assert %{ready?: true, owner_pid: ^pid} = CacheShardRead.shard_meta(state.shard_id)
         :ok
 
       true ->
