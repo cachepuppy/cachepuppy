@@ -1,11 +1,11 @@
-defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardTtlSweeper do
+defmodule CachePuppyCore.Persistence.CacheShardTtlSweeper do
   @moduledoc false
 
   use GenServer
 
   alias CachePuppyCore.Persistence.CacheConfig
-  alias CachePuppyCore.Persistence.Experimental.NewCacheEntry
-  alias CachePuppyCore.Persistence.Experimental.NewCacheShardRead
+  alias CachePuppyCore.Persistence.CacheEntry
+  alias CachePuppyCore.Persistence.CacheShardRead
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
@@ -41,14 +41,14 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardTtlSweeper do
   end
 
   defp sweep(shard_id, owner_pid) do
-    case NewCacheShardRead.shard_meta(shard_id) do
+    case CacheShardRead.shard_meta(shard_id) do
       %{ready?: true, table: tid, owner_pid: ^owner_pid} ->
         now = System.system_time(:millisecond)
 
         keys =
           :ets.foldl(
             fn
-              {{table, key}, %NewCacheEntry{expires_at_ms: exp}}, acc
+              {{table, key}, %CacheEntry{expires_at_ms: exp}}, acc
               when is_integer(exp) and exp <= now and is_binary(table) and is_binary(key) ->
                 [{table, key} | acc]
 

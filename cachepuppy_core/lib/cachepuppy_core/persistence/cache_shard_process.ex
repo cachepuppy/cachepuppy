@@ -1,8 +1,8 @@
-defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcess do
+defmodule CachePuppyCore.Persistence.CacheShardProcess do
   @moduledoc """
   Experimental ETS-first cache shard: mutations update ETS then enqueue async WAL
-  batches via `NewCacheShardFlushProcess`. Rehydration and snapshot run in
-  `NewCacheShardMaintenanceProcess`.
+  batches via `CacheShardFlushProcess`. Rehydration and snapshot run in
+  `CacheShardMaintenanceProcess`.
 
   Starts linked flush + maintenance in `init/1`, then continues with
   `:startup_rehydrate` to load snapshot + WAL from disk (no extra supervisor).
@@ -13,12 +13,12 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcess do
   use GenServer
 
   alias CachePuppyCore.Persistence.CacheConfig
-  alias CachePuppyCore.Persistence.Experimental.NewCacheEntry
-  alias CachePuppyCore.Persistence.Experimental.NewCacheOwnerMeta
-  alias CachePuppyCore.Persistence.Experimental.NewCacheShardRead
-  alias CachePuppyCore.Persistence.Experimental.NewCacheShardFlushProcess
-  alias CachePuppyCore.Persistence.Experimental.NewCacheShardMaintenanceProcess
-  alias CachePuppyCore.Persistence.Experimental.NewCacheShardTtlSweeper
+  alias CachePuppyCore.Persistence.CacheEntry
+  alias CachePuppyCore.Persistence.CacheOwnerMeta
+  alias CachePuppyCore.Persistence.CacheShardRead
+  alias CachePuppyCore.Persistence.CacheShardFlushProcess
+  alias CachePuppyCore.Persistence.CacheShardMaintenanceProcess
+  alias CachePuppyCore.Persistence.CacheShardTtlSweeper
 
   defmodule State do
     @moduledoc false
@@ -53,23 +53,23 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcess do
     storage_dir = CacheConfig.storage_dir()
     _ = File.mkdir_p(storage_dir)
 
-    owner_epoch = NewCacheOwnerMeta.claim_ownership(storage_dir, shard_id, to_string(node()))
+    owner_epoch = CacheOwnerMeta.claim_ownership(storage_dir, shard_id, to_string(node()))
     table = :ets.new(__MODULE__, [:set, :protected])
-    :ok = NewCacheShardRead.publish_rehydrating(shard_id, table, owner_epoch)
+    :ok = CacheShardRead.publish_rehydrating(shard_id, table, owner_epoch)
 
-    {:ok, flush_pid} = NewCacheShardFlushProcess.start_link(shard_id: shard_id)
+    {:ok, flush_pid} = CacheShardFlushProcess.start_link(shard_id: shard_id)
     true = Process.link(flush_pid)
 
     {:ok, maintenance_pid} =
-      NewCacheShardMaintenanceProcess.start_link(shard_id: shard_id, flush_pid: flush_pid)
+      CacheShardMaintenanceProcess.start_link(shard_id: shard_id, flush_pid: flush_pid)
 
     true = Process.link(maintenance_pid)
 
-    {:ok, sweeper} = NewCacheShardTtlSweeper.start_link(shard_id: shard_id, owner: self())
+    {:ok, sweeper} = CacheShardTtlSweeper.start_link(shard_id: shard_id, owner: self())
     true = Process.link(sweeper)
 
     owner_valid? =
-      NewCacheOwnerMeta.owner_valid?(storage_dir, shard_id, owner_epoch, to_string(node()))
+      CacheOwnerMeta.owner_valid?(storage_dir, shard_id, owner_epoch, to_string(node()))
 
     state = %State{
       shard_id: shard_id,
@@ -108,7 +108,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcess do
     if not state.owner_valid? do
       {:reply, {:error, :stale_owner}, state}
     else
-      reply = NewCacheShardMaintenanceProcess.snapshot(state.maintenance_pid)
+      reply = CacheShardMaintenanceProcess.snapshot(state.maintenance_pid)
       {:reply, reply, state}
     end
   end
@@ -123,10 +123,10 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcess do
          :ok <- deny_unless_owner(state) do
       ts_ms = System.system_time(:millisecond)
       storage_key = {table, key}
-      entry = NewCacheEntry.from_wal(value, ts_ms, ttl_ms)
+      entry = CacheEntry.from_wal(value, ts_ms, ttl_ms)
       :ets.insert(state.table, {storage_key, entry})
 
-      NewCacheShardFlushProcess.enqueue(
+      CacheShardFlushProcess.enqueue(
         state.flush_pid,
         {:set, table, key, value, ts_ms, ttl_ms}
       )
@@ -147,7 +147,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcess do
       if :ets.member(state.table, storage_key) do
         ts_ms = System.system_time(:millisecond)
         :ets.delete(state.table, storage_key)
-        NewCacheShardFlushProcess.enqueue(state.flush_pid, {:delete, table, key, ts_ms})
+        CacheShardFlushProcess.enqueue(state.flush_pid, {:delete, table, key, ts_ms})
         {:reply, {:ok, true}, state}
       else
         {:reply, {:ok, false}, state}
@@ -173,7 +173,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcess do
         [] ->
           {:reply, {:error, :not_found}, state}
 
-        [{^storage_key, %NewCacheEntry{} = entry}] ->
+        [{^storage_key, %CacheEntry{} = entry}] ->
           cond do
             cache_entry_expired?(entry, now_ms) ->
               {:reply, {:error, :not_found}, state}
@@ -197,10 +197,10 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcess do
                 end
 
               ts_ms = System.system_time(:millisecond)
-              new_entry = NewCacheEntry.from_wal(merged, ts_ms, persist_ttl_ms)
+              new_entry = CacheEntry.from_wal(merged, ts_ms, persist_ttl_ms)
               :ets.insert(state.table, {storage_key, new_entry})
 
-              NewCacheShardFlushProcess.enqueue(
+              CacheShardFlushProcess.enqueue(
                 state.flush_pid,
                 {:set, table, key, merged, ts_ms, persist_ttl_ms}
               )
@@ -224,7 +224,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcess do
 
   @impl true
   def terminate(_reason, _state) do
-    _ = NewCacheShardRead.clear(self())
+    _ = CacheShardRead.clear(self())
     :ok
   end
 
@@ -246,7 +246,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcess do
   defp map_patch_or_error(_), do: {:error, :invalid_patch}
 
   defp run_rehydration(state) do
-    case NewCacheShardMaintenanceProcess.load_from_disk(state.maintenance_pid) do
+    case CacheShardMaintenanceProcess.load_from_disk(state.maintenance_pid) do
       {:ok, table} ->
         finalize_rehydration(state, table)
 
@@ -263,14 +263,14 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcess do
   defp finalize_rehydration(state, table) do
     state = swap_table_internal(state, table)
 
-    case NewCacheShardFlushProcess.open_after_rehydration(state.flush_pid) do
+    case CacheShardFlushProcess.open_after_rehydration(state.flush_pid) do
       :ok ->
         {:ok, state}
 
       {:error, :enoent} ->
         :ok = File.mkdir_p(CacheConfig.storage_dir())
 
-        case NewCacheShardFlushProcess.open_after_rehydration(state.flush_pid) do
+        case CacheShardFlushProcess.open_after_rehydration(state.flush_pid) do
           :ok -> {:ok, state}
           {:error, _} = err -> err
         end
@@ -289,14 +289,14 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcess do
     storage_dir = CacheConfig.storage_dir()
 
     _ =
-      NewCacheOwnerMeta.mark_rehydration_done(
+      CacheOwnerMeta.mark_rehydration_done(
         storage_dir,
         state.shard_id,
         state.owner_epoch,
         to_string(node())
       )
 
-    :ok = NewCacheShardRead.publish_ready(state.shard_id, owned_tid, state.owner_epoch)
+    :ok = CacheShardRead.publish_ready(state.shard_id, owned_tid, state.owner_epoch)
 
     state
     |> Map.replace!(:table, owned_tid)
@@ -324,7 +324,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcess do
 
   defp refresh_owner_validity(%State{shard_id: sid, owner_epoch: epoch} = state) do
     storage_dir = CacheConfig.storage_dir()
-    valid? = NewCacheOwnerMeta.owner_valid?(storage_dir, sid, epoch, to_string(node()))
+    valid? = CacheOwnerMeta.owner_valid?(storage_dir, sid, epoch, to_string(node()))
     %State{state | owner_valid?: valid?}
   end
 
@@ -333,9 +333,9 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcess do
     %State{state | owner_check_ref: ref}
   end
 
-  defp cache_entry_expired?(%NewCacheEntry{expires_at_ms: nil}, _now_ms), do: false
+  defp cache_entry_expired?(%CacheEntry{expires_at_ms: nil}, _now_ms), do: false
 
-  defp cache_entry_expired?(%NewCacheEntry{expires_at_ms: exp}, now_ms)
+  defp cache_entry_expired?(%CacheEntry{expires_at_ms: exp}, now_ms)
        when is_integer(exp) and is_integer(now_ms),
        do: exp <= now_ms
 end

@@ -1,4 +1,4 @@
-defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardMaintenanceProcess do
+defmodule CachePuppyCore.Persistence.CacheShardMaintenanceProcess do
   @moduledoc false
 
   # Serialized snapshot + rehydration. Inline WAL decode/replay/materialize — no
@@ -8,9 +8,9 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardMaintenanceProces
   require Logger
 
   alias CachePuppyCore.Persistence.CacheConfig
-  alias CachePuppyCore.Persistence.Experimental.NewCacheEntry
-  alias CachePuppyCore.Persistence.Experimental.NewCacheUtils
-  alias CachePuppyCore.Persistence.Experimental.NewCacheShardFlushProcess
+  alias CachePuppyCore.Persistence.CacheEntry
+  alias CachePuppyCore.Persistence.CacheUtils
+  alias CachePuppyCore.Persistence.CacheShardFlushProcess
 
   defmodule State do
     @moduledoc false
@@ -41,7 +41,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardMaintenanceProces
     storage_dir = CacheConfig.storage_dir()
 
     result =
-      with :ok <- NewCacheShardFlushProcess.close_for_rehydration(state.flush_pid) do
+      with :ok <- CacheShardFlushProcess.close_for_rehydration(state.flush_pid) do
         {:ok, load_snapshot_then_replay(state.shard_id, storage_dir)}
       end
 
@@ -54,19 +54,19 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardMaintenanceProces
     checkpoint_seq = read_checkpoint_seq(storage_dir, state.shard_id)
 
     result =
-      with {:ok, included_seq} <- NewCacheShardFlushProcess.prepare_snapshot(state.flush_pid),
+      with {:ok, included_seq} <- CacheShardFlushProcess.prepare_snapshot(state.flush_pid),
            :ok <- materialize_snapshot(storage_dir, state.shard_id, checkpoint_seq, included_seq),
            cutoff = included_seq + 1,
            :ok <- write_checkpoint!(storage_dir, state.shard_id, cutoff) do
         prune_wal_segments(storage_dir, state.shard_id, cutoff)
-        NewCacheShardFlushProcess.resume_after_snapshot(state.flush_pid, cutoff)
+        CacheShardFlushProcess.resume_after_snapshot(state.flush_pid, cutoff)
       end
 
     {:reply, result, state}
   end
 
   defp read_checkpoint_seq(storage_dir, shard_id) do
-    path = NewCacheUtils.checkpoint_path(storage_dir, shard_id)
+    path = CacheUtils.checkpoint_path(storage_dir, shard_id)
 
     case File.read(path) do
       {:ok, binary} ->
@@ -83,7 +83,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardMaintenanceProces
   end
 
   defp write_checkpoint!(storage_dir, shard_id, cutoff_seq) do
-    path = NewCacheUtils.checkpoint_path(storage_dir, shard_id)
+    path = CacheUtils.checkpoint_path(storage_dir, shard_id)
     tmp_path = path <> ".tmp"
 
     term = %{
@@ -98,7 +98,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardMaintenanceProces
   end
 
   defp prune_wal_segments(storage_dir, shard_id, cutoff_seq) do
-    NewCacheUtils.wal_segments(storage_dir, shard_id)
+    CacheUtils.wal_segments(storage_dir, shard_id)
     |> Enum.each(fn {seq, path, _size} ->
       if seq < cutoff_seq, do: _ = File.rm(path)
     end)
@@ -111,7 +111,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardMaintenanceProces
     checkpoint_seq = read_checkpoint_seq(storage_dir, shard_id)
 
     storage_dir
-    |> NewCacheUtils.wal_segments(shard_id)
+    |> CacheUtils.wal_segments(shard_id)
     |> Enum.filter(fn {seq, _, _} -> seq >= checkpoint_seq end)
     |> Enum.take(CacheConfig.recovery_max_segments())
     |> Enum.each(fn {_seq, path, _size} ->
@@ -127,7 +127,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardMaintenanceProces
     try do
       segments =
         storage_dir
-        |> NewCacheUtils.wal_segments(shard_id)
+        |> CacheUtils.wal_segments(shard_id)
         |> Enum.filter(fn {seq, _, _} -> seq >= checkpoint_seq and seq <= included_seq end)
         |> Enum.sort_by(fn {seq, _, _} -> seq end)
 
@@ -135,8 +135,8 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardMaintenanceProces
         replay_wal_path_into_table(base, path, persist_truncate: false, log_read_errors: false)
       end)
 
-      tmp_path = NewCacheUtils.snapshot_temp_path(storage_dir, shard_id)
-      final_path = NewCacheUtils.snapshot_path(storage_dir, shard_id)
+      tmp_path = CacheUtils.snapshot_temp_path(storage_dir, shard_id)
+      final_path = CacheUtils.snapshot_path(storage_dir, shard_id)
       _ = File.rm(tmp_path)
 
       with :ok <- :ets.tab2file(base, String.to_charlist(tmp_path), sync: true),
@@ -154,7 +154,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardMaintenanceProces
   defp open_snapshot_table(storage_dir, shard_id, access, opts)
        when access in [:private, :protected] do
     log? = Keyword.fetch!(opts, :log)
-    path = NewCacheUtils.snapshot_path(storage_dir, shard_id)
+    path = CacheUtils.snapshot_path(storage_dir, shard_id)
 
     case :ets.file2tab(String.to_charlist(path)) do
       {:ok, tid} ->
@@ -188,7 +188,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardMaintenanceProces
         Enum.each(records, fn
           {:set, table_name, key, value, ts, ttl_ms}
           when is_binary(table_name) and is_binary(key) and is_integer(ts) ->
-            entry = NewCacheEntry.from_wal(value, ts, ttl_ms)
+            entry = CacheEntry.from_wal(value, ts, ttl_ms)
             :ets.insert(table, {{table_name, key}, entry})
 
           {:delete, table_name, key, _ts} when is_binary(table_name) and is_binary(key) ->

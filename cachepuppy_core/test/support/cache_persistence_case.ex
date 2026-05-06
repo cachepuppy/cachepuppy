@@ -1,4 +1,4 @@
-defmodule CachePuppyCore.ExperimentalPersistenceCase do
+defmodule CachePuppyCore.CachePersistenceCase do
   @moduledoc false
 
   use ExUnit.CaseTemplate
@@ -7,16 +7,16 @@ defmodule CachePuppyCore.ExperimentalPersistenceCase do
 
   using do
     quote do
-      alias CachePuppyCore.Persistence.Experimental.NewCacheRouter
-      alias CachePuppyCore.Persistence.Experimental.NewCacheShardRead
-      alias CachePuppyCore.Persistence.Experimental.NewCacheOwnerMeta
-      alias CachePuppyCore.Persistence.Experimental.NewCacheUtils
+      alias CachePuppyCore.Persistence.CacheRouter
+      alias CachePuppyCore.Persistence.CacheShardRead
+      alias CachePuppyCore.Persistence.CacheOwnerMeta
+      alias CachePuppyCore.Persistence.CacheUtils
     end
   end
 
   setup _tags do
     uniq = System.unique_integer([:positive])
-    storage_dir = CachePuppyCore.TestTmpDir.path("experimental_persistence_#{uniq}")
+    storage_dir = CachePuppyCore.TestTmpDir.path("cache_persistence_#{uniq}")
 
     old_storage = Application.get_env(:cachepuppy_core, :cache_storage_dir)
     old_shards = Application.get_env(:cachepuppy_core, :cache_shard_count)

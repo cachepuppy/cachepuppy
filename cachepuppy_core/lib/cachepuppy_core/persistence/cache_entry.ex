@@ -1,4 +1,4 @@
-defmodule CachePuppyCore.Persistence.Experimental.NewCacheEntry do
+defmodule CachePuppyCore.Persistence.CacheEntry do
   @moduledoc false
 
   @enforce_keys [:value]
