@@ -14,6 +14,7 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
   alias CachePuppyCore.Persistence.CacheConfig
   alias CachePuppyCore.Persistence.CacheEntry
   alias CachePuppyCore.Persistence.CacheOwnerMeta
+  alias CachePuppyCore.Persistence.CacheUtils
   alias CachePuppyCore.Persistence.CacheShardRead
   alias CachePuppyCore.Persistence.CacheShardFlushProcess
   alias CachePuppyCore.Persistence.CacheShardMaintenanceProcess
@@ -120,7 +121,7 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
 
   @impl true
   def handle_call(:snapshot, _from, state) do
-    {reply, state} = run_snapshot_if_allowed(state)
+    {reply, state} = run_snapshot_if_allowed(state, :manual)
     {:reply, reply, state}
   end
 
@@ -234,7 +235,7 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
   def handle_info(:snapshot_tick, state) do
     state = %{state | snapshot_ref: nil}
     state = schedule_snapshot_tick(state)
-    {_reply, state} = run_snapshot_if_allowed(state)
+    {_reply, state} = run_snapshot_if_allowed(state, :timer)
     {:noreply, state}
   end
 
@@ -357,12 +358,28 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
     %State{state | snapshot_ref: ref}
   end
 
-  defp run_snapshot_if_allowed(%State{ready?: false} = state), do: {{:error, :rehydrating}, state}
+  defp run_snapshot_if_allowed(%State{ready?: false} = state, _source),
+    do: {{:error, :rehydrating}, state}
 
-  defp run_snapshot_if_allowed(%State{owner_valid?: false} = state),
+  defp run_snapshot_if_allowed(%State{owner_valid?: false} = state, _source),
     do: {{:error, :stale_owner}, state}
 
-  defp run_snapshot_if_allowed(state) do
+  defp run_snapshot_if_allowed(state, :timer) do
+    min_wal_bytes = CacheConfig.snapshot_min_wal_bytes()
+    total_wal_bytes = wal_total_bytes(state.shard_id)
+
+    if total_wal_bytes < min_wal_bytes do
+      {{:error, :below_snapshot_wal_threshold}, state}
+    else
+      do_run_snapshot(state)
+    end
+  end
+
+  defp run_snapshot_if_allowed(state, :manual) do
+    do_run_snapshot(state)
+  end
+
+  defp do_run_snapshot(state) do
     reply = CacheShardMaintenanceProcess.snapshot(state.maintenance_pid)
 
     case reply do
@@ -376,6 +393,12 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
 
         {reply, state}
     end
+  end
+
+  defp wal_total_bytes(shard_id) do
+    CacheConfig.storage_dir()
+    |> CacheUtils.wal_segments(shard_id)
+    |> Enum.reduce(0, fn {_seq, _path, size}, acc -> acc + size end)
   end
 
   defp cache_entry_expired?(%CacheEntry{expires_at_ms: nil}, _now_ms), do: false

@@ -138,13 +138,16 @@ defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
   test "periodic snapshot creates checkpoint and prunes older wal segments", %{storage_dir: storage_dir} do
     old_interval = Application.get_env(:cachepuppy_core, :cache_snapshot_interval_ms)
     old_wal_max = Application.get_env(:cachepuppy_core, :cache_wal_segment_max_bytes)
+    old_snapshot_min = Application.get_env(:cachepuppy_core, :cache_snapshot_min_wal_bytes)
 
     Application.put_env(:cachepuppy_core, :cache_snapshot_interval_ms, 30)
     Application.put_env(:cachepuppy_core, :cache_wal_segment_max_bytes, 64)
+    Application.put_env(:cachepuppy_core, :cache_snapshot_min_wal_bytes, 1)
 
     on_exit(fn ->
       restore(:cache_snapshot_interval_ms, old_interval)
       restore(:cache_wal_segment_max_bytes, old_wal_max)
+      restore(:cache_snapshot_min_wal_bytes, old_snapshot_min)
     end)
 
     shard_id = 20_011
@@ -173,12 +176,36 @@ defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
     end)
   end
 
-  test "periodic snapshot tick does not run when owner is stale", %{storage_dir: storage_dir} do
+  test "periodic snapshot skips when wal bytes are below threshold", %{storage_dir: storage_dir} do
     old_interval = Application.get_env(:cachepuppy_core, :cache_snapshot_interval_ms)
-    Application.put_env(:cachepuppy_core, :cache_snapshot_interval_ms, 150)
+    old_snapshot_min = Application.get_env(:cachepuppy_core, :cache_snapshot_min_wal_bytes)
+
+    Application.put_env(:cachepuppy_core, :cache_snapshot_interval_ms, 30)
+    Application.put_env(:cachepuppy_core, :cache_snapshot_min_wal_bytes, 1_000_000)
 
     on_exit(fn ->
       restore(:cache_snapshot_interval_ms, old_interval)
+      restore(:cache_snapshot_min_wal_bytes, old_snapshot_min)
+    end)
+
+    shard_id = 20_013
+    {:ok, pid} = start_supervised({CacheShardProcess, [shard_id: shard_id, name: nil]})
+    assert_shard_ready!(pid)
+
+    assert {:ok, %{"v" => 1}} = GenServer.call(pid, {:set, "t", "k", %{"v" => 1}, []})
+    Process.sleep(220)
+    refute File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id))
+  end
+
+  test "periodic snapshot tick does not run when owner is stale", %{storage_dir: storage_dir} do
+    old_interval = Application.get_env(:cachepuppy_core, :cache_snapshot_interval_ms)
+    old_snapshot_min = Application.get_env(:cachepuppy_core, :cache_snapshot_min_wal_bytes)
+    Application.put_env(:cachepuppy_core, :cache_snapshot_interval_ms, 150)
+    Application.put_env(:cachepuppy_core, :cache_snapshot_min_wal_bytes, 1)
+
+    on_exit(fn ->
+      restore(:cache_snapshot_interval_ms, old_interval)
+      restore(:cache_snapshot_min_wal_bytes, old_snapshot_min)
     end)
 
     shard_id = 20_012
