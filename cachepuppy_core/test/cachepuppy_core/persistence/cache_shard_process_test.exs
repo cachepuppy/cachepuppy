@@ -135,6 +135,65 @@ defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
     assert :ok = GenServer.call(pid, :snapshot)
   end
 
+  test "periodic snapshot creates checkpoint and prunes older wal segments", %{storage_dir: storage_dir} do
+    old_interval = Application.get_env(:cachepuppy_core, :cache_snapshot_interval_ms)
+    old_wal_max = Application.get_env(:cachepuppy_core, :cache_wal_segment_max_bytes)
+
+    Application.put_env(:cachepuppy_core, :cache_snapshot_interval_ms, 30)
+    Application.put_env(:cachepuppy_core, :cache_wal_segment_max_bytes, 64)
+
+    on_exit(fn ->
+      restore(:cache_snapshot_interval_ms, old_interval)
+      restore(:cache_wal_segment_max_bytes, old_wal_max)
+    end)
+
+    shard_id = 20_011
+    {:ok, pid} = start_supervised({CacheShardProcess, [shard_id: shard_id, name: nil]})
+    assert_shard_ready!(pid)
+
+    for idx <- 1..20 do
+      assert {:ok, %{"v" => ^idx}} =
+               GenServer.call(pid, {:set, "snap", "k#{idx}", %{"v" => idx}, []})
+    end
+
+    snapshot_path = CacheUtils.snapshot_path(storage_dir, shard_id)
+    checkpoint_path = CacheUtils.checkpoint_path(storage_dir, shard_id)
+
+    assert_eventually(fn ->
+      File.exists?(snapshot_path) and File.exists?(checkpoint_path)
+    end)
+
+    {:ok, cp_bin} = File.read(checkpoint_path)
+    cutoff = :erlang.binary_to_term(cp_bin)["snapshot_cutoff_seq"]
+    assert is_integer(cutoff)
+    assert cutoff > 1
+
+    Enum.each(CacheUtils.wal_segments(storage_dir, shard_id), fn {seq, _path, _size} ->
+      assert seq >= cutoff
+    end)
+  end
+
+  test "periodic snapshot tick does not run when owner is stale", %{storage_dir: storage_dir} do
+    old_interval = Application.get_env(:cachepuppy_core, :cache_snapshot_interval_ms)
+    Application.put_env(:cachepuppy_core, :cache_snapshot_interval_ms, 150)
+
+    on_exit(fn ->
+      restore(:cache_snapshot_interval_ms, old_interval)
+    end)
+
+    shard_id = 20_012
+    {:ok, pid} = start_supervised({CacheShardProcess, [shard_id: shard_id, name: nil]})
+    assert_shard_ready!(pid)
+
+    _ = CacheOwnerMeta.claim_ownership(storage_dir, shard_id, to_string(node()))
+    send(pid, :owner_check_tick)
+    Process.sleep(10)
+    refute :sys.get_state(pid).owner_valid?
+
+    Process.sleep(220)
+    refute File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id))
+  end
+
   test "termination clears only metadata owned by process" do
     tid = :ets.new(__MODULE__, [:set, :protected])
     :ok = CacheShardRead.publish_ready(98_001, tid, 1)
@@ -164,4 +223,19 @@ defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
         assert_shard_ready!(pid, attempts - 1)
     end
   end
+
+  defp assert_eventually(fun, attempts \\ 100)
+  defp assert_eventually(_fun, 0), do: flunk("condition was not met in time")
+
+  defp assert_eventually(fun, attempts) do
+    if fun.() do
+      :ok
+    else
+      Process.sleep(10)
+      assert_eventually(fun, attempts - 1)
+    end
+  end
+
+  defp restore(key, nil), do: Application.delete_env(:cachepuppy_core, key)
+  defp restore(key, value), do: Application.put_env(:cachepuppy_core, key, value)
 end

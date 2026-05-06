@@ -1,16 +1,15 @@
 defmodule CachePuppyCore.Persistence.CacheShardProcess do
   @moduledoc """
-  Experimental ETS-first cache shard: mutations update ETS then enqueue async WAL
-  batches via `CacheShardFlushProcess`. Rehydration and snapshot run in
+  ETS-first cache shard: mutations update ETS then enqueue async WAL batches via
+  `CacheShardFlushProcess`. Rehydration and snapshot run in
   `CacheShardMaintenanceProcess`.
 
-  Starts linked flush + maintenance in `init/1`, then continues with
-  `:startup_rehydrate` to load snapshot + WAL from disk (no extra supervisor).
-
-  Does not register with Horde; use for experiments only.
+  Registers under `Horde.Registry` as `{CachePuppyCore.CacheShardRegistry, shard_id}`
+  unless `name: nil` is passed (tests only).
   """
 
   use GenServer
+  require Logger
 
   alias CachePuppyCore.Persistence.CacheConfig
   alias CachePuppyCore.Persistence.CacheEntry
@@ -31,12 +30,26 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
       :flush_pid,
       :maintenance_pid,
       :owner_check_ref,
+      :snapshot_ref,
       :ttl_sweeper_pid
     ]
   end
 
   def start_link(opts) when is_list(opts) do
-    GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name))
+    shard_id = Keyword.fetch!(opts, :shard_id)
+
+    case Keyword.fetch(opts, :name) do
+      {:ok, nil} ->
+        GenServer.start_link(__MODULE__, opts)
+
+      {:ok, name} when is_atom(name) ->
+        GenServer.start_link(__MODULE__, opts, name: name)
+
+      :error ->
+        GenServer.start_link(__MODULE__, opts,
+          name: {:via, Horde.Registry, {CachePuppyCore.CacheShardRegistry, shard_id}}
+        )
+    end
   end
 
   def child_spec(opts) do
@@ -80,10 +93,12 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
       flush_pid: flush_pid,
       maintenance_pid: maintenance_pid,
       owner_check_ref: nil,
+      snapshot_ref: nil,
       ttl_sweeper_pid: sweeper
     }
 
     state = schedule_owner_check(state)
+    state = schedule_snapshot_tick(state)
     {:ok, state, {:continue, :startup_rehydrate}}
   end
 
@@ -105,12 +120,8 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
 
   @impl true
   def handle_call(:snapshot, _from, state) do
-    if not state.owner_valid? do
-      {:reply, {:error, :stale_owner}, state}
-    else
-      reply = CacheShardMaintenanceProcess.snapshot(state.maintenance_pid)
-      {:reply, reply, state}
-    end
+    {reply, state} = run_snapshot_if_allowed(state)
+    {:reply, reply, state}
   end
 
   @impl true
@@ -217,6 +228,14 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
   def handle_info(:owner_check_tick, state) do
     state = %{state | owner_check_ref: nil}
     {:noreply, schedule_owner_check(refresh_owner_validity(state))}
+  end
+
+  @impl true
+  def handle_info(:snapshot_tick, state) do
+    state = %{state | snapshot_ref: nil}
+    state = schedule_snapshot_tick(state)
+    {_reply, state} = run_snapshot_if_allowed(state)
+    {:noreply, state}
   end
 
   @impl true
@@ -331,6 +350,32 @@ defmodule CachePuppyCore.Persistence.CacheShardProcess do
   defp schedule_owner_check(%State{} = state) do
     ref = Process.send_after(self(), :owner_check_tick, CacheConfig.flush_interval_ms())
     %State{state | owner_check_ref: ref}
+  end
+
+  defp schedule_snapshot_tick(%State{} = state) do
+    ref = Process.send_after(self(), :snapshot_tick, CacheConfig.snapshot_interval_ms())
+    %State{state | snapshot_ref: ref}
+  end
+
+  defp run_snapshot_if_allowed(%State{ready?: false} = state), do: {{:error, :rehydrating}, state}
+
+  defp run_snapshot_if_allowed(%State{owner_valid?: false} = state),
+    do: {{:error, :stale_owner}, state}
+
+  defp run_snapshot_if_allowed(state) do
+    reply = CacheShardMaintenanceProcess.snapshot(state.maintenance_pid)
+
+    case reply do
+      :ok ->
+        {reply, state}
+
+      {:error, reason} ->
+        Logger.warning(
+          "cache_snapshot_failed shard_id=#{state.shard_id} node=#{node()} reason=#{inspect(reason)}"
+        )
+
+        {reply, state}
+    end
   end
 
   defp cache_entry_expired?(%CacheEntry{expires_at_ms: nil}, _now_ms), do: false

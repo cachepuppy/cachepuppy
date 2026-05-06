@@ -11,6 +11,7 @@ services:
       PORT: "4000"
       PHX_HOST: "localhost"
       CACHE_PERSISTENCE_TEST_MODE: "true"
+      CACHE_SNAPSHOT_INTERVAL_MS: "30000"
       SECRET_KEY_BASE: "local-dev-secret-key-base-local-dev-secret-key-base"
       RELEASE_COOKIE: "cachepuppy-dev-cookie"
       RELEASE_DISTRIBUTION: "name"
