@@ -3,7 +3,7 @@ defmodule CachePuppyCoreWeb.SessionChannel do
 
   use CachePuppyCoreWeb, :channel
   alias CachePuppyCore.Persistence.CacheConfig
-  alias CachePuppyCore.Persistence.CacheRouter
+  alias CachePuppyCore.Persistence.Experimental.NewCacheRouter
 
   @impl true
   def join("session", _payload, %{assigns: %{client_id: client_id}} = socket) do
@@ -36,7 +36,7 @@ defmodule CachePuppyCoreWeb.SessionChannel do
       )
       when is_binary(table) and is_binary(key) do
     with {:ok, opts} <- ttl_opts_from_payload(payload),
-         {:ok, stored_value} <- CacheRouter.setdata(table, key, value, opts) do
+         {:ok, stored_value} <- NewCacheRouter.setdata(table, key, value, opts) do
       {:reply, {:ok, %{"table" => table, "key" => key, "value" => stored_value}}, socket}
     else
       {:error, reason} ->
@@ -51,7 +51,7 @@ defmodule CachePuppyCoreWeb.SessionChannel do
   @impl true
   def handle_in("get_cache_data", %{"table" => table, "key" => key}, socket)
       when is_binary(table) and is_binary(key) do
-    case CacheRouter.getdata(table, key) do
+    case NewCacheRouter.getdata(table, key) do
       {:ok, value} ->
         {:reply, {:ok, %{"table" => table, "key" => key, "value" => value}}, socket}
 
@@ -72,7 +72,7 @@ defmodule CachePuppyCoreWeb.SessionChannel do
       )
       when is_binary(table) and is_binary(key) and is_map(patch) do
     with {:ok, opts} <- ttl_opts_from_payload(payload),
-         {:ok, stored_value} <- CacheRouter.updatedata(table, key, patch, opts) do
+         {:ok, stored_value} <- NewCacheRouter.updatedata(table, key, patch, opts) do
       {:reply, {:ok, %{"table" => table, "key" => key, "value" => stored_value}}, socket}
     else
       {:error, reason} ->
@@ -87,7 +87,7 @@ defmodule CachePuppyCoreWeb.SessionChannel do
   @impl true
   def handle_in("delete_cache_data", %{"table" => table, "key" => key}, socket)
       when is_binary(table) and is_binary(key) do
-    case CacheRouter.deldata(table, key) do
+    case NewCacheRouter.deldata(table, key) do
       {:ok, deleted?} ->
         {:reply, {:ok, %{"table" => table, "key" => key, "deleted" => deleted?}}, socket}
 

@@ -30,7 +30,6 @@ defmodule CachePuppyCore.Application do
          [name: CachePuppyCore.CacheShardRegistry, keys: :unique, members: :auto]},
         {Horde.DynamicSupervisor,
          [name: CachePuppyCore.CacheShardSupervisor, strategy: :one_for_one, members: :auto]},
-        CachePuppyCore.RehydrationCoordinator,
         CachePuppyCoreWeb.Presence
         # Start a worker by calling: CachePuppyCore.Worker.start_link(arg)
         # {CachePuppyCore.Worker, arg},

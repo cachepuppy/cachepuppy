@@ -1,4 +1,4 @@
-defmodule CachePuppyCore.Persistence.CacheUtils do
+defmodule CachePuppyCore.Persistence.Experimental.NewCacheUtils do
   @moduledoc false
 
   @wal_pattern ~r/^shard_(\d+)\.wal\.(\d+)\.log$/

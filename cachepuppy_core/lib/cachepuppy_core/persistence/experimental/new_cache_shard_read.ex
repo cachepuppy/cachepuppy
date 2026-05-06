@@ -1,7 +1,7 @@
-defmodule CachePuppyCore.Persistence.CacheShardRead do
+defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardRead do
   @moduledoc false
 
-  alias CachePuppyCore.Persistence.CacheEntry
+  alias CachePuppyCore.Persistence.Experimental.NewCacheEntry
 
   @type shard_meta :: %{
           shard_id: non_neg_integer(),
@@ -88,7 +88,7 @@ defmodule CachePuppyCore.Persistence.CacheShardRead do
     try do
       value =
         case :ets.lookup(table_tid, storage_key) do
-          [{^storage_key, %CacheEntry{} = entry}] ->
+          [{^storage_key, %NewCacheEntry{} = entry}] ->
             if is_integer(entry.expires_at_ms) and entry.expires_at_ms <= now do
               nil
             else

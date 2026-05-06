@@ -21,8 +21,7 @@ config :cachepuppy_core,
   cache_wal_segment_max_bytes: 1_048_576,
   cache_snapshot_interval_ms: 60_000,
   cache_snapshot_min_wal_bytes: 262_144,
-  cache_recovery_max_segments: 1_024,
-  cache_rehydration_coordinator_tick_ms: 500
+  cache_recovery_max_segments: 1_024
 
 # Configure the endpoint
 config :cachepuppy_core, CachePuppyCoreWeb.Endpoint,
