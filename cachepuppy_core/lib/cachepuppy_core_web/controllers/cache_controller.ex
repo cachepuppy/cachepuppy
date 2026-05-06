@@ -2,12 +2,12 @@ defmodule CachePuppyCoreWeb.CacheController do
   use CachePuppyCoreWeb, :controller
 
   alias CachePuppyCore.Persistence.CacheConfig
-  alias CachePuppyCore.Persistence.CacheRouter
+  alias CachePuppyCore.Persistence.Experimental.NewCacheRouter
 
   def setdata(conn, %{"table" => table, "key" => key, "value" => value} = params)
       when is_binary(table) and is_binary(key) do
     with {:ok, opts} <- ttl_opts_from_params(params),
-         {:ok, stored_value} <- CacheRouter.setdata(table, key, value, opts) do
+         {:ok, stored_value} <- NewCacheRouter.setdata(table, key, value, opts) do
       json(conn, %{"table" => table, "key" => key, "value" => stored_value})
     else
       {:error, :invalid_ttl} ->
@@ -35,7 +35,7 @@ defmodule CachePuppyCoreWeb.CacheController do
   end
 
   def getdata(conn, %{"table" => table, "key" => key}) when is_binary(table) and is_binary(key) do
-    case CacheRouter.getdata(table, key) do
+    case NewCacheRouter.getdata(table, key) do
       {:ok, value} ->
         json(conn, %{"table" => table, "key" => key, "value" => value})
 
@@ -63,7 +63,7 @@ defmodule CachePuppyCoreWeb.CacheController do
   def updatedata(conn, %{"table" => table, "key" => key, "patch" => patch} = params)
       when is_binary(table) and is_binary(key) and is_map(patch) do
     with {:ok, opts} <- ttl_opts_from_params(params),
-         {:ok, stored_value} <- CacheRouter.updatedata(table, key, patch, opts) do
+         {:ok, stored_value} <- NewCacheRouter.updatedata(table, key, patch, opts) do
       json(conn, %{"table" => table, "key" => key, "value" => stored_value})
     else
       {:error, :invalid_ttl} ->
@@ -101,7 +101,7 @@ defmodule CachePuppyCoreWeb.CacheController do
 
   def deletedata(conn, %{"table" => table, "key" => key})
       when is_binary(table) and is_binary(key) do
-    case CacheRouter.deldata(table, key) do
+    case NewCacheRouter.deldata(table, key) do
       {:ok, deleted?} ->
         json(conn, %{"table" => table, "key" => key, "deleted" => deleted?})
 

@@ -19,8 +19,7 @@ defmodule CachePuppyCore.CacheShardRehydrate do
   end
 
   @doc """
-  Runs `rehydrate_sync!/1` then polls until `ready?`, `owner_valid?`, and
-  `rehydration_phase == :success` (typical post-rehydration serving state).
+  Runs `rehydrate_sync!/1` then polls until `ready?` and `owner_valid?`.
   """
   @spec rehydrate_and_wait_ready!(pid(), keyword()) :: :ok
   def rehydrate_and_wait_ready!(pid, opts \\ []) when is_pid(pid) do
@@ -35,7 +34,7 @@ defmodule CachePuppyCore.CacheShardRehydrate do
   defp wait_ready!(pid, attempts) do
     state = :sys.get_state(pid)
 
-    if state.ready? and state.owner_valid? and state.rehydration_phase == :success do
+    if state.ready? and state.owner_valid? do
       :ok
     else
       receive do

@@ -1,4 +1,4 @@
-defmodule CachePuppyCore.Persistence.CacheOwnerMeta do
+defmodule CachePuppyCore.Persistence.Experimental.NewCacheOwnerMeta do
   @moduledoc false
 
   @spec claim_ownership(String.t(), non_neg_integer(), String.t()) :: non_neg_integer()
@@ -64,9 +64,24 @@ defmodule CachePuppyCore.Persistence.CacheOwnerMeta do
 
   defp write_meta!(storage_dir, shard_id, meta) do
     path = metadata_path(storage_dir, shard_id)
+    binary = :erlang.term_to_binary(meta)
+
+    :ok = File.mkdir_p(Path.dirname(path))
     tmp_path = path <> ".tmp"
-    :ok = File.write(tmp_path, :erlang.term_to_binary(meta))
-    :ok = File.rename(tmp_path, path)
+    :ok = File.write(tmp_path, binary)
+
+    case File.rename(tmp_path, path) do
+      :ok ->
+        :ok
+
+      {:error, :enoent} ->
+        # Directory/file can disappear under test teardown races; fallback keeps shard alive.
+        :ok = File.mkdir_p(Path.dirname(path))
+        :ok = File.write(path, binary)
+
+      {:error, reason} ->
+        raise "failed to persist owner meta: #{inspect(reason)}"
+    end
   end
 
   defp metadata_path(storage_dir, shard_id) do
