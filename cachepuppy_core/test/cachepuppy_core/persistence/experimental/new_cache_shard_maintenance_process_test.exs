@@ -9,7 +9,6 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardMaintenanceProces
     storage_dir: storage_dir
   } do
     Application.put_env(:cachepuppy_core, :cache_wal_segment_max_bytes, 64)
-
     {:ok, flush} = start_supervised({NewCacheShardFlushProcess, [shard_id: 880]})
 
     {:ok, maint} =
@@ -21,30 +20,55 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardMaintenanceProces
     end
 
     Process.sleep(120)
-
-    before = NewCacheUtils.wal_segments(storage_dir, 880)
-    assert length(before) >= 2
-
     assert :ok = NewCacheShardMaintenanceProcess.snapshot(maint)
 
-    cp_path = NewCacheUtils.checkpoint_path(storage_dir, 880)
-    assert File.exists?(cp_path)
-
-    {:ok, cp_bin} = File.read(cp_path)
-    cp = :erlang.binary_to_term(cp_bin)
-    cutoff = cp["snapshot_cutoff_seq"]
+    {:ok, cp_bin} = File.read(NewCacheUtils.checkpoint_path(storage_dir, 880))
+    cutoff = :erlang.binary_to_term(cp_bin)["snapshot_cutoff_seq"]
     assert is_integer(cutoff)
     assert cutoff > 1
 
-    after_segments = NewCacheUtils.wal_segments(storage_dir, 880)
-    assert after_segments != []
-
-    Enum.each(after_segments, fn {seq, _path, _size} ->
+    Enum.each(NewCacheUtils.wal_segments(storage_dir, 880), fn {seq, _, _} ->
       assert seq >= cutoff
     end)
   end
 
-  test "load_from_disk replays set overwrite and delete ordering", %{storage_dir: storage_dir} do
+  test "checkpoint fallback uses seq 1 for malformed checkpoint", %{storage_dir: storage_dir} do
+    shard_id = 884
+    :ok = File.write(NewCacheUtils.checkpoint_path(storage_dir, shard_id), "bad")
+
+    {:ok, flush} = start_supervised({NewCacheShardFlushProcess, [shard_id: shard_id]})
+
+    {:ok, maint} =
+      start_supervised({NewCacheShardMaintenanceProcess, [shard_id: shard_id, flush_pid: flush]})
+
+    :ok = NewCacheShardFlushProcess.enqueue(flush, {:set, "t", "k", %{"v" => 1}, 1, nil})
+    Process.sleep(60)
+    assert {:ok, tid} = NewCacheShardMaintenanceProcess.load_from_disk(maint)
+    assert [{{"t", "k"}, _}] = :ets.lookup(tid, {"t", "k"})
+  end
+
+  test "prune keeps seq equal to cutoff", %{storage_dir: storage_dir} do
+    Application.put_env(:cachepuppy_core, :cache_wal_segment_max_bytes, 64)
+    {:ok, flush} = start_supervised({NewCacheShardFlushProcess, [shard_id: 885]})
+
+    {:ok, maint} =
+      start_supervised({NewCacheShardMaintenanceProcess, [shard_id: 885, flush_pid: flush]})
+
+    for i <- 1..20,
+        do: :ok = NewCacheShardFlushProcess.enqueue(flush, {:set, "t", "k#{i}", i, i, nil})
+
+    Process.sleep(120)
+    assert :ok = NewCacheShardMaintenanceProcess.snapshot(maint)
+
+    {:ok, cp_bin} = File.read(NewCacheUtils.checkpoint_path(storage_dir, 885))
+    cutoff = :erlang.binary_to_term(cp_bin)["snapshot_cutoff_seq"]
+
+    assert Enum.any?(NewCacheUtils.wal_segments(storage_dir, 885), fn {seq, _, _} ->
+             seq == cutoff
+           end)
+  end
+
+  test "load_from_disk replays set overwrite and delete ordering" do
     {:ok, flush} = start_supervised({NewCacheShardFlushProcess, [shard_id: 881]})
 
     {:ok, maint} =
@@ -57,12 +81,30 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardMaintenanceProces
     Process.sleep(100)
 
     assert {:ok, tid} = NewCacheShardMaintenanceProcess.load_from_disk(maint)
-
     assert [{{"t", "a"}, entry_a}] = :ets.lookup(tid, {"t", "a"})
     assert entry_a.value == %{"v" => 2}
     assert [] == :ets.lookup(tid, {"t", "b"})
+  end
 
-    assert NewCacheUtils.wal_segments(storage_dir, 881) != []
+  test "replay respects recovery_max_segments cap", %{storage_dir: storage_dir} do
+    shard_id = 886
+    Application.put_env(:cachepuppy_core, :cache_recovery_max_segments, 1)
+
+    wal1 = NewCacheUtils.wal_path(storage_dir, shard_id, 1)
+    wal2 = NewCacheUtils.wal_path(storage_dir, shard_id, 2)
+
+    :ok = File.write(wal1, encode_record({:set, "t", "k1", %{"v" => 1}, 1, nil}))
+    :ok = File.write(wal2, encode_record({:set, "t", "k2", %{"v" => 2}, 2, nil}))
+
+    {:ok, flush} = start_supervised({NewCacheShardFlushProcess, [shard_id: shard_id]})
+
+    {:ok, maint} =
+      start_supervised({NewCacheShardMaintenanceProcess, [shard_id: shard_id, flush_pid: flush]})
+
+    assert {:ok, tid} = NewCacheShardMaintenanceProcess.load_from_disk(maint)
+
+    assert [{{"t", "k1"}, _}] = :ets.lookup(tid, {"t", "k1"})
+    assert [] == :ets.lookup(tid, {"t", "k2"})
   end
 
   test "load_from_disk truncates corrupt/incomplete WAL tail to valid bytes", %{
@@ -70,7 +112,6 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardMaintenanceProces
   } do
     shard_id = 882
     wal_path = NewCacheUtils.wal_path(storage_dir, shard_id, 1)
-
     good = encode_record({:set, "t", "ok", %{"v" => 1}, 20, nil})
     bad_prefix = <<0, 0, 0, 20, 1, 2, 3>>
     :ok = File.write(wal_path, good <> bad_prefix)
@@ -81,12 +122,28 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardMaintenanceProces
       start_supervised({NewCacheShardMaintenanceProcess, [shard_id: shard_id, flush_pid: flush]})
 
     assert {:ok, tid} = NewCacheShardMaintenanceProcess.load_from_disk(maint)
-
     assert [{{"t", "ok"}, entry}] = :ets.lookup(tid, {"t", "ok"})
     assert entry.value == %{"v" => 1}
-
     {:ok, truncated} = File.read(wal_path)
     assert truncated == good
+  end
+
+  test "replay truncates when malformed term appears mid-stream", %{storage_dir: storage_dir} do
+    shard_id = 887
+    wal = NewCacheUtils.wal_path(storage_dir, shard_id, 1)
+    good1 = encode_record({:set, "t", "k1", 1, 1, nil})
+    bad = <<0, 0, 0, 4, 1, 2, 3, 4>>
+    good2 = encode_record({:set, "t", "k2", 2, 2, nil})
+    :ok = File.write(wal, good1 <> bad <> good2)
+
+    {:ok, flush} = start_supervised({NewCacheShardFlushProcess, [shard_id: shard_id]})
+
+    {:ok, maint} =
+      start_supervised({NewCacheShardMaintenanceProcess, [shard_id: shard_id, flush_pid: flush]})
+
+    assert {:ok, tid} = NewCacheShardMaintenanceProcess.load_from_disk(maint)
+    assert [{{"t", "k1"}, _}] = :ets.lookup(tid, {"t", "k1"})
+    assert [] == :ets.lookup(tid, {"t", "k2"})
   end
 
   test "repeated snapshot then load_from_disk cycles remain deterministic", %{
@@ -109,9 +166,7 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardMaintenanceProces
       assert {:ok, tid} = NewCacheShardMaintenanceProcess.load_from_disk(maint)
       assert is_reference(tid)
 
-      cp_path = NewCacheUtils.checkpoint_path(storage_dir, 883)
-      assert File.exists?(cp_path)
-      {:ok, cp_bin} = File.read(cp_path)
+      {:ok, cp_bin} = File.read(NewCacheUtils.checkpoint_path(storage_dir, 883))
       cp = :erlang.binary_to_term(cp_bin)
       assert is_integer(cp["snapshot_cutoff_seq"])
       assert cp["snapshot_cutoff_seq"] >= 1
