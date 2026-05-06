@@ -17,7 +17,6 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcessTest do
   test "rehydrate_sync is idempotent and swapped table is owned by shard" do
     {:ok, pid} = start_supervised({NewCacheShardProcess, [shard_id: 20_001, name: nil]})
     assert_shard_ready!(pid)
-
     assert :ok = GenServer.call(pid, :rehydrate_sync)
     assert :ok = GenServer.call(pid, :rehydrate_sync)
 
@@ -32,7 +31,6 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcessTest do
     assert_shard_ready!(pid)
 
     :sys.replace_state(pid, fn st -> %{st | ready?: false} end)
-
     assert {:error, :rehydrating} = GenServer.call(pid, {:set, "t", "k", 1, []})
     assert {:error, :rehydrating} = GenServer.call(pid, {:delete, "t", "k"})
     assert {:error, :rehydrating} = GenServer.call(pid, {:update, "t", "k", %{"x" => 1}, []})
@@ -57,7 +55,6 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcessTest do
     assert {:error, :stale_owner} = GenServer.call(pid, {:update, "t", "k", %{"x" => 1}, []})
     assert {:error, :stale_owner} = GenServer.call(pid, :snapshot)
 
-    # State remains coherent even after stale-owner rejections.
     assert state_after.table == :sys.get_state(pid).table
     assert state.owner_epoch == state_after.owner_epoch
   end
@@ -75,6 +72,15 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcessTest do
 
     assert {:error, :value_not_mergeable} =
              GenServer.call(pid, {:update, "t", "scalar", %{"x" => 1}, []})
+  end
+
+  test "ttl max boundary accepts max and rejects max plus one" do
+    {:ok, pid} = start_supervised({NewCacheShardProcess, [shard_id: 20_007, name: nil]})
+    assert_shard_ready!(pid)
+
+    max = CachePuppyCore.Persistence.CacheConfig.ttl_ms_max()
+    assert {:ok, 1} = GenServer.call(pid, {:set, "t", "max", 1, [ttl_ms: max]})
+    assert {:error, :invalid_ttl} = GenServer.call(pid, {:set, "t", "over", 1, [ttl_ms: max + 1]})
   end
 
   test "update carries ttl forward when ttl_ms omitted" do
@@ -96,6 +102,31 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcessTest do
     assert entry.expires_at_ms > System.system_time(:millisecond)
   end
 
+  test "update on expired entry returns not_found and does not revive" do
+    {:ok, pid} = start_supervised({NewCacheShardProcess, [shard_id: 20_008, name: nil]})
+    assert_shard_ready!(pid)
+    assert {:ok, %{"a" => 1}} = GenServer.call(pid, {:set, "t", "exp", %{"a" => 1}, [ttl_ms: 1]})
+    Process.sleep(5)
+    assert {:error, :not_found} = GenServer.call(pid, {:update, "t", "exp", %{"b" => 2}, []})
+  end
+
+  test "owner validity stays stale after foreign epoch takes ownership", %{
+    storage_dir: storage_dir
+  } do
+    shard_id = 20_009
+    {:ok, pid} = start_supervised({NewCacheShardProcess, [shard_id: shard_id, name: nil]})
+    assert_shard_ready!(pid)
+
+    _ = NewCacheOwnerMeta.claim_ownership(storage_dir, shard_id, to_string(node()))
+    send(pid, :owner_check_tick)
+    Process.sleep(10)
+    refute :sys.get_state(pid).owner_valid?
+
+    send(pid, :owner_check_tick)
+    Process.sleep(10)
+    refute :sys.get_state(pid).owner_valid?
+  end
+
   test "snapshot succeeds when owner valid" do
     {:ok, pid} = start_supervised({NewCacheShardProcess, [shard_id: 20_006, name: nil]})
     assert_shard_ready!(pid)
@@ -104,8 +135,20 @@ defmodule CachePuppyCore.Persistence.Experimental.NewCacheShardProcessTest do
     assert :ok = GenServer.call(pid, :snapshot)
   end
 
-  defp assert_shard_ready!(pid, attempts \\ 200)
+  test "termination clears only metadata owned by process" do
+    tid = :ets.new(__MODULE__, [:set, :protected])
+    :ok = NewCacheShardRead.publish_ready(98_001, tid, 1)
 
+    {:ok, pid} = start_supervised({NewCacheShardProcess, [shard_id: 20_010, name: nil]})
+    assert_shard_ready!(pid)
+    sid = :sys.get_state(pid).shard_id
+
+    GenServer.stop(pid)
+    assert :undefined == NewCacheShardRead.shard_meta(sid)
+    assert NewCacheShardRead.shard_meta(98_001) != :undefined
+  end
+
+  defp assert_shard_ready!(pid, attempts \\ 200)
   defp assert_shard_ready!(_pid, 0), do: flunk("shard did not become ready")
 
   defp assert_shard_ready!(pid, attempts) do
