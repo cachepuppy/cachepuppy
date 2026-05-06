@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/cachepuppy/cachepuppy/compare/v0.3.0...v0.4.0) (2026-05-06)
+
+
+### Features
+
+* **persistence:** add time-based shard snapshots ([1ea7f14](https://github.com/cachepuppy/cachepuppy/commit/1ea7f14a901bcd57b30793c59e05c213cbb3a9f5))
+
+
+### Performance Improvements
+
+* **persistence:** skip timer snapshot below wal threshold ([b25f257](https://github.com/cachepuppy/cachepuppy/commit/b25f2579f0da59d4e5cb6f3f1bb4af813463ffad))
+
 ## [0.3.0](https://github.com/cachepuppy/cachepuppy/compare/v0.2.0...v0.3.0) (2026-05-04)
 
 
