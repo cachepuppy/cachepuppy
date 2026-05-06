@@ -75,11 +75,14 @@ else
     websocket_jwt_identity_claim: websocket_jwt_identity_claim
 end
 
+config :cachepuppy_core,
+  cache_snapshot_interval_ms:
+    String.to_integer(System.get_env("CACHE_SNAPSHOT_INTERVAL_MS", "300000"))
+
 if String.downcase(System.get_env("CACHE_PERSISTENCE_TEST_MODE", "false")) == "true" do
   config :cachepuppy_core,
     cache_wal_segment_max_bytes: 200,
-    cache_snapshot_min_wal_bytes: 2_000,
-    cache_snapshot_interval_ms: 30_000
+    cache_snapshot_min_wal_bytes: 2_000
 end
 
 if config_env() == :prod do

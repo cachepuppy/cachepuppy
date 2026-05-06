@@ -31,7 +31,7 @@ defmodule CachePuppyCore.CachePersistenceCase do
     Application.put_env(:cachepuppy_core, :cache_flush_interval_ms, 25)
     Application.put_env(:cachepuppy_core, :cache_ttl_sweep_interval_ms, 25)
     Application.put_env(:cachepuppy_core, :cache_wal_segment_max_bytes, 512)
-    Application.put_env(:cachepuppy_core, :cache_snapshot_interval_ms, 1)
+    Application.put_env(:cachepuppy_core, :cache_snapshot_interval_ms, 600_000)
     Application.put_env(:cachepuppy_core, :cache_snapshot_min_wal_bytes, 1)
 
     :ok = CacheShardSync.reset_horde_shards!()

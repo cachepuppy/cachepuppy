@@ -6,7 +6,7 @@ defmodule CachePuppyCore.Persistence.CacheConfig do
   @default_flush_interval_ms 5_000
   @default_storage_dir "tmp/cache_shards"
   @default_wal_segment_max_bytes 1_048_576
-  @default_snapshot_interval_ms 60_000
+  @default_snapshot_interval_ms 300_000
   @default_snapshot_min_wal_bytes 262_144
   @default_recovery_max_segments 1_024
   @default_quorum_poll_interval_ms 2_000
