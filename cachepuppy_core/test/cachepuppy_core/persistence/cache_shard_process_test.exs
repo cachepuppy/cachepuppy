@@ -221,6 +221,85 @@ defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
     refute File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id))
   end
 
+  test "manual snapshot runs even when wal bytes are below timer threshold", %{storage_dir: storage_dir} do
+    old_snapshot_min = Application.get_env(:cachepuppy_core, :cache_snapshot_min_wal_bytes)
+    Application.put_env(:cachepuppy_core, :cache_snapshot_min_wal_bytes, 1_000_000)
+
+    on_exit(fn ->
+      restore(:cache_snapshot_min_wal_bytes, old_snapshot_min)
+    end)
+
+    shard_id = 20_014
+    {:ok, pid} = start_supervised({CacheShardProcess, [shard_id: shard_id, name: nil]})
+    assert_shard_ready!(pid)
+    assert {:ok, %{"v" => 1}} = GenServer.call(pid, {:set, "t", "k", %{"v" => 1}, []})
+
+    assert :ok = GenServer.call(pid, :snapshot)
+    assert File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id))
+    assert File.exists?(CacheUtils.checkpoint_path(storage_dir, shard_id))
+  end
+
+  test "manual snapshot returns rehydrating when shard is not ready" do
+    {:ok, pid} = start_supervised({CacheShardProcess, [shard_id: 20_015, name: nil]})
+    assert_shard_ready!(pid)
+    :sys.replace_state(pid, fn st -> %{st | ready?: false} end)
+    assert {:error, :rehydrating} = GenServer.call(pid, :snapshot)
+  end
+
+  test "snapshot tick is ignored when shard is not ready", %{storage_dir: storage_dir} do
+    shard_id = 20_016
+    {:ok, pid} = start_supervised({CacheShardProcess, [shard_id: shard_id, name: nil]})
+    assert_shard_ready!(pid)
+    :sys.replace_state(pid, fn st -> %{st | ready?: false} end)
+    send(pid, :snapshot_tick)
+    Process.sleep(60)
+    refute File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id))
+  end
+
+  test "snapshot tick reschedules after below-threshold skip" do
+    old_interval = Application.get_env(:cachepuppy_core, :cache_snapshot_interval_ms)
+    old_snapshot_min = Application.get_env(:cachepuppy_core, :cache_snapshot_min_wal_bytes)
+    Application.put_env(:cachepuppy_core, :cache_snapshot_interval_ms, 30)
+    Application.put_env(:cachepuppy_core, :cache_snapshot_min_wal_bytes, 1_000_000)
+
+    on_exit(fn ->
+      restore(:cache_snapshot_interval_ms, old_interval)
+      restore(:cache_snapshot_min_wal_bytes, old_snapshot_min)
+    end)
+
+    {:ok, pid} = start_supervised({CacheShardProcess, [shard_id: 20_017, name: nil]})
+    assert_shard_ready!(pid)
+
+    first_ref = :sys.get_state(pid).snapshot_ref
+    assert is_reference(first_ref)
+
+    Process.sleep(80)
+    second_ref = :sys.get_state(pid).snapshot_ref
+    assert is_reference(second_ref)
+    refute first_ref == second_ref
+  end
+
+  test "snapshot tick reschedules after successful snapshot", %{storage_dir: storage_dir} do
+    old_interval = Application.get_env(:cachepuppy_core, :cache_snapshot_interval_ms)
+    old_snapshot_min = Application.get_env(:cachepuppy_core, :cache_snapshot_min_wal_bytes)
+    Application.put_env(:cachepuppy_core, :cache_snapshot_interval_ms, 30)
+    Application.put_env(:cachepuppy_core, :cache_snapshot_min_wal_bytes, 1)
+
+    on_exit(fn ->
+      restore(:cache_snapshot_interval_ms, old_interval)
+      restore(:cache_snapshot_min_wal_bytes, old_snapshot_min)
+    end)
+
+    shard_id = 20_018
+    {:ok, pid} = start_supervised({CacheShardProcess, [shard_id: shard_id, name: nil]})
+    assert_shard_ready!(pid)
+    assert {:ok, %{"v" => 1}} = GenServer.call(pid, {:set, "t", "k", %{"v" => 1}, []})
+
+    assert_eventually(fn -> File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id)) end, 120)
+    ref = :sys.get_state(pid).snapshot_ref
+    assert is_reference(ref)
+  end
+
   test "termination clears only metadata owned by process" do
     tid = :ets.new(__MODULE__, [:set, :protected])
     :ok = CacheShardRead.publish_ready(98_001, tid, 1)

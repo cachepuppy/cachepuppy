@@ -179,6 +179,104 @@ defmodule CachePuppyCore.Persistence.CacheShardFlushProcessTest do
     assert :ok = CacheShardFlushProcess.open_after_rehydration(pid)
   end
 
+  test "prepare_snapshot returns previous seq when trailing segment is empty", %{storage_dir: storage_dir} do
+    Application.put_env(:cachepuppy_core, :cache_wal_segment_max_bytes, 64)
+    {:ok, pid} = start_supervised({CacheShardFlushProcess, [shard_id: 788]})
+
+    for idx <- 1..14 do
+      :ok =
+        CacheShardFlushProcess.enqueue(
+          pid,
+          {:set, "users", "k#{idx}", %{"payload" => String.duplicate("z", 24)}, idx, nil}
+        )
+    end
+
+    wait_for(fn -> length(CacheUtils.wal_segments(storage_dir, 788)) >= 2 end)
+    pre_state = :sys.get_state(pid)
+    assert pre_state.current_wal_bytes == 0
+    assert pre_state.current_seq > 1
+
+    assert {:ok, included_seq} = CacheShardFlushProcess.prepare_snapshot(pid)
+    assert included_seq == pre_state.current_seq - 1
+  end
+
+  test "resume_after_snapshot appends to requested sequence file", %{storage_dir: storage_dir} do
+    {:ok, pid} = start_supervised({CacheShardFlushProcess, [shard_id: 789]})
+    :ok = CacheShardFlushProcess.enqueue(pid, {:set, "t", "a", %{"v" => 1}, 1, nil})
+    wait_for(fn -> CacheUtils.wal_segments(storage_dir, 789) != [] end)
+
+    assert {:ok, included_seq} = CacheShardFlushProcess.prepare_snapshot(pid)
+    open_seq = max(1, included_seq + 1)
+    :ok = CacheShardFlushProcess.resume_after_snapshot(pid, open_seq)
+    :ok = CacheShardFlushProcess.enqueue(pid, {:set, "t", "b", %{"v" => 2}, 2, nil})
+
+    wait_for(fn ->
+      path = CacheUtils.wal_path(storage_dir, 789, open_seq)
+      match?({:ok, %{size: size}} when size > 0, File.stat(path))
+    end)
+  end
+
+  test "pause queue preserves operation order across resume", %{storage_dir: storage_dir} do
+    {:ok, pid} = start_supervised({CacheShardFlushProcess, [shard_id: 790]})
+    assert {:ok, included_seq} = CacheShardFlushProcess.prepare_snapshot(pid)
+
+    :ok = CacheShardFlushProcess.enqueue(pid, {:set, "t", "a", %{"v" => 1}, 10, nil})
+    :ok = CacheShardFlushProcess.enqueue(pid, {:delete, "t", "a", 11})
+    :ok = CacheShardFlushProcess.enqueue(pid, {:set, "t", "b", %{"v" => 2}, 12, nil})
+
+    open_seq = max(1, included_seq + 1)
+    :ok = CacheShardFlushProcess.resume_after_snapshot(pid, open_seq)
+
+    wait_for(fn ->
+      path = CacheUtils.wal_path(storage_dir, 790, open_seq)
+
+      case File.read(path) do
+        {:ok, bin} -> length(decode_records(bin)) >= 3
+        _ -> false
+      end
+    end)
+
+    {:ok, bin} = File.read(CacheUtils.wal_path(storage_dir, 790, open_seq))
+    assert [
+             {:set, "t", "a", %{"v" => 1}, 10, nil},
+             {:delete, "t", "a", 11},
+             {:set, "t", "b", %{"v" => 2}, 12, nil}
+           ] = decode_records(bin)
+  end
+
+  test "multiple close/open cycles remain writable", %{storage_dir: storage_dir} do
+    {:ok, pid} = start_supervised({CacheShardFlushProcess, [shard_id: 791]})
+
+    for cycle <- 1..3 do
+      assert :ok = CacheShardFlushProcess.close_for_rehydration(pid)
+      assert :ok = CacheShardFlushProcess.open_after_rehydration(pid)
+      :ok = CacheShardFlushProcess.enqueue(pid, {:set, "cy", "k#{cycle}", cycle, cycle, nil})
+    end
+
+    wait_for(fn ->
+      CacheUtils.wal_segments(storage_dir, 791)
+      |> Enum.any?(fn {_s, _p, sz} -> sz > 0 end)
+    end)
+  end
+
+  test "resume drains pause queue and clears in-memory batch", %{storage_dir: storage_dir} do
+    {:ok, pid} = start_supervised({CacheShardFlushProcess, [shard_id: 792]})
+    assert {:ok, included_seq} = CacheShardFlushProcess.prepare_snapshot(pid)
+
+    for idx <- 1..7 do
+      :ok = CacheShardFlushProcess.enqueue(pid, {:set, "d", "k#{idx}", idx, idx, nil})
+    end
+
+    :ok = CacheShardFlushProcess.resume_after_snapshot(pid, max(1, included_seq + 1))
+
+    wait_for(fn ->
+      st = :sys.get_state(pid)
+      st.batch_count == 0 and st.batch_buf == [] and :queue.is_empty(st.pause_q)
+    end)
+
+    assert CacheUtils.wal_segments(storage_dir, 792) != []
+  end
+
   defp wait_for(fun, attempts \\ 60)
   defp wait_for(_fun, 0), do: flunk("timed out waiting for condition")
 
@@ -190,4 +288,16 @@ defmodule CachePuppyCore.Persistence.CacheShardFlushProcessTest do
       wait_for(fun, attempts - 1)
     end
   end
+
+  defp decode_records(binary), do: decode_records(binary, [])
+
+  defp decode_records(<<len::unsigned-integer-size(32), rest::binary>>, acc)
+       when byte_size(rest) >= len do
+    <<term_bin::binary-size(len), tail::binary>> = rest
+    decode_records(tail, acc ++ [:erlang.binary_to_term(term_bin)])
+  rescue
+    _ -> acc
+  end
+
+  defp decode_records(_binary, acc), do: acc
 end
