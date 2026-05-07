@@ -1,5 +1,10 @@
 defmodule CachePuppy.Test.E2E.ScenarioTwoDeveloperServer do
-  @moduledoc false
+  @moduledoc """
+  Scenario 2 flow (serial + static parallel + merge):
+  start -> extract -> fan out to 3 fixed research branches -> merge at compile -> store.
+
+  This server validates fixed-size fan-out/fan-in behavior.
+  """
 
   import Plug.Conn
 

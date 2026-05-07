@@ -1,5 +1,10 @@
 defmodule CachePuppy.Test.E2E.ScenarioOneDeveloperServer do
-  @moduledoc false
+  @moduledoc """
+  Scenario 1 flow (serial):
+  start -> extract -> research -> compile -> store.
+
+  This server models a straight-line workflow where each step schedules the next one.
+  """
 
   import Plug.Conn
 
