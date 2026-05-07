@@ -135,7 +135,9 @@ defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
     assert :ok = GenServer.call(pid, :snapshot)
   end
 
-  test "periodic snapshot creates checkpoint and prunes older wal segments", %{storage_dir: storage_dir} do
+  test "periodic snapshot creates checkpoint and prunes older wal segments", %{
+    storage_dir: storage_dir
+  } do
     old_interval = Application.get_env(:cachepuppy_core, :cache_snapshot_interval_ms)
     old_wal_max = Application.get_env(:cachepuppy_core, :cache_wal_segment_max_bytes)
     old_snapshot_min = Application.get_env(:cachepuppy_core, :cache_snapshot_min_wal_bytes)
@@ -221,7 +223,9 @@ defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
     refute File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id))
   end
 
-  test "manual snapshot runs even when wal bytes are below timer threshold", %{storage_dir: storage_dir} do
+  test "manual snapshot runs even when wal bytes are below timer threshold", %{
+    storage_dir: storage_dir
+  } do
     old_snapshot_min = Application.get_env(:cachepuppy_core, :cache_snapshot_min_wal_bytes)
     Application.put_env(:cachepuppy_core, :cache_snapshot_min_wal_bytes, 1_000_000)
 
@@ -295,7 +299,11 @@ defmodule CachePuppyCore.Persistence.CacheShardProcessTest do
     assert_shard_ready!(pid)
     assert {:ok, %{"v" => 1}} = GenServer.call(pid, {:set, "t", "k", %{"v" => 1}, []})
 
-    assert_eventually(fn -> File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id)) end, 120)
+    assert_eventually(
+      fn -> File.exists?(CacheUtils.snapshot_path(storage_dir, shard_id)) end,
+      120
+    )
+
     ref = :sys.get_state(pid).snapshot_ref
     assert is_reference(ref)
   end

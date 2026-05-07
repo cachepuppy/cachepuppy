@@ -176,7 +176,9 @@ defmodule CachePuppyCore.Persistence.CacheShardMaintenanceProcessTest do
   test "snapshot is idempotent when no new wal arrives", %{storage_dir: storage_dir} do
     shard_id = 888
     {:ok, flush} = start_supervised({CacheShardFlushProcess, [shard_id: shard_id]})
-    {:ok, maint} = start_supervised({CacheShardMaintenanceProcess, [shard_id: shard_id, flush_pid: flush]})
+
+    {:ok, maint} =
+      start_supervised({CacheShardMaintenanceProcess, [shard_id: shard_id, flush_pid: flush]})
 
     :ok = CacheShardFlushProcess.enqueue(flush, {:set, "idem", "k", %{"v" => 1}, 1, nil})
     Process.sleep(70)
@@ -198,14 +200,34 @@ defmodule CachePuppyCore.Persistence.CacheShardMaintenanceProcessTest do
     storage_dir: storage_dir
   } do
     shard_id = 889
-    checkpoint = %{"snapshot_cutoff_seq" => 2, "updated_at_ms" => System.system_time(:millisecond)}
-    :ok = File.write(CacheUtils.checkpoint_path(storage_dir, shard_id), :erlang.term_to_binary(checkpoint))
 
-    :ok = File.write(CacheUtils.wal_path(storage_dir, shard_id, 1), encode_record({:set, "t", "old", 1, 1, nil}))
-    :ok = File.write(CacheUtils.wal_path(storage_dir, shard_id, 2), encode_record({:set, "t", "new", 2, 2, nil}))
+    checkpoint = %{
+      "snapshot_cutoff_seq" => 2,
+      "updated_at_ms" => System.system_time(:millisecond)
+    }
+
+    :ok =
+      File.write(
+        CacheUtils.checkpoint_path(storage_dir, shard_id),
+        :erlang.term_to_binary(checkpoint)
+      )
+
+    :ok =
+      File.write(
+        CacheUtils.wal_path(storage_dir, shard_id, 1),
+        encode_record({:set, "t", "old", 1, 1, nil})
+      )
+
+    :ok =
+      File.write(
+        CacheUtils.wal_path(storage_dir, shard_id, 2),
+        encode_record({:set, "t", "new", 2, 2, nil})
+      )
 
     {:ok, flush} = start_supervised({CacheShardFlushProcess, [shard_id: shard_id]})
-    {:ok, maint} = start_supervised({CacheShardMaintenanceProcess, [shard_id: shard_id, flush_pid: flush]})
+
+    {:ok, maint} =
+      start_supervised({CacheShardMaintenanceProcess, [shard_id: shard_id, flush_pid: flush]})
 
     assert {:ok, tid} = CacheShardMaintenanceProcess.load_from_disk(maint)
     assert [] == :ets.lookup(tid, {"t", "old"})
@@ -223,11 +245,22 @@ defmodule CachePuppyCore.Persistence.CacheShardMaintenanceProcessTest do
         )
     end
 
-    checkpoint = %{"snapshot_cutoff_seq" => 2, "updated_at_ms" => System.system_time(:millisecond)}
-    :ok = File.write(CacheUtils.checkpoint_path(storage_dir, shard_id), :erlang.term_to_binary(checkpoint))
+    checkpoint = %{
+      "snapshot_cutoff_seq" => 2,
+      "updated_at_ms" => System.system_time(:millisecond)
+    }
+
+    :ok =
+      File.write(
+        CacheUtils.checkpoint_path(storage_dir, shard_id),
+        :erlang.term_to_binary(checkpoint)
+      )
 
     {:ok, flush} = start_supervised({CacheShardFlushProcess, [shard_id: shard_id]})
-    {:ok, maint} = start_supervised({CacheShardMaintenanceProcess, [shard_id: shard_id, flush_pid: flush]})
+
+    {:ok, maint} =
+      start_supervised({CacheShardMaintenanceProcess, [shard_id: shard_id, flush_pid: flush]})
+
     assert :ok = CacheShardMaintenanceProcess.snapshot(maint)
 
     {:ok, cp_bin} = File.read(CacheUtils.checkpoint_path(storage_dir, shard_id))
@@ -245,11 +278,23 @@ defmodule CachePuppyCore.Persistence.CacheShardMaintenanceProcessTest do
     storage_dir: storage_dir
   } do
     shard_id = 891
-    :ok = File.write(CacheUtils.checkpoint_path(storage_dir, shard_id), :erlang.term_to_binary(%{"bad" => 1}))
-    :ok = File.write(CacheUtils.wal_path(storage_dir, shard_id, 1), encode_record({:set, "t", "k", 1, 1, nil}))
+
+    :ok =
+      File.write(
+        CacheUtils.checkpoint_path(storage_dir, shard_id),
+        :erlang.term_to_binary(%{"bad" => 1})
+      )
+
+    :ok =
+      File.write(
+        CacheUtils.wal_path(storage_dir, shard_id, 1),
+        encode_record({:set, "t", "k", 1, 1, nil})
+      )
 
     {:ok, flush} = start_supervised({CacheShardFlushProcess, [shard_id: shard_id]})
-    {:ok, maint} = start_supervised({CacheShardMaintenanceProcess, [shard_id: shard_id, flush_pid: flush]})
+
+    {:ok, maint} =
+      start_supervised({CacheShardMaintenanceProcess, [shard_id: shard_id, flush_pid: flush]})
 
     assert {:ok, tid} = CacheShardMaintenanceProcess.load_from_disk(maint)
     assert [{{"t", "k"}, _}] = :ets.lookup(tid, {"t", "k"})
@@ -260,7 +305,9 @@ defmodule CachePuppyCore.Persistence.CacheShardMaintenanceProcessTest do
   } do
     shard_id = 892
     {:ok, flush} = start_supervised({CacheShardFlushProcess, [shard_id: shard_id]})
-    {:ok, maint} = start_supervised({CacheShardMaintenanceProcess, [shard_id: shard_id, flush_pid: flush]})
+
+    {:ok, maint} =
+      start_supervised({CacheShardMaintenanceProcess, [shard_id: shard_id, flush_pid: flush]})
 
     :ok = CacheShardFlushProcess.enqueue(flush, {:set, "t", "k", %{"v" => 1}, 1, nil})
     Process.sleep(70)
