@@ -7,6 +7,7 @@ defmodule CachePuppyCore.Workflow do
 
   @type t :: %__MODULE__{
           id: String.t(),
+          name: String.t() | nil,
           status: status(),
           steps: %{String.t() => Step.t()},
           groups: %{String.t() => ParallelGroup.t() | LoopGroup.t()},
@@ -20,6 +21,7 @@ defmodule CachePuppyCore.Workflow do
 
   defstruct [
     :id,
+    :name,
     status: :pending,
     steps: %{},
     groups: %{},
@@ -31,9 +33,9 @@ defmodule CachePuppyCore.Workflow do
     updated_at: nil
   ]
 
-  @spec new(String.t()) :: t()
-  def new(id) when is_binary(id) do
+  @spec new(String.t(), String.t() | nil) :: t()
+  def new(id, name \\ nil) when is_binary(id) and (is_binary(name) or is_nil(name)) do
     now = DateTime.utc_now()
-    %__MODULE__{id: id, inserted_at: now, updated_at: now}
+    %__MODULE__{id: id, name: name, inserted_at: now, updated_at: now}
   end
 end

@@ -1,0 +1,214 @@
+defmodule CachePuppyCoreWeb.StepController do
+  use CachePuppyCoreWeb, :controller
+
+  import Ecto.Changeset
+
+  alias CachePuppyCore.{WorkflowManager, WorkflowServer}
+  alias CachePuppyCoreWeb.Changesets.{LoopChangeset, ParallelChangeset, StepChangeset}
+  alias CachePuppyCoreWeb.{ErrorJSON, WorkflowJSON}
+
+  @resume_types %{step_id: :string, output: :map}
+
+  def add_step(conn, %{"id" => workflow_id} = params) do
+    with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
+         {:ok, step_params} <- StepChangeset.validate_params(params),
+         {:ok, step} <- WorkflowServer.add_step(workflow_id, with_step_id(step_params)) do
+      conn |> put_status(:created) |> json(WorkflowJSON.step_created(step))
+    else
+      {:conn, conn} -> conn
+      {:error, %Ecto.Changeset{} = cs} -> bad_validation(conn, cs)
+      other -> map_server_error(conn, workflow_id, other)
+    end
+  end
+
+  def add_parallel(conn, %{"id" => workflow_id} = params) do
+    with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
+         {:ok, steps} <- ParallelChangeset.validate_params(params) do
+      payload =
+        Enum.map(steps, fn step -> step |> with_step_id() |> StepChangeset.to_step_params() end)
+
+      case WorkflowServer.add_parallel_steps(workflow_id, payload) do
+        {:ok, group_id, branch_steps} ->
+          conn
+          |> put_status(:created)
+          |> json(WorkflowJSON.parallel_created(group_id, branch_steps))
+
+        other ->
+          map_server_error(conn, workflow_id, other)
+      end
+    else
+      {:conn, conn} -> conn
+      {:error, %Ecto.Changeset{} = cs} -> bad_validation(conn, cs)
+    end
+  end
+
+  def add_merge(conn, %{"id" => workflow_id} = params) do
+    with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
+         {:ok, attrs} <- StepChangeset.validate_params(params) do
+      case WorkflowServer.add_merge_step(
+             workflow_id,
+             attrs |> with_step_id() |> StepChangeset.to_step_params()
+           ) do
+        {:ok, step} -> conn |> put_status(:created) |> json(WorkflowJSON.step_created(step))
+        other -> map_server_error(conn, workflow_id, other)
+      end
+    else
+      {:conn, conn} -> conn
+      {:error, %Ecto.Changeset{} = cs} -> bad_validation(conn, cs)
+    end
+  end
+
+  def add_loop(conn, %{"id" => workflow_id} = params) do
+    with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
+         {:ok, attrs} <- LoopChangeset.validate_params(params) do
+      step_params =
+        attrs
+        |> with_step_id()
+        |> StepChangeset.to_step_params()
+
+      case WorkflowServer.add_loop(
+             workflow_id,
+             step_params,
+             attrs.continue_if,
+             attrs.max_iterations
+           ) do
+        {:ok, group_id} ->
+          conn
+          |> put_status(:created)
+          |> json(
+            WorkflowJSON.loop_created(
+              group_id,
+              attrs.step_name,
+              attrs.max_iterations,
+              attrs.continue_if
+            )
+          )
+
+        other ->
+          map_server_error(conn, workflow_id, other)
+      end
+    else
+      {:conn, conn} -> conn
+      {:error, %Ecto.Changeset{} = cs} -> bad_validation(conn, cs)
+    end
+  end
+
+  def resume(conn, %{"id" => workflow_id} = params) do
+    with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
+         {:ok, attrs} <- validate_resume(params),
+         {:ok, _step} <- WorkflowServer.resume(workflow_id, attrs.step_id, attrs.output),
+         {:ok, wf} <- WorkflowServer.get_state(workflow_id) do
+      json(conn, WorkflowJSON.workflow_status(wf))
+    else
+      {:conn, conn} -> conn
+      {:error, %Ecto.Changeset{} = cs} -> bad_validation(conn, cs)
+      other -> map_server_error(conn, workflow_id, other)
+    end
+  end
+
+  def execute_now(conn, %{"id" => workflow_id} = params) do
+    with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
+         {:ok, attrs} <- StepChangeset.validate_params(params) do
+      case WorkflowServer.execute_now(
+             workflow_id,
+             attrs |> with_step_id() |> StepChangeset.to_step_params()
+           ) do
+        {:ok, step} ->
+          json(conn, WorkflowJSON.execute_now(step))
+
+        {:error, %{} = reason} ->
+          conn
+          |> put_status(:internal_server_error)
+          |> json(ErrorJSON.internal_error(inspect(reason)))
+
+        other ->
+          map_server_error(conn, workflow_id, other)
+      end
+    else
+      {:conn, conn} -> conn
+      {:error, %Ecto.Changeset{} = cs} -> bad_validation(conn, cs)
+    end
+  end
+
+  def end_workflow(conn, %{"id" => workflow_id}) do
+    with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
+         :ok <- WorkflowServer.end_workflow(workflow_id),
+         {:ok, wf} <- WorkflowServer.get_state(workflow_id) do
+      json(conn, WorkflowJSON.workflow_status(wf))
+    else
+      {:conn, conn} -> conn
+      other -> map_server_error(conn, workflow_id, other)
+    end
+  end
+
+  defp validate_resume(params) do
+    cs =
+      {%{}, @resume_types}
+      |> cast(%{step_id: Map.get(params, "stepId"), output: Map.get(params, "output")}, [
+        :step_id,
+        :output
+      ])
+      |> validate_required([:step_id])
+      |> put_output_default()
+
+    if cs.valid?, do: {:ok, apply_changes(cs)}, else: {:error, cs}
+  end
+
+  defp put_output_default(cs) do
+    if get_field(cs, :output) == nil, do: put_change(cs, :output, %{}), else: cs
+  end
+
+  defp with_step_id(attrs) do
+    Map.put(attrs, :step_id, "step_" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower))
+  end
+
+  defp lookup_workflow(workflow_id, conn) do
+    case WorkflowManager.lookup(workflow_id) do
+      {:ok, pid} ->
+        {:ok, pid}
+
+      :not_found ->
+        {:conn, conn |> put_status(:not_found) |> json(ErrorJSON.workflow_not_found(workflow_id))}
+
+      {:error, _reason} ->
+        {:conn, conn |> put_status(:internal_server_error) |> json(ErrorJSON.internal_error())}
+    end
+  end
+
+  defp bad_validation(conn, cs) do
+    details = traverse_errors(cs, fn {msg, _opts} -> msg end)
+    conn |> put_status(:bad_request) |> json(ErrorJSON.validation_failed(details))
+  end
+
+  defp map_server_error(conn, _workflow_id, {:error, :invalid_status}) do
+    conn |> put_status(:conflict) |> json(ErrorJSON.workflow_already_completed())
+  end
+
+  defp map_server_error(conn, _workflow_id, {:error, :invalid_step}) do
+    conn
+    |> put_status(:bad_request)
+    |> json(ErrorJSON.validation_failed(%{"step" => ["invalid step payload"]}))
+  end
+
+  defp map_server_error(conn, _workflow_id, {:error, :invalid_steps}) do
+    conn
+    |> put_status(:bad_request)
+    |> json(ErrorJSON.validation_failed(%{"steps" => ["invalid steps payload"]}))
+  end
+
+  defp map_server_error(conn, _workflow_id, {:error, :invalid_loop_args}) do
+    conn
+    |> put_status(:bad_request)
+    |> json(ErrorJSON.validation_failed(%{"loop" => ["invalid loop args"]}))
+  end
+
+  defp map_server_error(conn, _workflow_id, {:error, :not_found}) do
+    conn
+    |> put_status(:bad_request)
+    |> json(ErrorJSON.validation_failed(%{"stepId" => ["step not found"]}))
+  end
+
+  defp map_server_error(conn, _workflow_id, _other) do
+    conn |> put_status(:internal_server_error) |> json(ErrorJSON.internal_error())
+  end
+end

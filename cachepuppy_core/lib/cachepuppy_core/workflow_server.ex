@@ -57,11 +57,12 @@ defmodule CachePuppyCore.WorkflowServer do
   @impl true
   def init(opts) do
     workflow_id = Keyword.fetch!(opts, :workflow_id)
+    workflow_name = Keyword.get(opts, :workflow_name)
 
     workflow =
       case WorkflowStore.get(workflow_id) do
         {:ok, wf} -> wf
-        :not_found -> Workflow.new(workflow_id)
+        :not_found -> Workflow.new(workflow_id, workflow_name)
       end
 
     {:ok, workflow, {:continue, :advance}}

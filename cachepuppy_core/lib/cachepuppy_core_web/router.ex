@@ -9,6 +9,15 @@ defmodule CachePuppyCoreWeb.Router do
     pipe_through :api
 
     get "/health", HealthController, :show, log: false
+    post "/workflows", WorkflowController, :create
+    get "/workflows/:id", WorkflowController, :show
+    post "/workflows/:id/steps", StepController, :add_step
+    post "/workflows/:id/parallel", StepController, :add_parallel
+    post "/workflows/:id/merge", StepController, :add_merge
+    post "/workflows/:id/loop", StepController, :add_loop
+    post "/workflows/:id/resume", StepController, :resume
+    post "/workflows/:id/execute_now", StepController, :execute_now
+    post "/workflows/:id/end", StepController, :end_workflow
     post "/cache/setdata", CacheController, :setdata
     post "/cache/getdata", CacheController, :getdata
     post "/cache/updatedata", CacheController, :updatedata

@@ -56,6 +56,7 @@ defmodule CachePuppyCore.MixProject do
       {:horde, "~> 0.10.0"},
       {:req, "~> 0.5"},
       {:jose, "~> 1.11"},
+      {:ecto, "~> 3.13"},
       {:bypass, "~> 2.1", only: :test}
     ]
   end
