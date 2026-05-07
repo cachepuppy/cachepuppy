@@ -57,7 +57,8 @@ defmodule CachePuppyCore.MixProject do
       {:req, "~> 0.5"},
       {:jose, "~> 1.11"},
       {:ecto, "~> 3.13"},
-      {:bypass, "~> 2.1", only: :test}
+      {:bypass, "~> 2.1", only: :test},
+      {:plug_cowboy, "~> 2.7", only: :test}
     ]
   end
 
@@ -70,7 +71,13 @@ defmodule CachePuppyCore.MixProject do
   defp aliases do
     [
       setup: ["deps.get"],
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+      precommit: [
+        "compile --warnings-as-errors",
+        "deps.unlock --unused",
+        "format",
+        "test",
+        "test test/e2e"
+      ]
     ]
   end
 end
