@@ -6,6 +6,7 @@ defmodule CachePuppyCore.WorkflowServer do
   use GenServer
 
   alias CachePuppyCore.Execution.StepExecutor
+  alias CachePuppyCore.Graph.Broadcaster
   alias CachePuppyCore.Orchestrator
   alias CachePuppyCore.Workflow
   alias CachePuppyCore.Workflow.{LoopGroup, ParallelGroup, Step}
@@ -72,6 +73,7 @@ defmodule CachePuppyCore.WorkflowServer do
   def handle_continue(:advance, workflow) do
     workflow = advance_and_enqueue(workflow)
     :ok = commit(workflow)
+    :ok = maybe_broadcast_graph(workflow)
     {:noreply, workflow}
   end
 
@@ -89,6 +91,7 @@ defmodule CachePuppyCore.WorkflowServer do
 
       workflow = advance_and_enqueue(workflow)
       :ok = commit(workflow)
+      :ok = maybe_broadcast_graph(workflow)
       {:reply, :ok, workflow}
     end
   end
@@ -104,6 +107,7 @@ defmodule CachePuppyCore.WorkflowServer do
       workflow = %{workflow | serial_tail_step_id: step.step_id}
       workflow = touch(workflow) |> advance_and_enqueue()
       :ok = commit(workflow)
+      :ok = maybe_broadcast_graph(workflow)
       {:reply, {:ok, step}, workflow}
     else
       {:error, _} = err -> {:reply, err, workflow}
@@ -144,6 +148,7 @@ defmodule CachePuppyCore.WorkflowServer do
 
       workflow = advance_and_enqueue(workflow)
       :ok = commit(workflow)
+      :ok = maybe_broadcast_graph(workflow)
       {:reply, {:ok, group_id, branch_steps}, workflow}
     else
       true -> {:reply, {:error, :empty_parallel_branches}, workflow}
@@ -182,6 +187,7 @@ defmodule CachePuppyCore.WorkflowServer do
 
       workflow = advance_and_enqueue(workflow)
       :ok = commit(workflow)
+      :ok = maybe_broadcast_graph(workflow)
       {:reply, {:ok, step}, workflow}
     else
       nil -> {:reply, {:error, :no_open_parallel_group}, workflow}
@@ -225,6 +231,7 @@ defmodule CachePuppyCore.WorkflowServer do
 
       workflow = advance_and_enqueue(workflow)
       :ok = commit(workflow)
+      :ok = maybe_broadcast_graph(workflow)
       {:reply, {:ok, group_id}, workflow}
     else
       {:error, _} = err -> {:reply, err, workflow}
@@ -292,6 +299,7 @@ defmodule CachePuppyCore.WorkflowServer do
         end
 
       :ok = commit(workflow)
+      :ok = maybe_broadcast_graph(workflow)
       {:reply, reply, workflow}
     else
       {:error, _} = err -> {:reply, err, workflow}
@@ -303,6 +311,7 @@ defmodule CachePuppyCore.WorkflowServer do
     {workflow, actions} = Orchestrator.on_step_result(workflow, step_id, result)
     workflow = enqueue_orchestration(workflow, actions)
     :ok = commit(workflow)
+    :ok = maybe_broadcast_graph(workflow)
     {:noreply, workflow}
   end
 
@@ -316,6 +325,7 @@ defmodule CachePuppyCore.WorkflowServer do
         {workflow, actions} = Orchestrator.on_step_result(workflow, step_id, result)
         workflow = enqueue_orchestration(workflow, actions)
         :ok = commit(workflow)
+        :ok = maybe_broadcast_graph(workflow)
         {:reply, {:ok, step}, workflow}
     end
   end
@@ -517,5 +527,9 @@ defmodule CachePuppyCore.WorkflowServer do
   defp execution_opts(opts) do
     defaults = Application.get_env(:cachepuppy_core, :workflow_step_executor_opts, [])
     Keyword.merge(defaults, opts)
+  end
+
+  defp maybe_broadcast_graph(%Workflow{id: workflow_id}) do
+    Broadcaster.broadcast(workflow_id)
   end
 end

@@ -15,6 +15,7 @@ defmodule CachePuppyCore.Workflow do
           serial_tail_step_id: String.t() | nil,
           active_step_ids: MapSet.t(String.t()),
           failure_reason: term() | nil,
+          graph_snapshot: CachePuppyCore.Graph.t() | nil,
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -29,6 +30,7 @@ defmodule CachePuppyCore.Workflow do
     serial_tail_step_id: nil,
     active_step_ids: MapSet.new(),
     failure_reason: nil,
+    graph_snapshot: nil,
     inserted_at: nil,
     updated_at: nil
   ]

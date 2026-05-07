@@ -257,4 +257,20 @@ defmodule CachePuppyCore.WorkflowServerTest do
     assert {:ok, wf} = WorkflowServer.get_state(wid)
     assert wf.steps["now"].status == :completed
   end
+
+  test "add_step broadcasts graph diff over pubsub", %{workflow_id: wid, response_agent: agent} do
+    assert {:ok, _} = WorkflowManager.ensure_started(wid)
+
+    set_responses(agent, [
+      {:ok, %{status_code: 200, body: %{}, step: %CachePuppyCore.Workflow.Step{retry_count: 0}}}
+    ])
+
+    :ok = Phoenix.PubSub.subscribe(CachePuppyCore.PubSub, "workflow:" <> wid)
+
+    s1 = %{step_id: "g1", step_name: "graph", url: "http://example/graph"}
+    assert {:ok, _} = WorkflowServer.add_step(wid, s1)
+
+    assert_receive {:graph_diff, diff}
+    assert diff["workflowId"] == wid
+  end
 end

@@ -1,0 +1,63 @@
+defmodule CachePuppyCore.Graph.Node do
+  @moduledoc false
+
+  alias CachePuppyCore.Workflow.{LoopGroup, ParallelGroup, Step}
+
+  @type t :: map()
+
+  @spec from_step(Step.t(), non_neg_integer() | nil) :: t()
+  def from_step(%Step{} = step, iteration_number \\ nil) do
+    %{
+      "nodeId" => step.step_id,
+      "stepName" => step.step_name,
+      "type" => step_type(step),
+      "status" => atom_to_string(step.status),
+      "groupId" => step.group_id,
+      "iterationNumber" => iteration_number,
+      "parentIds" => step.parent_ids,
+      "input" => step.input,
+      "output" => step.output,
+      "insertedAt" => iso(step.inserted_at),
+      "startedAt" => iso(step.started_at),
+      "completedAt" => iso(step.completed_at),
+      "retryCount" => step.retry_count,
+      "error" => step.execution_error
+    }
+  end
+
+  @spec from_parallel_group(ParallelGroup.t(), [String.t()]) :: t()
+  def from_parallel_group(%ParallelGroup{} = group, parent_ids) do
+    %{
+      "nodeId" => group.group_id,
+      "type" => "parallel_group",
+      "status" => atom_to_string(group.status),
+      "totalBranches" => group.total_branches,
+      "completedBranches" => group.completed_branches,
+      "parentIds" => parent_ids
+    }
+  end
+
+  @spec from_loop_group(LoopGroup.t(), [String.t()]) :: t()
+  def from_loop_group(%LoopGroup{} = group, parent_ids) do
+    %{
+      "nodeId" => group.group_id,
+      "type" => "loop_group",
+      "status" => atom_to_string(group.status),
+      "currentIteration" => group.current_iteration,
+      "maxIterations" => group.max_iterations,
+      "continueIf" => group.continue_if,
+      "parentIds" => parent_ids
+    }
+  end
+
+  defp step_type(%Step{group_type: :parallel_branch}), do: "parallel_branch"
+  defp step_type(%Step{group_type: :parallel_merge}), do: "merge"
+  defp step_type(%Step{group_type: :loop_iteration}), do: "loop_iteration"
+  defp step_type(%Step{}), do: "serial"
+
+  defp iso(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
+  defp iso(_), do: nil
+
+  defp atom_to_string(v) when is_atom(v), do: Atom.to_string(v)
+  defp atom_to_string(v), do: v
+end
