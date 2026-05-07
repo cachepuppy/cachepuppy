@@ -12,6 +12,8 @@ defmodule CachePuppyCore.Workflow do
           groups: %{String.t() => ParallelGroup.t() | LoopGroup.t()},
           open_parallel_group_id: String.t() | nil,
           serial_tail_step_id: String.t() | nil,
+          active_step_ids: MapSet.t(String.t()),
+          failure_reason: term() | nil,
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -23,6 +25,8 @@ defmodule CachePuppyCore.Workflow do
     groups: %{},
     open_parallel_group_id: nil,
     serial_tail_step_id: nil,
+    active_step_ids: MapSet.new(),
+    failure_reason: nil,
     inserted_at: nil,
     updated_at: nil
   ]

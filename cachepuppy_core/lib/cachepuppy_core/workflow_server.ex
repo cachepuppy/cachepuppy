@@ -1,15 +1,14 @@
 defmodule CachePuppyCore.WorkflowServer do
   @moduledoc """
   GenServer owning one workflow execution's state.
-
-  Registered under `Horde.Registry` as `{CachePuppyCore.WorkflowRegistry, workflow_id}`.
-  Persists to ETS via `CachePuppyCore.Workflow.WorkflowStore` after each successful mutation.
   """
 
   use GenServer
 
+  alias CachePuppyCore.Execution.StepExecutor
+  alias CachePuppyCore.Orchestrator
   alias CachePuppyCore.Workflow
-  alias CachePuppyCore.Workflow.{LoopGroup, LoopIteration, ParallelGroup, Step}
+  alias CachePuppyCore.Workflow.{LoopGroup, ParallelGroup, Step}
   alias CachePuppyCore.Workflow.WorkflowStore
 
   # --- Client ---
@@ -65,13 +64,18 @@ defmodule CachePuppyCore.WorkflowServer do
         :not_found -> Workflow.new(workflow_id)
       end
 
-    {:ok, workflow}
+    {:ok, workflow, {:continue, :advance}}
   end
 
   @impl true
-  def handle_call(:get_state, _from, workflow) do
-    {:reply, {:ok, workflow}, workflow}
+  def handle_continue(:advance, workflow) do
+    workflow = advance_and_enqueue(workflow)
+    :ok = commit(workflow)
+    {:noreply, workflow}
   end
+
+  @impl true
+  def handle_call(:get_state, _from, workflow), do: {:reply, {:ok, workflow}, workflow}
 
   def handle_call(:end_workflow, _from, workflow) do
     if workflow.status in [:completed, :failed] do
@@ -82,6 +86,7 @@ defmodule CachePuppyCore.WorkflowServer do
         |> Map.put(:status, :completed)
         |> touch()
 
+      workflow = advance_and_enqueue(workflow)
       :ok = commit(workflow)
       {:reply, :ok, workflow}
     end
@@ -96,7 +101,7 @@ defmodule CachePuppyCore.WorkflowServer do
       step = %{step | inserted_at: step.inserted_at || DateTime.utc_now()}
       workflow = put_step(workflow, step)
       workflow = %{workflow | serial_tail_step_id: step.step_id}
-      workflow = touch(workflow)
+      workflow = touch(workflow) |> advance_and_enqueue()
       :ok = commit(workflow)
       {:reply, {:ok, step}, workflow}
     else
@@ -120,6 +125,7 @@ defmodule CachePuppyCore.WorkflowServer do
           {step, wf} = apply_serial_parents(step, wf)
           step = %{step | group_id: group_id, branch_index: idx}
           step = %{step | inserted_at: step.inserted_at || DateTime.utc_now()}
+          step = %{step | group_type: :parallel_branch}
           {step, put_step(wf, step)}
         end)
 
@@ -133,11 +139,9 @@ defmodule CachePuppyCore.WorkflowServer do
       }
 
       workflow =
-        workflow
-        |> put_group(group)
-        |> Map.put(:open_parallel_group_id, group_id)
-        |> touch()
+        workflow |> put_group(group) |> Map.put(:open_parallel_group_id, group_id) |> touch()
 
+      workflow = advance_and_enqueue(workflow)
       :ok = commit(workflow)
       {:reply, {:ok, group_id, branch_steps}, workflow}
     else
@@ -149,13 +153,21 @@ defmodule CachePuppyCore.WorkflowServer do
   def handle_call({:add_merge_step, step}, _from, workflow) do
     with :ok <- ensure_mutable(workflow),
          gid when is_binary(gid) <- workflow.open_parallel_group_id,
-         %ParallelGroup{status: :open} = pg <- Map.get(workflow.groups, gid),
+         %ParallelGroup{} = pg <- Map.get(workflow.groups, gid),
+         true <- pg.status in [:open, :waiting_for_merge_step],
          {:ok, step} <- to_step(step),
          :ok <- ensure_unique_step(workflow, step.step_id),
          {:ok, workflow} <- maybe_activate(workflow) do
       branch_ids = parallel_branch_step_ids(workflow, gid)
       step = apply_merge_parents(step, branch_ids)
-      step = %{step | inserted_at: step.inserted_at || DateTime.utc_now()}
+
+      step = %{
+        step
+        | inserted_at: step.inserted_at || DateTime.utc_now(),
+          group_type: :parallel_merge,
+          group_id: gid
+      }
+
       workflow = put_step(workflow, step)
 
       pg = %{pg | merge_step_id: step.step_id, status: :waiting_for_merge_step}
@@ -167,10 +179,12 @@ defmodule CachePuppyCore.WorkflowServer do
         |> Map.put(:serial_tail_step_id, step.step_id)
         |> touch()
 
+      workflow = advance_and_enqueue(workflow)
       :ok = commit(workflow)
       {:reply, {:ok, step}, workflow}
     else
       nil -> {:reply, {:error, :no_open_parallel_group}, workflow}
+      false -> {:reply, {:error, :parallel_group_not_open}, workflow}
       %ParallelGroup{} -> {:reply, {:error, :parallel_group_not_open}, workflow}
       {:error, _} = err -> {:reply, err, workflow}
     end
@@ -184,7 +198,14 @@ defmodule CachePuppyCore.WorkflowServer do
          {:ok, workflow} <- maybe_activate(workflow) do
       group_id = generate_id("lg")
       {step, workflow} = apply_serial_parents(step, workflow)
-      step = %{step | group_id: group_id, inserted_at: step.inserted_at || DateTime.utc_now()}
+
+      step = %{
+        step
+        | group_id: group_id,
+          group_type: :loop_iteration,
+          inserted_at: step.inserted_at || DateTime.utc_now()
+      }
+
       workflow = put_step(workflow, step)
 
       group = %LoopGroup{
@@ -194,15 +215,14 @@ defmodule CachePuppyCore.WorkflowServer do
         max_iterations: max_iterations,
         current_iteration: 0,
         iterations: [],
+        template_step_id: step.step_id,
         status: :running
       }
 
       workflow =
-        workflow
-        |> put_group(group)
-        |> Map.put(:serial_tail_step_id, step.step_id)
-        |> touch()
+        workflow |> put_group(group) |> Map.put(:serial_tail_step_id, step.step_id) |> touch()
 
+      workflow = advance_and_enqueue(workflow)
       :ok = commit(workflow)
       {:reply, {:ok, group_id}, workflow}
     else
@@ -230,32 +250,59 @@ defmodule CachePuppyCore.WorkflowServer do
       {step, workflow} = apply_serial_parents(step, workflow)
       now = DateTime.utc_now()
 
-      out =
-        case step.output do
-          nil -> %{}
-          other -> other
+      step = %{step | inserted_at: step.inserted_at || now, started_at: now}
+      exec_opts = [merge_data: nil]
+      result = step_executor_module().execute(step, workflow.id, execution_opts(exec_opts))
+
+      {workflow, reply} =
+        case result do
+          {:ok, %{body: body, step: executed}} ->
+            done = %{
+              step
+              | status: :completed,
+                retry_count: executed.retry_count,
+                output: body,
+                completed_at: DateTime.utc_now()
+            }
+
+            wf =
+              workflow
+              |> put_step(done)
+              |> Map.put(:serial_tail_step_id, step.step_id)
+              |> touch()
+
+            {wf, {:ok, done}}
+
+          {:error, reason} ->
+            failed = %{
+              step
+              | status: :failed,
+                execution_error: reason,
+                completed_at: DateTime.utc_now()
+            }
+
+            wf =
+              workflow
+              |> put_step(failed)
+              |> Map.put(:serial_tail_step_id, step.step_id)
+              |> touch()
+
+            {wf, {:error, reason}}
         end
 
-      step = %{
-        step
-        | inserted_at: step.inserted_at || now,
-          started_at: now,
-          completed_at: now,
-          status: :completed,
-          output: out
-      }
-
-      workflow =
-        workflow
-        |> put_step(step)
-        |> Map.put(:serial_tail_step_id, step.step_id)
-        |> touch()
-
       :ok = commit(workflow)
-      {:reply, {:ok, step}, workflow}
+      {:reply, reply, workflow}
     else
       {:error, _} = err -> {:reply, err, workflow}
     end
+  end
+
+  @impl true
+  def handle_cast({:execution_result, step_id, result}, workflow) do
+    {workflow, actions} = Orchestrator.on_step_result(workflow, step_id, result)
+    workflow = enqueue_orchestration(workflow, actions)
+    :ok = commit(workflow)
+    {:noreply, workflow}
   end
 
   defp resume_step(workflow, step_id, output) do
@@ -264,19 +311,9 @@ defmodule CachePuppyCore.WorkflowServer do
         {:reply, {:error, :not_found}, workflow}
 
       step ->
-        now = DateTime.utc_now()
-
-        step = %{
-          step
-          | status: :completed,
-            output: output,
-            completed_at: now
-        }
-
-        workflow = put_step(workflow, step)
-        workflow = apply_parallel_resume(workflow, step)
-        workflow = apply_loop_resume(workflow, step)
-        workflow = touch(workflow)
+        result = {:ok, %{status_code: 200, body: output, step: step}}
+        {workflow, actions} = Orchestrator.on_step_result(workflow, step_id, result)
+        workflow = enqueue_orchestration(workflow, actions)
         :ok = commit(workflow)
         {:reply, {:ok, step}, workflow}
     end
@@ -340,54 +377,6 @@ defmodule CachePuppyCore.WorkflowServer do
     |> Enum.filter(&(&1.group_id == group_id))
     |> Enum.map(& &1.step_id)
     |> Enum.sort()
-  end
-
-  defp apply_parallel_resume(workflow, %Step{group_id: nil}), do: workflow
-
-  defp apply_parallel_resume(workflow, %Step{group_id: gid, step_id: sid, output: out}) do
-    case Map.get(workflow.groups, gid) do
-      %ParallelGroup{} = pg ->
-        entry = %{step_id: sid, output: out}
-        collected = pg.collected_outputs ++ [entry]
-
-        pg = %{
-          pg
-          | completed_branches: pg.completed_branches + 1,
-            collected_outputs: collected
-        }
-
-        put_group(workflow, pg)
-
-      _ ->
-        workflow
-    end
-  end
-
-  defp apply_loop_resume(workflow, %Step{group_id: nil}), do: workflow
-
-  defp apply_loop_resume(workflow, %Step{group_id: gid} = step) do
-    case Map.get(workflow.groups, gid) do
-      %LoopGroup{} = lg ->
-        iter = %LoopIteration{
-          step_id: step.step_id,
-          input: step.input,
-          output: step.output,
-          status: :completed
-        }
-
-        iterations = lg.iterations ++ [iter]
-
-        lg = %{
-          lg
-          | iterations: iterations,
-            current_iteration: lg.current_iteration + 1
-        }
-
-        put_group(workflow, lg)
-
-      _ ->
-        workflow
-    end
   end
 
   defp ensure_unique_step(%Workflow{steps: steps}, step_id) do
@@ -466,6 +455,9 @@ defmodule CachePuppyCore.WorkflowServer do
   defp step_field_atom("output"), do: :output
   defp step_field_atom("parent_ids"), do: :parent_ids
   defp step_field_atom("group_id"), do: :group_id
+  defp step_field_atom("group_type"), do: :group_type
+  defp step_field_atom("parent_group_id"), do: :parent_group_id
+  defp step_field_atom("execution_error"), do: :execution_error
   defp step_field_atom("branch_index"), do: :branch_index
   defp step_field_atom("inserted_at"), do: :inserted_at
   defp step_field_atom("started_at"), do: :started_at
@@ -492,5 +484,37 @@ defmodule CachePuppyCore.WorkflowServer do
 
   defp generate_id(prefix) do
     prefix <> "-" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
+  end
+
+  defp advance_and_enqueue(workflow) do
+    {workflow, actions} = Orchestrator.advance(workflow)
+    enqueue_orchestration(workflow, actions)
+  end
+
+  defp enqueue_orchestration(workflow, actions) do
+    Enum.reduce(actions, workflow, fn {:execute_step, step, opts}, acc ->
+      acc = Orchestrator.mark_step_running(acc, step.step_id)
+      run_step_async(Map.fetch!(acc.steps, step.step_id), acc.id, opts)
+      acc
+    end)
+  end
+
+  defp run_step_async(step, workflow_id, opts) do
+    _ =
+      Task.start(fn ->
+        result = step_executor_module().execute(step, workflow_id, execution_opts(opts))
+        GenServer.cast(via(workflow_id), {:execution_result, step.step_id, result})
+      end)
+
+    :ok
+  end
+
+  defp step_executor_module do
+    Application.get_env(:cachepuppy_core, :workflow_step_executor_module, StepExecutor)
+  end
+
+  defp execution_opts(opts) do
+    defaults = Application.get_env(:cachepuppy_core, :workflow_step_executor_opts, [])
+    Keyword.merge(defaults, opts)
   end
 end
