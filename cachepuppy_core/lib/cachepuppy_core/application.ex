@@ -7,6 +7,8 @@ defmodule CachePuppyCore.Application do
 
   @impl true
   def start(_type, _args) do
+    :ok = CachePuppyCore.Workflow.WorkflowStore.ensure_table()
+
     topologies = Application.get_env(:libcluster, :topologies, [])
 
     quorum_guard_children =
@@ -30,6 +32,9 @@ defmodule CachePuppyCore.Application do
          [name: CachePuppyCore.CacheShardRegistry, keys: :unique, members: :auto]},
         {Horde.DynamicSupervisor,
          [name: CachePuppyCore.CacheShardSupervisor, strategy: :one_for_one, members: :auto]},
+        {Horde.Registry, [name: CachePuppyCore.WorkflowRegistry, keys: :unique, members: :auto]},
+        {Horde.DynamicSupervisor,
+         [name: CachePuppyCore.WorkflowSupervisor, strategy: :one_for_one, members: :auto]},
         CachePuppyCoreWeb.Presence
         # Start a worker by calling: CachePuppyCore.Worker.start_link(arg)
         # {CachePuppyCore.Worker, arg},

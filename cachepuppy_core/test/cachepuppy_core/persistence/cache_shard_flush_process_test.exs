@@ -179,7 +179,9 @@ defmodule CachePuppyCore.Persistence.CacheShardFlushProcessTest do
     assert :ok = CacheShardFlushProcess.open_after_rehydration(pid)
   end
 
-  test "prepare_snapshot returns previous seq when trailing segment is empty", %{storage_dir: storage_dir} do
+  test "prepare_snapshot returns previous seq when trailing segment is empty", %{
+    storage_dir: storage_dir
+  } do
     Application.put_env(:cachepuppy_core, :cache_wal_segment_max_bytes, 64)
     {:ok, pid} = start_supervised({CacheShardFlushProcess, [shard_id: 788]})
 
@@ -237,6 +239,7 @@ defmodule CachePuppyCore.Persistence.CacheShardFlushProcessTest do
     end)
 
     {:ok, bin} = File.read(CacheUtils.wal_path(storage_dir, 790, open_seq))
+
     assert [
              {:set, "t", "a", %{"v" => 1}, 10, nil},
              {:delete, "t", "a", 11},
