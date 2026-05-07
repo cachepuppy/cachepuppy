@@ -1,5 +1,11 @@
 defmodule CachePuppy.Test.E2E.ScenarioFourDeveloperServer do
-  @moduledoc false
+  @moduledoc """
+  Scenario 4 flow (dynamic parallel with nested serial work before merge):
+  start -> extract picks topics -> each branch performs research plus branch-local
+  summarization work -> merge at compile -> store.
+
+  This server validates that merge waits for full branch work, not partial progress.
+  """
 
   import Plug.Conn
 
