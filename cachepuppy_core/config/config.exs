@@ -9,6 +9,11 @@ import Config
 
 config :cachepuppy_core,
   generators: [timestamp_type: :utc_datetime],
+  step_executor: [
+    receive_timeout_ms: 30_000,
+    default_max_retries: 3,
+    default_success_codes: [200]
+  ],
   websocket_auth_enabled: false,
   websocket_jwt_secret: nil,
   websocket_jwt_identity_claim: "sub",
