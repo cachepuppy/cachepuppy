@@ -18,4 +18,23 @@ defmodule CachePuppyCoreWeb.ErrorJSON do
   def render(template, _assigns) do
     %{errors: %{detail: Phoenix.Controller.status_message_from_template(template)}}
   end
+
+  def validation_failed(details) when is_map(details) do
+    %{"error" => "validation_failed", "details" => details}
+  end
+
+  def workflow_not_found(id) when is_binary(id) do
+    %{"error" => "workflow_not_found", "message" => "No workflow found with id #{id}"}
+  end
+
+  def workflow_already_completed do
+    %{
+      "error" => "workflow_already_completed",
+      "message" => "Cannot add steps to a completed workflow"
+    }
+  end
+
+  def internal_error(message \\ "Something went wrong") do
+    %{"error" => "internal_error", "message" => message}
+  end
 end
