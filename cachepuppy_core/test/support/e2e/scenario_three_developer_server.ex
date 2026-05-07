@@ -1,5 +1,11 @@
 defmodule CachePuppy.Test.E2E.ScenarioThreeDeveloperServer do
-  @moduledoc false
+  @moduledoc """
+  Scenario 3 flow (serial + dynamic parallel + merge):
+  start -> extract decides runtime keyword count N -> fan out to N research branches
+  -> merge at compile -> store.
+
+  This server validates dynamic fan-out where branch count is decided during execution.
+  """
 
   import Plug.Conn
 
