@@ -68,6 +68,100 @@ export interface TopicWebhookConfigOptions {
 
 export type TopicHandler = (message: CachePuppyEnvelope) => void;
 
+export type WorkflowStatus = "pending" | "running" | "completed" | "failed";
+
+export interface WorkflowStepInput {
+  stepName: string;
+  url: string;
+  method: "get" | "post" | "put" | "patch" | "delete";
+  data?: Record<string, unknown>;
+  successCodes?: number[];
+  maxRetries?: number;
+}
+
+export interface WorkflowSummary {
+  workflowId: string;
+  name: string;
+  status: WorkflowStatus;
+}
+
+export interface WorkflowStepSummary {
+  stepId: string;
+  stepName: string;
+  status: WorkflowStatus;
+  parentIds?: string[];
+  groupId?: string | null;
+  groupType?: "parallel_branch" | "parallel_merge" | "loop_iteration" | null;
+  parentGroupId?: string | null;
+  branchIndex?: number | null;
+  retryCount?: number;
+  maxRetries?: number;
+  method?: string;
+  url?: string;
+  data?: unknown;
+  successCodes?: number[];
+  input?: unknown;
+  output?: unknown;
+  executionError?: unknown;
+  insertedAt?: string | null;
+  startedAt?: string | null;
+  completedAt?: string | null;
+}
+
+export interface WorkflowGroupSummary {
+  groupId: string;
+  type: "parallel" | "loop";
+  stepIds: string[];
+  branchCount?: number | null;
+  mergeStepId?: string | null;
+  maxIterations?: number | null;
+  continueIf?: string | null;
+}
+
+export interface WorkflowStateResponse extends WorkflowSummary {
+  steps: WorkflowStepSummary[];
+  groups: WorkflowGroupSummary[];
+}
+
+export interface WorkflowParallelCreatedResponse {
+  groupId: string;
+  totalBranches: number;
+  steps: WorkflowStepSummary[];
+}
+
+export interface WorkflowLoopCreatedResponse {
+  groupId: string;
+  stepName: string;
+  maxIterations: number;
+  continueIf: string;
+}
+
+export interface WorkflowStatusResponse {
+  workflowId: string;
+  status: WorkflowStatus;
+}
+
+export interface WorkflowExecuteNowResponse {
+  stepId: string;
+  output: unknown;
+  status: WorkflowStatus;
+}
+
+export interface WorkflowResumeInput {
+  stepId: string;
+  output?: Record<string, unknown>;
+}
+
+export interface WorkflowTopicEvent {
+  workflowId: string;
+  event: string;
+  payload: unknown;
+  envelope: CachePuppyEnvelope;
+}
+
+export type WorkflowStatusHandler = (payload: WorkflowStatusResponse) => void;
+export type WorkflowEventHandler = (event: WorkflowTopicEvent) => void;
+
 export interface ClientEventMap {
   connected: undefined;
   disconnected: { reason?: string };

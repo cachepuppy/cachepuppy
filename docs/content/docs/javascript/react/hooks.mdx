@@ -1,6 +1,6 @@
 ---
 title: Hooks
-description: "useTopic, usePresence, useTopicState, and useCachePuppyClient patterns."
+description: "useTopic, usePresence, useTopicState, workflow hooks, and useCachePuppyClient patterns."
 ---
 
 All hooks assume a surrounding **`CachePuppyProvider`**.
@@ -34,6 +34,26 @@ Loads topic state when connected, listens for `state_updated`, and exposes imper
 - **`setState(next)`** — wraps `client.setTopicState`.
 - **`refresh()`** — wraps `client.getTopicState`.
 - **`clear()`** — wraps `client.clearTopicState`.
+
+## `useWorkflowEvents(workflowId, options?)`
+
+Subscribes to the workflow topic (`workflow:<workflowId>`) while connected and emits every event from `client.subscribeWorkflow(...)`.
+
+```tsx
+const { error } = useWorkflowEvents("wf_123", {
+  onEvent: (event) => {
+    console.log(event.event, event.payload);
+  },
+});
+```
+
+## `useWorkflowStatus(workflowId, options?)`
+
+Filters workflow topic events to `workflow_status` using `client.onWorkflowStatus(...)` and returns:
+
+- **`status`** — latest status string or `null`.
+- **`latest`** — latest full `{ workflowId, status }` payload.
+- **`error`** — subscription setup error if any.
 
 <Callout type="warn" title="Server Components">
   These hooks are **client hooks**. Keep them in client components or files marked with `"use client"` at the module top when using the Next.js App Router.
