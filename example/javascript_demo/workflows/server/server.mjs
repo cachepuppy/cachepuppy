@@ -1,37 +1,13 @@
 import cors from "cors";
 import express from "express";
+import { createAdminClient } from "@cachepuppy/core";
 
 const PORT = Number(process.env.PORT || 8787);
 const CACHEPUPPY_API_BASE = (process.env.CACHEPUPPY_API_BASE || "http://127.0.0.1:4000").replace(/\/$/, "");
 const PUBLIC_BASE = (process.env.WORKFLOW_DEMO_PUBLIC_URL || `http://127.0.0.1:${PORT}`).replace(/\/$/, "");
 const STEP_DELAY_MS = Math.max(0, Number(process.env.WORKFLOW_STEP_DELAY_MS || 5000));
-
-/**
- * @param {string} url
- * @param {unknown} [body]
- * @param {number} [expectedStatus]
- */
-async function postJson(url, body, expectedStatus = 200) {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  const text = await res.text();
-  /** @type {Record<string, unknown>} */
-  let data = {};
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { raw: text };
-    }
-  }
-  if (res.status !== expectedStatus) {
-    throw new Error(`POST ${url} expected ${expectedStatus}, got ${res.status}: ${text}`);
-  }
-  return data;
-}
+const CACHEPUPPY_SOCKET_URL = `${CACHEPUPPY_API_BASE.replace(/^http/i, "ws")}/socket/websocket`;
+const admin = createAdminClient({ url: CACHEPUPPY_SOCKET_URL });
 
 function stepDelay() {
   return new Promise((r) => setTimeout(r, STEP_DELAY_MS));
@@ -46,11 +22,7 @@ async function armParallelMerge(workflowId, parallelCreated) {
   if (typeof mergeStepId !== "string") {
     throw new Error("parallel response missing mergeStep.stepId");
   }
-  await postJson(
-    `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/parallel/merge_now`,
-    { mergeStepId },
-    200,
-  );
+  await admin.mergeWorkflowParallelNow(workflowId, mergeStepId);
 }
 
 function scenario1Router() {
@@ -63,22 +35,18 @@ function scenario1Router() {
       if (typeof paragraph !== "string") {
         return res.status(400).json({ error: "invalid_start_request" });
       }
-      const workflow = await postJson(`${CACHEPUPPY_API_BASE}/api/workflows`, { name: "e2e-scenario-1" }, 201);
+      const workflow = await admin.createWorkflow("e2e-scenario-1");
       const workflowId = workflow.workflowId;
       if (typeof workflowId !== "string") {
         return res.status(500).json({ error: "no_workflow_id" });
       }
 
-      await postJson(
-        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/steps`,
-        {
-          stepName: "extract",
-          url: `${base}/extract`,
-          method: "post",
-          data: { paragraph },
-        },
-        201,
-      );
+      await admin.addWorkflowStep(workflowId, {
+        stepName: "extract",
+        url: `${base}/extract`,
+        method: "post",
+        data: { paragraph },
+      });
 
       return res.status(201).json({ workflowId });
     } catch (e) {
@@ -98,16 +66,12 @@ function scenario1Router() {
       await stepDelay();
       const keywords = paragraph.split(/\s+/).filter(Boolean).slice(0, 3);
 
-      await postJson(
-        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/steps`,
-        {
-          stepName: "research",
-          url: `${base}/research`,
-          method: "post",
-          data: { keywords },
-        },
-        201,
-      );
+      await admin.addWorkflowStep(workflowId, {
+        stepName: "research",
+        url: `${base}/research`,
+        method: "post",
+        data: { keywords },
+      });
 
       return res.status(200).json({ keywords });
     } catch (e) {
@@ -127,16 +91,12 @@ function scenario1Router() {
       await stepDelay();
       const summary = `summary: ${keywords.join(", ")}`;
 
-      await postJson(
-        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/steps`,
-        {
-          stepName: "compile",
-          url: `${base}/compile`,
-          method: "post",
-          data: { summary },
-        },
-        201,
-      );
+      await admin.addWorkflowStep(workflowId, {
+        stepName: "compile",
+        url: `${base}/compile`,
+        method: "post",
+        data: { summary },
+      });
 
       return res.status(200).json({ summary });
     } catch (e) {
@@ -156,16 +116,12 @@ function scenario1Router() {
       await stepDelay();
       const report = `report: ${summary}`;
 
-      await postJson(
-        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/steps`,
-        {
-          stepName: "store",
-          url: `${base}/store`,
-          method: "post",
-          data: { report },
-        },
-        201,
-      );
+      await admin.addWorkflowStep(workflowId, {
+        stepName: "store",
+        url: `${base}/store`,
+        method: "post",
+        data: { report },
+      });
 
       return res.status(200).json({ report });
     } catch (e) {
@@ -202,22 +158,18 @@ function scenario2Router() {
       if (typeof paragraph !== "string") {
         return res.status(400).json({ error: "invalid_start_request" });
       }
-      const workflow = await postJson(`${CACHEPUPPY_API_BASE}/api/workflows`, { name: "e2e-scenario-2" }, 201);
+      const workflow = await admin.createWorkflow("e2e-scenario-2");
       const workflowId = workflow.workflowId;
       if (typeof workflowId !== "string") {
         return res.status(500).json({ error: "no_workflow_id" });
       }
 
-      await postJson(
-        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/steps`,
-        {
-          stepName: "extract",
-          url: `${base}/extract`,
-          method: "post",
-          data: { paragraph },
-        },
-        201,
-      );
+      await admin.addWorkflowStep(workflowId, {
+        stepName: "extract",
+        url: `${base}/extract`,
+        method: "post",
+        data: { paragraph },
+      });
 
       return res.status(201).json({ workflowId });
     } catch (e) {
@@ -235,10 +187,7 @@ function scenario2Router() {
       }
       await stepDelay();
 
-      const parallelCreated = await postJson(
-        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/parallel`,
-        {
-          steps: [
+      const parallelCreated = await admin.addWorkflowParallel(workflowId, [
             {
               stepId: "research_A",
               stepName: "research_A",
@@ -260,17 +209,13 @@ function scenario2Router() {
               method: "post",
               data: { keyword: "gamma" },
             },
-          ],
-          mergeStep: {
+          ], {
             stepId: "compile",
             stepName: "compile",
             url: `${base}/compile`,
             method: "post",
             data: {},
-          },
-        },
-        201,
-      );
+          });
       await armParallelMerge(workflowId, parallelCreated);
 
       return res.status(200).json({ keywords: ["alpha", "beta", "gamma"] });
@@ -308,17 +253,13 @@ function scenario2Router() {
       await stepDelay();
       const compiled = mergeData.map((m) => m?.output?.result).join(", ");
 
-      await postJson(
-        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/steps`,
-        {
-          stepName: "store",
-          url: `${base}/store`,
-          method: "post",
-          parentIds: ["compile"],
-          data: { compiled },
-        },
-        201,
-      );
+      await admin.addWorkflowStep(workflowId, {
+        stepName: "store",
+        url: `${base}/store`,
+        method: "post",
+        parentIds: ["compile"],
+        data: { compiled },
+      });
 
       return res.status(200).json({ compiled });
     } catch (e) {
@@ -355,22 +296,18 @@ function scenario3Router() {
       if (typeof paragraph !== "string") {
         return res.status(400).json({ error: "invalid_start_request" });
       }
-      const workflow = await postJson(`${CACHEPUPPY_API_BASE}/api/workflows`, { name: "e2e-scenario-3" }, 201);
+      const workflow = await admin.createWorkflow("e2e-scenario-3");
       const workflowId = workflow.workflowId;
       if (typeof workflowId !== "string") {
         return res.status(500).json({ error: "no_workflow_id" });
       }
 
-      await postJson(
-        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/steps`,
-        {
-          stepName: "extract",
-          url: `${base}/extract`,
-          method: "post",
-          data: { paragraph },
-        },
-        201,
-      );
+      await admin.addWorkflowStep(workflowId, {
+        stepName: "extract",
+        url: `${base}/extract`,
+        method: "post",
+        data: { paragraph },
+      });
 
       return res.status(201).json({ workflowId });
     } catch (e) {
@@ -390,24 +327,21 @@ function scenario3Router() {
       await stepDelay();
       const keywords = paragraph.split(/\s+/).filter(Boolean).slice(0, 5);
 
-      const parallelCreated = await postJson(
-        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/parallel`,
-        {
-          steps: keywords.map((keyword) => ({
+      const parallelCreated = await admin.addWorkflowParallel(
+        workflowId,
+        keywords.map((keyword) => ({
             stepName: "research",
             url: `${base}/research`,
             method: "post",
             data: { keyword },
           })),
-          mergeStep: {
-            stepId: "compile",
-            stepName: "compile",
-            url: `${base}/compile`,
-            method: "post",
-            data: {},
-          },
+        {
+          stepId: "compile",
+          stepName: "compile",
+          url: `${base}/compile`,
+          method: "post",
+          data: {},
         },
-        201,
       );
       await armParallelMerge(workflowId, parallelCreated);
 
@@ -447,16 +381,12 @@ function scenario3Router() {
       await stepDelay();
       const definitions = mergeData.map((m) => m?.output);
 
-      await postJson(
-        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/steps`,
-        {
-          stepName: "store",
-          url: `${base}/store`,
-          method: "post",
-          data: { definitions },
-        },
-        201,
-      );
+      await admin.addWorkflowStep(workflowId, {
+        stepName: "store",
+        url: `${base}/store`,
+        method: "post",
+        data: { definitions },
+      });
 
       return res.status(200).json({ definitions });
     } catch (e) {
@@ -493,22 +423,18 @@ function scenario4Router() {
       if (typeof paragraph !== "string") {
         return res.status(400).json({ error: "invalid_start_request" });
       }
-      const workflow = await postJson(`${CACHEPUPPY_API_BASE}/api/workflows`, { name: "e2e-scenario-4" }, 201);
+      const workflow = await admin.createWorkflow("e2e-scenario-4");
       const workflowId = workflow.workflowId;
       if (typeof workflowId !== "string") {
         return res.status(500).json({ error: "no_workflow_id" });
       }
 
-      await postJson(
-        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/steps`,
-        {
-          stepName: "extract",
-          url: `${base}/extract`,
-          method: "post",
-          data: { paragraph },
-        },
-        201,
-      );
+      await admin.addWorkflowStep(workflowId, {
+        stepName: "extract",
+        url: `${base}/extract`,
+        method: "post",
+        data: { paragraph },
+      });
 
       return res.status(201).json({ workflowId });
     } catch (e) {
@@ -528,10 +454,9 @@ function scenario4Router() {
       await stepDelay();
       const topics = paragraph.split(/\s+/).filter(Boolean).slice(0, 3);
 
-      await postJson(
-        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/parallel`,
-        {
-          steps: topics.map((topic, idx) => ({
+      await admin.addWorkflowParallel(
+        workflowId,
+        topics.map((topic, idx) => ({
             stepId: `research_${idx + 1}`,
             stepName: "research",
             url: `${base}/research`,
@@ -542,15 +467,13 @@ function scenario4Router() {
               summariseStepId: `summarise_${idx + 1}`,
             },
           })),
-          mergeStep: {
-            stepId: "compile",
-            stepName: "compile",
-            url: `${base}/compile`,
-            method: "post",
-            data: {},
-          },
+        {
+          stepId: "compile",
+          stepName: "compile",
+          url: `${base}/compile`,
+          method: "post",
+          data: {},
         },
-        201,
       );
 
       return res.status(200).json({ topics });
@@ -578,23 +501,19 @@ function scenario4Router() {
       }
       await stepDelay();
       const notes = `facts about ${topic}`;
-      await postJson(
-        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/steps`,
-        {
-          stepId: summariseStepId,
-          stepName: "summarise",
-          url: `${base}/summarise`,
-          method: "post",
-          parentIds: [researchStepId],
-          data: {
-            topic,
-            notes,
-            researchStepId,
-            summariseStepId,
-          },
+      await admin.addWorkflowStep(workflowId, {
+        stepId: summariseStepId,
+        stepName: "summarise",
+        url: `${base}/summarise`,
+        method: "post",
+        parentIds: [researchStepId],
+        data: {
+          topic,
+          notes,
+          researchStepId,
+          summariseStepId,
         },
-        201,
-      );
+      });
       return res.status(200).json({ topic, notes });
     } catch (e) {
       console.error(e);
@@ -621,11 +540,7 @@ function scenario4Router() {
         return res.status(400).json({ error: "invalid_summarise_request" });
       }
       await stepDelay();
-      await postJson(
-        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/parallel/merge_now`,
-        { mergeStepId: "compile" },
-        200,
-      );
+      await admin.mergeWorkflowParallelNow(workflowId, "compile");
       return res.status(200).json({ topic, branchSummary: `${topic}: ${notes}` });
     } catch (e) {
       console.error(e);
@@ -644,17 +559,13 @@ function scenario4Router() {
       await stepDelay();
       const compiled = mergeData.map((m) => m?.output?.branchSummary).join(" | ");
 
-      await postJson(
-        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/steps`,
-        {
-          stepName: "store",
-          url: `${base}/store`,
-          method: "post",
-          parentIds: ["compile"],
-          data: { compiled },
-        },
-        201,
-      );
+      await admin.addWorkflowStep(workflowId, {
+        stepName: "store",
+        url: `${base}/store`,
+        method: "post",
+        parentIds: ["compile"],
+        data: { compiled },
+      });
 
       return res.status(200).json({ compiled });
     } catch (e) {
