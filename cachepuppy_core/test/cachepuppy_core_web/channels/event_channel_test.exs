@@ -2,6 +2,10 @@ defmodule CachePuppyCoreWeb.EventChannelTest do
   use ExUnit.Case, async: true
   import Phoenix.ChannelTest
 
+  alias CachePuppyCore.Graph.Broadcaster
+  alias CachePuppyCore.Workflow
+  alias CachePuppyCore.Workflow.{Step, WorkflowStore}
+
   @endpoint CachePuppyCoreWeb.Endpoint
 
   test "join allows topic state operations" do
@@ -105,6 +109,48 @@ defmodule CachePuppyCoreWeb.EventChannelTest do
       "state" => %{},
       "meta" => %{"source_node" => _source_node, "served_by_node" => _served_by_node}
     }
+  end
+
+  test "workflow graph_diff push serializes nested error safely" do
+    workflow_id = "wf-chan-" <> Base.encode16(:crypto.strong_rand_bytes(4), case: :lower)
+    topic = "workflow:" <> workflow_id
+    socket = user_socket("workflow_graph_diff_safe")
+
+    {:ok, _reply, chan} =
+      subscribe_and_join(socket, CachePuppyCoreWeb.EventChannel, "events:#{topic}")
+
+    errored_step = %Step{
+      step_id: "s1",
+      step_name: "extract",
+      url: "http://127.0.0.1:8787/scenario1/extract",
+      status: :failed,
+      execution_error: %{
+        reason: :connection_error,
+        attempts: 4,
+        step: %Step{step_id: "inner", step_name: "inner", url: "http://127.0.0.1:8787/x", status: :running}
+      }
+    }
+
+    wf = %Workflow{id: workflow_id, name: "wf", status: :failed, steps: %{"s1" => errored_step}}
+    :ok = WorkflowStore.put(workflow_id, wf)
+    :ok = Broadcaster.broadcast(workflow_id)
+
+    assert_push "message", %{
+      "event" => "graph_diff",
+      "payload" => %{
+        "workflowId" => ^workflow_id,
+        "addedNodes" => [node | _]
+      }
+    }
+
+    assert node["nodeId"] == "s1"
+    assert is_map(node["error"])
+    step_payload = node["error"]["step"] || node["error"][:step]
+    assert is_map(step_payload)
+    assert (step_payload["step_id"] || step_payload[:step_id]) == "inner"
+
+    assert Process.alive?(chan.channel_pid)
+    WorkflowStore.delete(workflow_id)
   end
 
   defp user_socket(client_id) do

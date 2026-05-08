@@ -1,67 +1,53 @@
 defmodule CachePuppyCore.Workflow.WorkflowStore do
   @moduledoc """
-  Node-local ETS snapshots for workflow state.
+  Distributed workflow snapshots backed by the cache persistence layer.
 
-  Each successful mutation in `CachePuppyCore.WorkflowServer` is written here so the
-  GenServer can reload after a crash on the same node. ETS is not replicated
-  across the cluster; loss of the node loses these snapshots unless a durable
-  backend is added later.
+  Each successful mutation in `CachePuppyCore.WorkflowServer` is written to the
+  shared cache persistence layer so lookups can resolve from any node in a
+  cluster without relying on node-local ETS affinity.
   """
 
+  alias CachePuppyCore.Persistence.CacheRouter
   alias CachePuppyCore.Workflow
 
-  @default_table :cachepuppy_workflow_snapshots
+  @table "workflow_snapshots"
 
-  @spec table() :: atom()
-  def table do
-    Application.get_env(:cachepuppy_core, :workflow_store_table, @default_table)
-  end
+  @spec table() :: String.t()
+  def table, do: @table
 
   @spec ensure_table() :: :ok
-  def ensure_table do
-    t = table()
-
-    case :ets.whereis(t) do
-      :undefined ->
-        :ets.new(t, [:named_table, :public, :set, read_concurrency: true])
-
-      _tid ->
-        :ok
-    end
-
-    :ok
-  end
+  def ensure_table, do: :ok
 
   @spec put(String.t(), Workflow.t()) :: :ok
   def put(workflow_id, %Workflow{} = workflow) when is_binary(workflow_id) do
-    _ = ensure_table()
-    true = :ets.insert(table(), {workflow_id, workflow})
-    :ok
+    case CacheRouter.setdata(table(), workflow_id, workflow) do
+      {:ok, _} -> :ok
+      {:error, reason} -> raise "workflow_store_put_failed: #{inspect(reason)}"
+    end
   end
 
   @spec get(String.t()) :: {:ok, Workflow.t()} | :not_found
   def get(workflow_id) when is_binary(workflow_id) do
-    case :ets.whereis(table()) do
-      :undefined ->
+    case CacheRouter.getdata(table(), workflow_id) do
+      {:ok, %Workflow{} = workflow} ->
+        {:ok, workflow}
+
+      {:ok, nil} ->
         :not_found
 
-      _tid ->
-        case :ets.lookup(table(), workflow_id) do
-          [{^workflow_id, %Workflow{} = workflow}] -> {:ok, workflow}
-          [] -> :not_found
-        end
+      {:ok, _other} ->
+        :not_found
+
+      {:error, _reason} ->
+        :not_found
     end
   end
 
   @spec delete(String.t()) :: :ok
   def delete(workflow_id) when is_binary(workflow_id) do
-    case :ets.whereis(table()) do
-      :undefined ->
-        :ok
-
-      _tid ->
-        _ = :ets.delete(table(), workflow_id)
-        :ok
+    case CacheRouter.deldata(table(), workflow_id) do
+      {:ok, _deleted?} -> :ok
+      {:error, _reason} -> :ok
     end
   end
 end

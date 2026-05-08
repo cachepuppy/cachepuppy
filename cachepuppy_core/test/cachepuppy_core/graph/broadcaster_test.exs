@@ -8,16 +8,28 @@ defmodule CachePuppyCore.Graph.BroadcasterTest do
   test "broadcast publishes non-empty diff and persists graph snapshot" do
     workflow_id = "wf-bc-" <> Base.encode16(:crypto.strong_rand_bytes(4), case: :lower)
     topic = "workflow:" <> workflow_id
+    channel_topic = "events:" <> topic
 
     step = %Step{step_id: "s1", step_name: "extract", url: "http://x", status: :pending}
     wf = %Workflow{id: workflow_id, name: "wf", status: :running, steps: %{"s1" => step}}
     :ok = WorkflowStore.put(workflow_id, wf)
 
     :ok = Phoenix.PubSub.subscribe(CachePuppyCore.PubSub, topic)
+    :ok = Phoenix.PubSub.subscribe(CachePuppyCore.PubSub, channel_topic)
     :ok = Broadcaster.broadcast(workflow_id)
 
     assert_receive {:graph_diff, diff}
     assert diff["workflowId"] == workflow_id
+
+    assert_receive %Phoenix.Socket.Broadcast{
+                     topic: ^channel_topic,
+                     event: "message",
+                     payload: envelope
+                   }
+
+    assert envelope["event"] == "graph_diff"
+    assert envelope["topic"] == topic
+    assert envelope["payload"]["workflowId"] == workflow_id
 
     assert {:ok, updated} = WorkflowStore.get(workflow_id)
     assert updated.graph_snapshot != nil
