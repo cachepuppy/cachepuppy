@@ -1,4 +1,4 @@
-.PHONY: compose-up compose-clean-rebuild compose-single-up compose-single-down compose-single-clean-rebuild sdk-core-build sdk-react-build sdk-build demo-interactive demo-backend
+.PHONY: compose-up compose-clean-rebuild compose-single-up compose-single-down compose-single-clean-rebuild sdk-core-build sdk-react-build sdk-build demo-interactive demo-backend demo-workflows-backend demo-workflows-web demo-workflows
 
 compose-up:
 	cd cachepuppy_core && docker compose up --build
@@ -33,3 +33,13 @@ demo-interactive:
 
 demo-backend:
 	cd example/javascript_demo/webhook-server && npm start
+
+demo-workflows-backend:
+	cd example/javascript_demo/workflows/server && npm start
+
+demo-workflows-web:
+	cd example/javascript_demo/workflows/web && npm run dev
+
+# Start both workflows services with one command.
+demo-workflows:
+	@bash -c 'set -euo pipefail; trap "kill 0" EXIT INT TERM; (cd example/javascript_demo/workflows/server && npm start) & (cd example/javascript_demo/workflows/web && npm run dev) & wait'

@@ -15,7 +15,7 @@ defmodule CachePuppyCore.Execution.StepExecutor do
              required(:attempts) => pos_integer(),
              optional(:last_status_code) => non_neg_integer() | nil,
              optional(:message) => String.t(),
-             required(:step) => Step.t()
+             required(:step) => map()
            }}
 
   @doc """
@@ -182,12 +182,12 @@ defmodule CachePuppyCore.Execution.StepExecutor do
        reason: :max_retries_exceeded,
        attempts: attempts,
        last_status_code: status,
-       step: step
+       step: step_snapshot(step)
      }}
   end
 
   defp finalize_error(:timeout, attempts, step) do
-    {:error, %{reason: :timeout, attempts: attempts, step: step}}
+    {:error, %{reason: :timeout, attempts: attempts, step: step_snapshot(step)}}
   end
 
   defp finalize_error({:connection, message}, attempts, step) do
@@ -196,7 +196,19 @@ defmodule CachePuppyCore.Execution.StepExecutor do
        reason: :connection_error,
        attempts: attempts,
        message: message,
-       step: step
+       step: step_snapshot(step)
      }}
+  end
+
+  defp step_snapshot(%Step{} = step) do
+    %{
+      step_id: step.step_id,
+      step_name: step.step_name,
+      url: step.url,
+      method: step.method,
+      status: step.status,
+      retry_count: step.retry_count,
+      max_retries: step.max_retries
+    }
   end
 end

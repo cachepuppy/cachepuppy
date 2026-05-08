@@ -13,6 +13,39 @@ Interactive React demo for validating CachePuppy SDK usage against the managed E
 
 - `webhook-server`: Minimal Node server that logs `POST /topic-state` JSON bodies (run this when demoing server-side webhook flush).
 - `interactive`: Vite + React browser app — uses `@cachepuppy/react` (backed by `@cachepuppy/core`) to join `sticky_notes_room`, share ephemeral `cursor_tracked` publishes (notes board only), and collaborative sticky notes in topic state.
+- `workflows/server`: Express server that mirrors the four e2e workflow scenarios (serial, static parallel + merge, dynamic parallel + merge, parallel + summary merge) under `/scenario1` … `/scenario4`.
+- `workflows/web`: Vite + React UI to start each scenario and show live step status from `graph_diff` websocket events on `workflow:<id>`.
+
+## Workflows demo (orchestration + realtime graph)
+
+This showcase matches the Elixir e2e developer servers: each **`POST /scenarioN/start`** body is `{ "paragraph": string }`; CachePuppy calls back into the demo server using **`WORKFLOW_DEMO_PUBLIC_URL`** (must be reachable from the Phoenix node that runs step HTTP).
+
+1. Start Phoenix, e.g. `cd cachepuppy_core && mix phx.server` (default API `http://127.0.0.1:4000`).
+2. Build SDKs once:
+
+   ```bash
+   (cd sdk/javascript && npm ci && npm run build) && (cd sdk/react && npm ci && npm run build)
+   ```
+
+3. Start the workflows demo server (default `http://127.0.0.1:8787`):
+
+   ```bash
+   cd example/javascript_demo/workflows/server && npm ci && npm start
+   ```
+
+   Configure via environment (see `workflows/server/.env.example`):
+
+   - `PORT` — listen port (default `8787`)
+   - `CACHEPUPPY_API_BASE` — CachePuppy HTTP origin (default `http://127.0.0.1:4000`)
+   - `WORKFLOW_DEMO_PUBLIC_URL` — public URL of this Node server for workflow step callbacks (default `http://127.0.0.1:8787`). If Phoenix runs in Docker, use a host-reachable URL (for example `http://host.docker.internal:8787` on Docker Desktop).
+
+4. Start the web UI:
+
+   ```bash
+   cd example/javascript_demo/workflows/web && npm ci && npm run dev
+   ```
+
+5. Open the printed dev URL (for example `http://localhost:5173`). Optionally copy `workflows/web/.env.example` to `.env` and set `VITE_WS_URL` and `VITE_WORKFLOW_DEMO_API`.
 
 ## Interactive React demo (Sticky Notes Room)
 
