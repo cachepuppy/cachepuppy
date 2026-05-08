@@ -71,12 +71,14 @@ export type TopicHandler = (message: CachePuppyEnvelope) => void;
 export type WorkflowStatus = "pending" | "running" | "completed" | "failed";
 
 export interface WorkflowStepInput {
+  stepId?: string;
   stepName: string;
   url: string;
   method: "get" | "post" | "put" | "patch" | "delete";
   data?: Record<string, unknown>;
   successCodes?: number[];
   maxRetries?: number;
+  parentIds?: string[];
 }
 
 export interface WorkflowSummary {
@@ -127,6 +129,12 @@ export interface WorkflowParallelCreatedResponse {
   groupId: string;
   totalBranches: number;
   steps: WorkflowStepSummary[];
+  mergeStep: WorkflowStepSummary;
+}
+
+export interface WorkflowParallelBranchCloseResponse {
+  workflowId: string;
+  status: "ok";
 }
 
 export interface WorkflowLoopCreatedResponse {

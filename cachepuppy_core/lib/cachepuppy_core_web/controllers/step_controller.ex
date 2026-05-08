@@ -4,7 +4,7 @@ defmodule CachePuppyCoreWeb.StepController do
   import Ecto.Changeset
 
   alias CachePuppyCore.{WorkflowManager, WorkflowServer}
-  alias CachePuppyCoreWeb.Changesets.{LoopChangeset, ParallelChangeset, StepChangeset}
+  alias CachePuppyCoreWeb.Changesets.{LoopChangeset, ParallelBranchCloseChangeset, ParallelChangeset, StepChangeset}
   alias CachePuppyCoreWeb.{ErrorJSON, WorkflowJSON}
 
   @resume_types %{step_id: :string, output: :map}
@@ -23,15 +23,17 @@ defmodule CachePuppyCoreWeb.StepController do
 
   def add_parallel(conn, %{"id" => workflow_id} = params) do
     with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
-         {:ok, steps} <- ParallelChangeset.validate_params(params) do
-      payload =
+         {:ok, %{steps: steps, merge_step: merge_step}} <- ParallelChangeset.validate_params(params) do
+      steps_payload =
         Enum.map(steps, fn step -> step |> with_step_id() |> StepChangeset.to_step_params() end)
 
-      case WorkflowServer.add_parallel_steps(workflow_id, payload) do
-        {:ok, group_id, branch_steps} ->
+      merge_payload = merge_step |> with_step_id() |> StepChangeset.to_step_params()
+
+      case WorkflowServer.add_parallel(workflow_id, steps_payload, merge_payload) do
+        {:ok, group_id, branch_steps, merge_created} ->
           conn
           |> put_status(:created)
-          |> json(WorkflowJSON.parallel_created(group_id, branch_steps))
+          |> json(WorkflowJSON.parallel_created(group_id, branch_steps, merge_created))
 
         other ->
           map_server_error(conn, workflow_id, other)
@@ -42,14 +44,11 @@ defmodule CachePuppyCoreWeb.StepController do
     end
   end
 
-  def add_merge(conn, %{"id" => workflow_id} = params) do
+  def close_parallel_branch(conn, %{"id" => workflow_id} = params) do
     with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
-         {:ok, attrs} <- StepChangeset.validate_params(params) do
-      case WorkflowServer.add_merge_step(
-             workflow_id,
-             attrs |> with_step_id() |> StepChangeset.to_step_params()
-           ) do
-        {:ok, step} -> conn |> put_status(:created) |> json(WorkflowJSON.step_created(step))
+         {:ok, attrs} <- ParallelBranchCloseChangeset.validate_params(params) do
+      case WorkflowServer.close_parallel_branch(workflow_id, attrs.branch_id, attrs.terminal_step_id) do
+        {:ok, _group} -> conn |> put_status(:ok) |> json(%{"workflowId" => workflow_id, "status" => "ok"})
         other -> map_server_error(conn, workflow_id, other)
       end
     else
@@ -159,7 +158,13 @@ defmodule CachePuppyCoreWeb.StepController do
   end
 
   defp with_step_id(attrs) do
-    Map.put(attrs, :step_id, "step_" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower))
+    case Map.get(attrs, :step_id) do
+      id when is_binary(id) and id != "" ->
+        attrs
+
+      _ ->
+        Map.put(attrs, :step_id, "step_" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower))
+    end
   end
 
   defp lookup_workflow(workflow_id, conn) do
@@ -206,6 +211,24 @@ defmodule CachePuppyCoreWeb.StepController do
     conn
     |> put_status(:bad_request)
     |> json(ErrorJSON.validation_failed(%{"stepId" => ["step not found"]}))
+  end
+
+  defp map_server_error(conn, _workflow_id, {:error, :invalid_parallel_branch}) do
+    conn
+    |> put_status(:bad_request)
+    |> json(ErrorJSON.validation_failed(%{"branchId" => ["invalid parallel branch"]}))
+  end
+
+  defp map_server_error(conn, _workflow_id, {:error, :invalid_terminal_step}) do
+    conn
+    |> put_status(:bad_request)
+    |> json(ErrorJSON.validation_failed(%{"terminalStepId" => ["invalid terminal step"]}))
+  end
+
+  defp map_server_error(conn, _workflow_id, {:error, :parallel_branch_closed}) do
+    conn
+    |> put_status(:conflict)
+    |> json(ErrorJSON.validation_failed(%{"branch" => ["branch already closed"]}))
   end
 
   defp map_server_error(conn, _workflow_id, _other) do

@@ -69,6 +69,7 @@ defmodule CachePuppy.Test.E2E.ScenarioTwoDeveloperServer do
          input when is_map(input) <- Map.get(payload, "input"),
          workflow_id when is_binary(workflow_id) <- input["workflowId"] do
       _ =
+        parallel_created =
         post_json!(
           api_base <> "/api/workflows/" <> workflow_id <> "/parallel",
           %{
@@ -76,17 +77,20 @@ defmodule CachePuppy.Test.E2E.ScenarioTwoDeveloperServer do
               %{"stepName" => "research_A", "url" => base_url(conn) <> "/research_A", "method" => "post", "data" => %{"keyword" => "alpha"}},
               %{"stepName" => "research_B", "url" => base_url(conn) <> "/research_B", "method" => "post", "data" => %{"keyword" => "beta"}},
               %{"stepName" => "research_C", "url" => base_url(conn) <> "/research_C", "method" => "post", "data" => %{"keyword" => "gamma"}}
-            ]
+            ],
+            "mergeStep" => %{"stepName" => "compile", "url" => base_url(conn) <> "/compile", "method" => "post", "data" => %{}}
           },
           201
         )
 
-      _ =
-        post_json!(
-          api_base <> "/api/workflows/" <> workflow_id <> "/merge",
-          %{"stepName" => "compile", "url" => base_url(conn) <> "/compile", "method" => "post", "data" => %{}},
-          201
-        )
+      Enum.each(parallel_created["steps"] || [], fn step ->
+        _ =
+          post_json!(
+            api_base <> "/api/workflows/" <> workflow_id <> "/parallel/close_branch",
+            %{"branchId" => step["stepId"], "terminalStepId" => step["stepId"]},
+            200
+          )
+      end)
 
       send_json(conn, 200, %{"keywords" => ["alpha", "beta", "gamma"]})
     else
