@@ -11,6 +11,7 @@ Copy `.env.example` or set:
 - `WORKFLOW_DEMO_PUBLIC_URL` — public base URL for workflow step callbacks (must be reachable from CachePuppy):
   - local Phoenix: `http://127.0.0.1:${PORT}`
   - Docker Phoenix (Docker Desktop): `http://host.docker.internal:${PORT}`
+- `WORKFLOW_STEP_DELAY_MS` — artificial delay per scenario endpoint for visible workflow progression in UI (default `5000`)
 
 ## Run
 
