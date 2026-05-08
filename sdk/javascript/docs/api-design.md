@@ -45,6 +45,8 @@ States: `idle | connecting | connected | reconnecting | disconnected | destroyed
 - `publish(topic: string, event: string, payload: unknown): Promise<void>`
 - `clientCount(topic: string): Promise<number>`
 - `setData(table, key, value, options?)` / `getData(table, key)` / `updateData(table, key, patch, options?)` / `deleteData(table, key)` — cache operations over websocket (`session` channel events `set_cache_data`, `get_cache_data`, `update_cache_data`, `delete_cache_data`). `updateData` shallow-merges `patch` into the existing JSON object (same semantics as `POST /api/cache/updatedata`).
+- `subscribeWorkflow(workflowId, handler)` — subscribes to topic `workflow:<workflowId>` and returns an unsubscribe function.
+- `onWorkflowStatus(workflowId, handler)` — helper that filters `workflow_status` events from the workflow topic and emits typed `{ workflowId, status }`.
 
 ### Topic shared state vs connection session state
 
@@ -81,8 +83,22 @@ Use **`createAdminClient(options)`** when calling the server’s **HTTP** routes
 - `getData(table, key)` — `POST /api/cache/getdata`; returns `value` (or `undefined` if not found/expired).
 - `updateData(table, key, patch, options?)` — `POST /api/cache/updatedata`; shallow-merges `patch` into the stored map; returns the full merged `value`.
 - `deleteData(table, key)` — `POST /api/cache/deletedata`; returns `deleted` as boolean.
+- `createWorkflow(name)` — `POST /api/workflows`; returns `{ workflowId, name, status }` (**201**).
+- `getWorkflow(workflowId)` — `GET /api/workflows/:id`; returns workflow graph state `{ workflowId, name, status, steps, groups }`.
+- `addWorkflowStep(workflowId, step)` — `POST /api/workflows/:id/steps`; returns `{ stepId, stepName, status }` (**201**).
+- `addWorkflowParallel(workflowId, steps)` — `POST /api/workflows/:id/parallel`; returns `{ groupId, totalBranches, steps }` (**201**).
+- `addWorkflowMerge(workflowId, step)` — `POST /api/workflows/:id/merge`; returns `{ stepId, stepName, status }` (**201**).
+- `addWorkflowLoop(workflowId, step, { continueIf, maxIterations })` — `POST /api/workflows/:id/loop`; returns loop metadata `{ groupId, stepName, maxIterations, continueIf }` (**201**).
+- `resumeWorkflow(workflowId, { stepId, output? })` — `POST /api/workflows/:id/resume`; returns `{ workflowId, status }`.
+- `executeWorkflowNow(workflowId, step)` — `POST /api/workflows/:id/execute_now`; returns `{ stepId, output, status }`.
+- `endWorkflow(workflowId)` — `POST /api/workflows/:id/end`; returns `{ workflowId, status }`.
 
 Non-success HTTP responses throw `Error` with status and optional `reason` from JSON.
+
+## React wrappers (`@cachepuppy/react`)
+
+- `useWorkflowEvents(workflowId, { enabled?, onEvent? })` — lifecycle-managed wrapper for `client.subscribeWorkflow(...)`.
+- `useWorkflowStatus(workflowId, { enabled?, onStatus? })` — lifecycle-managed wrapper for `client.onWorkflowStatus(...)`; returns `{ status, latest, error }`.
 
 ## Wire envelope (v1)
 

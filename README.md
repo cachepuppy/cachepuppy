@@ -97,15 +97,30 @@ DELETE /cache/delete?table=sessions&key=user:99
 Think Temporal or Trigger.dev, but open-source and co-located with your cache and WebSocket layer.
 
 ```js
-// Define a workflow
-cachepuppy.workflow("onboard-user", [
-  { step: "create-account", endpoint: "/api/users/create" },
-  { step: "send-welcome", endpoint: "/api/emails/welcome" },
-  { step: "provision-trial", endpoint: "/api/billing/trial" },
-]);
+import { createAdminClient, createClient } from "@cachepuppy/core";
 
-// Trigger it — CachePuppy handles retries, state, and failures
-await cachepuppy.trigger("onboard-user", { email: "user@example.com" });
+// Backend/admin orchestration over HTTP
+const admin = createAdminClient({ url: "ws://localhost:4000/socket/websocket" });
+const workflow = await admin.createWorkflow("onboard-user");
+
+await admin.addWorkflowStep(workflow.workflowId, {
+  stepName: "create-account",
+  url: "https://myapp.internal/api/users/create",
+  method: "post",
+});
+
+await admin.addWorkflowStep(workflow.workflowId, {
+  stepName: "send-welcome",
+  url: "https://myapp.internal/api/emails/welcome",
+  method: "post",
+});
+
+// Client-side realtime status subscription
+const client = createClient({ url: "ws://localhost:4000/socket/websocket" });
+await client.connect();
+await client.onWorkflowStatus(workflow.workflowId, ({ status }) => {
+  console.log("Workflow status:", status);
+});
 ```
 
 ---
@@ -129,7 +144,7 @@ CachePuppy ships with SDKs for all major languages. The server is the open-sourc
 
 | Language                | Install                               |
 | ----------------------- | ------------------------------------- |
-| JavaScript / TypeScript | `npm install cachepuppy`              |
+| JavaScript / TypeScript | `npm install @cachepuppy/core @cachepuppy/react` |
 | Python                  | `pip install cachepuppy`              |
 | Go                      | `go get github.com/cachepuppy/go-sdk` |
 | Ruby                    | `gem install cachepuppy`              |

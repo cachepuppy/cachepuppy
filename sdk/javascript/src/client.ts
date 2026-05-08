@@ -10,6 +10,10 @@ import type {
   ReconnectConfig,
   TopicHandler,
   TopicWebhookConfigOptions,
+  WorkflowEventHandler,
+  WorkflowStatusHandler,
+  WorkflowStatusResponse,
+  WorkflowTopicEvent,
 } from "./types.js";
 
 class TypedEventBus {
@@ -281,6 +285,35 @@ export class CachePuppyClient {
     return this.transport.clientCount(this.clientId, topic);
   }
 
+  async subscribeWorkflow(workflowId: string, handler: WorkflowEventHandler): Promise<() => void> {
+    const topic = workflowTopic(workflowId);
+    return this.subscribe(topic, (envelope) => {
+      const event = envelope.event;
+      if (!event) {
+        return;
+      }
+      const payload: WorkflowTopicEvent = {
+        workflowId,
+        event,
+        payload: envelope.payload,
+        envelope,
+      };
+      handler(payload);
+    });
+  }
+
+  async onWorkflowStatus(workflowId: string, handler: WorkflowStatusHandler): Promise<() => void> {
+    return this.subscribeWorkflow(workflowId, (event) => {
+      if (event.event !== "workflow_status") {
+        return;
+      }
+      const payload = asWorkflowStatusResponse(event.payload, workflowId);
+      if (payload) {
+        handler(payload);
+      }
+    });
+  }
+
   async reconnectOnce(attempt: number): Promise<void> {
     if (!this.reconnect.enabled || this.state === "destroyed") {
       return;
@@ -295,4 +328,24 @@ export class CachePuppyClient {
 
 export function createClient(options: ClientOptions): CachePuppyClient {
   return new CachePuppyClient(options);
+}
+
+function workflowTopic(workflowId: string): string {
+  return `workflow:${workflowId}`;
+}
+
+function asWorkflowStatusResponse(payload: unknown, workflowId: string): WorkflowStatusResponse | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+  const typed = payload as Record<string, unknown>;
+  const status = typed.status;
+  const resolvedId = typeof typed.workflowId === "string" ? typed.workflowId : workflowId;
+  if (typeof status !== "string") {
+    return null;
+  }
+  return {
+    workflowId: resolvedId,
+    status: status as WorkflowStatusResponse["status"],
+  };
 }

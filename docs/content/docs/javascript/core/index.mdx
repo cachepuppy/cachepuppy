@@ -7,6 +7,7 @@ The **`@cachepuppy/core`** package is what you import in browsers, servers, and 
 
 - **`createClient` / `CachePuppyClient`** — connect over Phoenix websockets (or a **`mock`** transport for tests), subscribe to **topics**, **publish** events, and observe **presence**.
 - **Topic shared state** — `setTopicState`, `getTopicState`, `getTopicStateWithMeta`, `configureTopicWebhook`, `clearTopicState`, plus `onStateUpdated` for `state_updated` broadcasts.
+- **Workflow realtime subscriptions** — `subscribeWorkflow(workflowId, handler)` for all workflow topic events and `onWorkflowStatus(workflowId, handler)` for typed status updates.
 - **Per-connection session state** — `setSessionState` / `getSessionState` on the fixed `session` channel.
 - **Distributed cache** — `setData`, `getData`, `deleteData` over the same `session` channel (same semantics as the HTTP cache API).
 - **Admin HTTP** — `createAdminClient` / `CachePuppyAdminClient` for server-side JSON calls (covered under [Admin HTTP](/docs/javascript/admin)).

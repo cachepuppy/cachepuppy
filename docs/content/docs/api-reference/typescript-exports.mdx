@@ -24,6 +24,20 @@ description: "What ships from @cachepuppy/core and @cachepuppy/react."
 | `TopicHandler` | type | Subscription callback signature. |
 | `TopicPresenceResponse` | type | HTTP presence snapshot typing. |
 | `TopicWebhookConfigOptions` | type | Webhook configuration object. |
+| `WorkflowStatus` | type | Workflow status union (`pending`, `running`, `completed`, `failed`). |
+| `WorkflowStepInput` | type | Input contract for workflow step endpoints. |
+| `WorkflowSummary` | type | Workflow create response shape. |
+| `WorkflowStateResponse` | type | Workflow state (`steps` and `groups`) response shape. |
+| `WorkflowStepSummary` | type | Workflow step metadata/state response shape. |
+| `WorkflowGroupSummary` | type | Workflow group metadata response shape. |
+| `WorkflowParallelCreatedResponse` | type | Add-parallel response shape. |
+| `WorkflowLoopCreatedResponse` | type | Add-loop response shape. |
+| `WorkflowResumeInput` | type | Resume payload shape (`stepId`, optional `output`). |
+| `WorkflowStatusResponse` | type | Workflow status response shape. |
+| `WorkflowExecuteNowResponse` | type | Execute-now response shape. |
+| `WorkflowTopicEvent` | type | Core workflow subscription event payload. |
+| `WorkflowEventHandler` | type | Callback signature for `subscribeWorkflow`. |
+| `WorkflowStatusHandler` | type | Callback signature for `onWorkflowStatus`. |
 | `CacheSetDataOptions` | type | TTL options for cache writes. |
 | `TopicStateResponse` | type | Topic state + optional routing metadata. |
 
@@ -41,3 +55,8 @@ description: "What ships from @cachepuppy/core and @cachepuppy/react."
 | `UsePresenceResult` | type | `{ clientCount, error }`. |
 | `useTopicState` | hook | Topic state + mutations. |
 | `UseTopicStateResult` | type | `{ state, loading, error, setState, refresh, clear }`. |
+| `useWorkflowEvents` | hook | Workflow topic event subscription wrapper. |
+| `UseWorkflowEventsOptions` | type | `enabled`, `onEvent`. |
+| `useWorkflowStatus` | hook | Workflow status subscription wrapper. |
+| `UseWorkflowStatusOptions` | type | `enabled`, `onStatus`. |
+| `UseWorkflowStatusResult` | type | `{ status, latest, error }`. |
