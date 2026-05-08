@@ -1,6 +1,18 @@
 import { toHttpBaseUrl } from "./httpBaseUrl.js";
 import type { CacheSetDataOptions, TopicStateResponse } from "./transport/transport.js";
-import type { AdminClientOptions, TopicPresenceResponse } from "./types.js";
+import type {
+  AdminClientOptions,
+  TopicPresenceResponse,
+  WorkflowExecuteNowResponse,
+  WorkflowLoopCreatedResponse,
+  WorkflowParallelCreatedResponse,
+  WorkflowResumeInput,
+  WorkflowStateResponse,
+  WorkflowStatusResponse,
+  WorkflowStepInput,
+  WorkflowStepSummary,
+  WorkflowSummary,
+} from "./types.js";
 
 const API_PREFIX = "/api/server/v1";
 
@@ -110,6 +122,77 @@ export class CachePuppyAdminClient {
     return data.deleted === true;
   }
 
+  async createWorkflow(name: string): Promise<WorkflowSummary> {
+    return this.requestJson<WorkflowSummary>("POST", "/api/workflows", { name }, { useServerApiPrefix: false, okStatuses: [201] });
+  }
+
+  async getWorkflow(workflowId: string): Promise<WorkflowStateResponse> {
+    return this.requestJson<WorkflowStateResponse>("GET", workflowPath(workflowId), undefined, {
+      useServerApiPrefix: false,
+    });
+  }
+
+  async addWorkflowStep(workflowId: string, step: WorkflowStepInput): Promise<WorkflowStepSummary> {
+    return this.requestJson<WorkflowStepSummary>("POST", workflowActionPath(workflowId, "steps"), toStepBody(step), {
+      useServerApiPrefix: false,
+      okStatuses: [201],
+    });
+  }
+
+  async addWorkflowParallel(workflowId: string, steps: WorkflowStepInput[]): Promise<WorkflowParallelCreatedResponse> {
+    const body = { steps: steps.map((step) => toStepBody(step)) };
+    return this.requestJson<WorkflowParallelCreatedResponse>("POST", workflowActionPath(workflowId, "parallel"), body, {
+      useServerApiPrefix: false,
+      okStatuses: [201],
+    });
+  }
+
+  async addWorkflowMerge(workflowId: string, step: WorkflowStepInput): Promise<WorkflowStepSummary> {
+    return this.requestJson<WorkflowStepSummary>("POST", workflowActionPath(workflowId, "merge"), toStepBody(step), {
+      useServerApiPrefix: false,
+      okStatuses: [201],
+    });
+  }
+
+  async addWorkflowLoop(
+    workflowId: string,
+    step: WorkflowStepInput,
+    options: { continueIf: string; maxIterations: number },
+  ): Promise<WorkflowLoopCreatedResponse> {
+    const body = { ...toStepBody(step), continueIf: options.continueIf, maxIterations: options.maxIterations };
+    return this.requestJson<WorkflowLoopCreatedResponse>("POST", workflowActionPath(workflowId, "loop"), body, {
+      useServerApiPrefix: false,
+      okStatuses: [201],
+    });
+  }
+
+  async resumeWorkflow(workflowId: string, input: WorkflowResumeInput): Promise<WorkflowStatusResponse> {
+    return this.requestJson<WorkflowStatusResponse>(
+      "POST",
+      workflowActionPath(workflowId, "resume"),
+      {
+        stepId: input.stepId,
+        output: input.output ?? {},
+      },
+      { useServerApiPrefix: false },
+    );
+  }
+
+  async executeWorkflowNow(workflowId: string, step: WorkflowStepInput): Promise<WorkflowExecuteNowResponse> {
+    return this.requestJson<WorkflowExecuteNowResponse>(
+      "POST",
+      workflowActionPath(workflowId, "execute_now"),
+      toStepBody(step),
+      { useServerApiPrefix: false },
+    );
+  }
+
+  async endWorkflow(workflowId: string): Promise<WorkflowStatusResponse> {
+    return this.requestJson<WorkflowStatusResponse>("POST", workflowActionPath(workflowId, "end"), {}, {
+      useServerApiPrefix: false,
+    });
+  }
+
   private async requestJson<T>(
     method: string,
     path: string,
@@ -165,6 +248,32 @@ function topicMessagesPath(topic: string): string {
 
 function topicPresencePath(topic: string): string {
   return `${topicResourcePath(topic)}/presence`;
+}
+
+function workflowPath(workflowId: string): string {
+  return `/api/workflows/${encodeURIComponent(workflowId)}`;
+}
+
+function workflowActionPath(workflowId: string, action: string): string {
+  return `${workflowPath(workflowId)}/${action}`;
+}
+
+function toStepBody(step: WorkflowStepInput): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    stepName: step.stepName,
+    url: step.url,
+    method: step.method,
+  };
+  if (step.data !== undefined) {
+    body.data = step.data;
+  }
+  if (step.successCodes !== undefined) {
+    body.successCodes = step.successCodes;
+  }
+  if (step.maxRetries !== undefined) {
+    body.maxRetries = step.maxRetries;
+  }
+  return body;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

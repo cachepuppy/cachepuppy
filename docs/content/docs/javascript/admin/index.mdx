@@ -3,7 +3,7 @@ title: Admin HTTP client
 description: "createAdminClient for /api/server/v1 topic routes and /api/cache/* without websockets."
 ---
 
-`CachePuppyAdminClient` is exported from **`@cachepuppy/core`** for backends, cron jobs, and services that should **not** hold a long-lived websocket just to mutate topic state or cache keys.
+`CachePuppyAdminClient` is exported from **`@cachepuppy/core`** for backends, cron jobs, and services that should **not** hold a long-lived websocket just to mutate topic state, cache keys, or orchestrate workflows.
 
 ```ts
 import { createAdminClient } from "@cachepuppy/core";
@@ -15,3 +15,15 @@ const admin = createAdminClient({
 ```
 
 The `url` field uses the **same convention** as `createClient` — a Phoenix websocket URL whose HTTP origin is derived internally.
+
+Workflow orchestration methods are also exposed here:
+
+- `createWorkflow(name)`
+- `getWorkflow(workflowId)`
+- `addWorkflowStep(workflowId, step)`
+- `addWorkflowParallel(workflowId, steps)`
+- `addWorkflowMerge(workflowId, step)`
+- `addWorkflowLoop(workflowId, step, { continueIf, maxIterations })`
+- `resumeWorkflow(workflowId, { stepId, output? })`
+- `executeWorkflowNow(workflowId, step)`
+- `endWorkflow(workflowId)`
