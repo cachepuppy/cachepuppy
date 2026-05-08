@@ -132,7 +132,7 @@ export interface WorkflowParallelCreatedResponse {
   mergeStep: WorkflowStepSummary;
 }
 
-export interface WorkflowParallelBranchCloseResponse {
+export interface WorkflowParallelMergeNowResponse {
   workflowId: string;
   status: "ok";
 }

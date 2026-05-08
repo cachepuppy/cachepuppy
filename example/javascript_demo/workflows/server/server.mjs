@@ -41,19 +41,16 @@ function stepDelay() {
  * @param {string} workflowId
  * @param {unknown} parallelCreated
  */
-async function closeParallelBranches(workflowId, parallelCreated) {
-  const steps = Array.isArray(parallelCreated?.steps) ? parallelCreated.steps : [];
-  for (const step of steps) {
-    const branchId = step?.stepId;
-    if (typeof branchId !== "string") {
-      continue;
-    }
-    await postJson(
-      `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/parallel/close_branch`,
-      { branchId, terminalStepId: branchId },
-      200,
-    );
+async function armParallelMerge(workflowId, parallelCreated) {
+  const mergeStepId = parallelCreated?.mergeStep?.stepId;
+  if (typeof mergeStepId !== "string") {
+    throw new Error("parallel response missing mergeStep.stepId");
   }
+  await postJson(
+    `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/parallel/merge_now`,
+    { mergeStepId },
+    200,
+  );
 }
 
 function scenario1Router() {
@@ -274,7 +271,7 @@ function scenario2Router() {
         },
         201,
       );
-      await closeParallelBranches(workflowId, parallelCreated);
+      await armParallelMerge(workflowId, parallelCreated);
 
       return res.status(200).json({ keywords: ["alpha", "beta", "gamma"] });
     } catch (e) {
@@ -412,7 +409,7 @@ function scenario3Router() {
         },
         201,
       );
-      await closeParallelBranches(workflowId, parallelCreated);
+      await armParallelMerge(workflowId, parallelCreated);
 
       return res.status(200).json({ branchCount: keywords.length });
     } catch (e) {
@@ -625,8 +622,8 @@ function scenario4Router() {
       }
       await stepDelay();
       await postJson(
-        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/parallel/close_branch`,
-        { branchId: researchStepId, terminalStepId: summariseStepId },
+        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/parallel/merge_now`,
+        { mergeStepId: "compile" },
         200,
       );
       return res.status(200).json({ topic, branchSummary: `${topic}: ${notes}` });

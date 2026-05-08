@@ -178,8 +178,8 @@ defmodule CachePuppyCore.Graph.Builder do
   end
 
   defp root_branch_ids(%ParallelGroup{} = pg) do
-    if map_size(pg.branch_statuses) > 0 do
-      Map.keys(pg.branch_statuses)
+    if pg.branch_root_step_ids != [] do
+      pg.branch_root_step_ids
     else
       Map.keys(pg.branch_terminal_step_ids)
     end

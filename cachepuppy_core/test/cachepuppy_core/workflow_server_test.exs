@@ -109,12 +109,12 @@ defmodule CachePuppyCore.WorkflowServerTest do
     end)
   end
 
-  test "close_parallel_branch returns error for unknown branch", %{workflow_id: wid} do
+  test "merge_now returns error for unknown merge step", %{workflow_id: wid} do
     assert {:ok, _} = WorkflowManager.ensure_started(wid)
-    assert {:error, :not_found} = WorkflowServer.close_parallel_branch(wid, "missing_branch", "missing_terminal")
+    assert {:error, :not_found} = WorkflowServer.merge_now(wid, "missing_merge")
   end
 
-  test "parallel merge waits for explicit branch close and terminal completion", %{
+  test "parallel merge waits for explicit merge_now arming", %{
     workflow_id: wid,
     response_agent: agent
   } do
@@ -155,9 +155,9 @@ defmodule CachePuppyCore.WorkflowServerTest do
     await_step_execution("p1")
     await_step_execution("p2")
 
-    assert {:ok, _group} = WorkflowServer.close_parallel_branch(wid, "p1", "p1")
     refute_receive {:executed_step, "m", _}
-    assert {:ok, _group} = WorkflowServer.close_parallel_branch(wid, "p2", "p2")
+
+    assert {:ok, _group} = WorkflowServer.merge_now(wid, "m")
     assert_receive {:executed_step, "m", merge_data}
     assert is_list(merge_data)
   end

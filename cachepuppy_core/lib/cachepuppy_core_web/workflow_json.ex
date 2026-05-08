@@ -83,7 +83,8 @@ defmodule CachePuppyCoreWeb.WorkflowJSON do
       "collectedOutputs" => group.collected_outputs,
       "mergeStepId" => group.merge_step_id,
       "status" => to_status(group.status),
-      "branchStatuses" => group.branch_statuses,
+      "mergeArmed" => group.merge_armed,
+      "branchRootStepIds" => group.branch_root_step_ids,
       "branchTerminalStepIds" => group.branch_terminal_step_ids
     }
   end
@@ -113,8 +114,7 @@ defmodule CachePuppyCoreWeb.WorkflowJSON do
   defp to_status(status), do: status
 
   defp completed_branch_count(group) do
-    group.branch_statuses
-    |> Map.values()
-    |> Enum.count(&(&1 == :closed))
+    group.branch_terminal_step_ids
+    |> map_size()
   end
 end
