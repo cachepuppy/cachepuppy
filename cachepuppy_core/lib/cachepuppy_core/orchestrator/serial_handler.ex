@@ -29,7 +29,7 @@ defmodule CachePuppyCore.Orchestrator.SerialHandler do
   defp merge_ready?(%Workflow{} = workflow, %Step{group_type: :parallel_merge, group_id: gid}) do
     case Map.get(workflow.groups, gid) do
       %ParallelGroup{} = group ->
-        all_branches_closed?(group) and
+        group.merge_armed and
           Enum.all?(Map.values(group.branch_terminal_step_ids), fn terminal_id ->
             case Map.get(workflow.steps, terminal_id) do
               %Step{status: :completed} -> true
@@ -43,10 +43,4 @@ defmodule CachePuppyCore.Orchestrator.SerialHandler do
   end
 
   defp merge_ready?(_workflow, _step), do: true
-
-  defp all_branches_closed?(%ParallelGroup{} = group) do
-    group.branch_statuses
-    |> Map.values()
-    |> Enum.all?(&(&1 == :closed))
-  end
 end

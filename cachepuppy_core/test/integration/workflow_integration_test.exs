@@ -169,9 +169,7 @@ defmodule CachePuppyCore.Integration.WorkflowIntegrationTest do
                url: base_url <> "/step"
              })
 
-    assert {:ok, _} = WorkflowServer.close_parallel_branch(workflow_id, "ra", "ra")
-    assert {:ok, _} = WorkflowServer.close_parallel_branch(workflow_id, "rb", "rb")
-    assert {:ok, _} = WorkflowServer.close_parallel_branch(workflow_id, "rc", "rc")
+    assert {:ok, _} = WorkflowServer.merge_now(workflow_id, "compile")
 
     workflow = WorkflowHelpers.wait_for_completion(workflow_id, timeout_ms: 12_000)
     broadcasts = WorkflowHelpers.collect_broadcasts(workflow_id)
@@ -240,9 +238,7 @@ defmodule CachePuppyCore.Integration.WorkflowIntegrationTest do
               url: Agent.get(url_agent, &(&1 <> "/step"))
             })
 
-          Enum.each(steps, fn st ->
-            {:ok, _} = WorkflowServer.close_parallel_branch(workflow_id, st.step_id, st.step_id)
-          end)
+          {:ok, _} = WorkflowServer.merge_now(workflow_id, "compile")
 
           Agent.update(state_agent, &Map.put(&1, :dynamic_count, length(steps)))
           {200, %{"generated" => length(steps)}}
@@ -377,9 +373,7 @@ defmodule CachePuppyCore.Integration.WorkflowIntegrationTest do
               url: Agent.get(url_agent, &(&1 <> "/step"))
             })
 
-          Enum.each(summarise_steps, fn st ->
-            {:ok, _} = WorkflowServer.close_parallel_branch(workflow_id, st.step_id, st.step_id)
-          end)
+          {:ok, _} = WorkflowServer.merge_now(workflow_id, "compile")
 
           {200, %{"topics" => topics}}
         end,

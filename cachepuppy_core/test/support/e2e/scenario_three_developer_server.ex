@@ -92,14 +92,12 @@ defmodule CachePuppy.Test.E2E.ScenarioThreeDeveloperServer do
           201
         )
 
-      Enum.each(parallel_created["steps"] || [], fn step ->
-        _ =
-          post_json!(
-            api_base <> "/api/workflows/" <> workflow_id <> "/parallel/close_branch",
-            %{"branchId" => step["stepId"], "terminalStepId" => step["stepId"]},
-            200
-          )
-      end)
+      _ =
+        post_json!(
+          api_base <> "/api/workflows/" <> workflow_id <> "/parallel/merge_now",
+          %{"mergeStepId" => get_in(parallel_created, ["mergeStep", "stepId"])},
+          200
+        )
 
       send_json(conn, 200, %{"branchCount" => length(keywords)})
     else

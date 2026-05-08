@@ -156,8 +156,8 @@ defmodule CachePuppy.Test.E2E.ScenarioFourDeveloperServer do
          summarise_step_id when is_binary(summarise_step_id) <- get_in(input, ["data", "summariseStepId"]) do
       _ =
         post_json!(
-          api_base <> "/api/workflows/" <> workflow_id <> "/parallel/close_branch",
-          %{"branchId" => research_step_id, "terminalStepId" => summarise_step_id},
+          api_base <> "/api/workflows/" <> workflow_id <> "/parallel/merge_now",
+          %{"mergeStepId" => "compile"},
           200
         )
 
