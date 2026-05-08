@@ -33,22 +33,8 @@ defmodule CachePuppyCore.Orchestrator.ParallelHandler do
 
   defp update_branch_completion(%Workflow{groups: groups} = workflow, step) do
     case Map.get(groups, step.group_id) do
-      %ParallelGroup{} = group ->
-        group = %{
-          group
-          | completed_branches: group.completed_branches + 1,
-            collected_outputs:
-              group.collected_outputs ++ [%{step_id: step.step_id, output: step.output}]
-        }
-
-        group =
-          if group.completed_branches == group.total_branches and is_nil(group.merge_step_id) do
-            %{group | status: :waiting_for_merge_step}
-          else
-            group
-          end
-
-        %{workflow | groups: Map.put(groups, step.group_id, group)}
+      %ParallelGroup{} ->
+        workflow
 
       _ ->
         workflow

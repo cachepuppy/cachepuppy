@@ -86,8 +86,8 @@ Use **`createAdminClient(options)`** when calling the server’s **HTTP** routes
 - `createWorkflow(name)` — `POST /api/workflows`; returns `{ workflowId, name, status }` (**201**).
 - `getWorkflow(workflowId)` — `GET /api/workflows/:id`; returns workflow graph state `{ workflowId, name, status, steps, groups }`.
 - `addWorkflowStep(workflowId, step)` — `POST /api/workflows/:id/steps`; returns `{ stepId, stepName, status }` (**201**).
-- `addWorkflowParallel(workflowId, steps)` — `POST /api/workflows/:id/parallel`; returns `{ groupId, totalBranches, steps }` (**201**).
-- `addWorkflowMerge(workflowId, step)` — `POST /api/workflows/:id/merge`; returns `{ stepId, stepName, status }` (**201**).
+- `addWorkflowParallel(workflowId, steps, mergeStep)` — `POST /api/workflows/:id/parallel`; returns `{ groupId, totalBranches, steps, mergeStep }` (**201**).
+- `closeWorkflowParallelBranch(workflowId, branchId, terminalStepId)` — `POST /api/workflows/:id/parallel/close_branch`; returns `{ workflowId, status: "ok" }` (**200**).
 - `addWorkflowLoop(workflowId, step, { continueIf, maxIterations })` — `POST /api/workflows/:id/loop`; returns loop metadata `{ groupId, stepName, maxIterations, continueIf }` (**201**).
 - `resumeWorkflow(workflowId, { stepId, output? })` — `POST /api/workflows/:id/resume`; returns `{ workflowId, status }`.
 - `executeWorkflowNow(workflowId, step)` — `POST /api/workflows/:id/execute_now`; returns `{ stepId, output, status }`.

@@ -31,11 +31,11 @@ defmodule CachePuppyCore.WorkflowServer do
 
   def add_step(workflow_id, step), do: GenServer.call(via(workflow_id), {:add_step, step})
 
-  def add_parallel_steps(workflow_id, steps),
-    do: GenServer.call(via(workflow_id), {:add_parallel_steps, steps})
+  def add_parallel(workflow_id, steps, merge_step),
+    do: GenServer.call(via(workflow_id), {:add_parallel, steps, merge_step})
 
-  def add_merge_step(workflow_id, step),
-    do: GenServer.call(via(workflow_id), {:add_merge_step, step})
+  def close_parallel_branch(workflow_id, branch_id, terminal_step_id),
+    do: GenServer.call(via(workflow_id), {:close_parallel_branch, branch_id, terminal_step_id})
 
   def add_loop(workflow_id, step, continue_if, max_iterations),
     do: GenServer.call(via(workflow_id), {:add_loop, step, continue_if, max_iterations})
@@ -102,6 +102,7 @@ defmodule CachePuppyCore.WorkflowServer do
          :ok <- ensure_unique_step(workflow, step.step_id),
          {:ok, workflow} <- maybe_activate(workflow) do
       {step, workflow} = apply_serial_parents(step, workflow)
+      with :ok <- validate_branch_addition_allowed(workflow, step) do
       step = %{step | inserted_at: step.inserted_at || DateTime.utc_now()}
       workflow = put_step(workflow, step)
       workflow = %{workflow | serial_tail_step_id: step.step_id}
@@ -109,15 +110,20 @@ defmodule CachePuppyCore.WorkflowServer do
       :ok = commit(workflow)
       :ok = maybe_broadcast_graph(workflow)
       {:reply, {:ok, step}, workflow}
+      else
+        {:error, _} = err -> {:reply, err, workflow}
+      end
     else
       {:error, _} = err -> {:reply, err, workflow}
     end
   end
 
-  def handle_call({:add_parallel_steps, steps}, _from, workflow) do
+  def handle_call({:add_parallel, steps, merge_step}, _from, workflow) do
     with :ok <- ensure_mutable(workflow),
          {:ok, steps} <- normalize_steps_list(steps),
+         {:ok, merge_step} <- to_step(merge_step),
          :ok <- ensure_all_unique_steps(workflow, steps),
+         :ok <- ensure_unique_step(workflow, merge_step.step_id),
          false <- steps == [],
          {:ok, workflow} <- maybe_activate(workflow) do
       group_id = generate_id("pg")
@@ -134,65 +140,72 @@ defmodule CachePuppyCore.WorkflowServer do
           {step, put_step(wf, step)}
         end)
 
+      branch_ids = Enum.map(branch_steps, & &1.step_id)
+
+      merge_step =
+        merge_step
+        |> apply_merge_parents(branch_ids)
+        |> Map.put(:inserted_at, merge_step.inserted_at || DateTime.utc_now())
+        |> Map.put(:group_type, :parallel_merge)
+        |> Map.put(:group_id, group_id)
+
+      workflow = put_step(workflow, merge_step)
+
       group = %ParallelGroup{
         group_id: group_id,
         total_branches: n,
-        completed_branches: 0,
-        collected_outputs: [],
-        merge_step_id: nil,
+        merge_step_id: merge_step.step_id,
+        branch_terminal_step_ids: Map.new(branch_ids, fn sid -> {sid, sid} end),
+        branch_statuses: Map.new(branch_ids, fn sid -> {sid, :open} end),
         status: :open
       }
 
       workflow =
-        workflow |> put_group(group) |> Map.put(:open_parallel_group_id, group_id) |> touch()
+        workflow
+        |> put_group(group)
+        |> Map.put(:open_parallel_group_id, nil)
+        |> Map.put(:serial_tail_step_id, merge_step.step_id)
+        |> touch()
 
       workflow = advance_and_enqueue(workflow)
       :ok = commit(workflow)
       :ok = maybe_broadcast_graph(workflow)
-      {:reply, {:ok, group_id, branch_steps}, workflow}
+      {:reply, {:ok, group_id, branch_steps, merge_step}, workflow}
     else
       true -> {:reply, {:error, :empty_parallel_branches}, workflow}
       {:error, _} = err -> {:reply, err, workflow}
     end
   end
 
-  def handle_call({:add_merge_step, step}, _from, workflow) do
+  def handle_call({:close_parallel_branch, branch_id, terminal_step_id}, _from, workflow) do
     with :ok <- ensure_mutable(workflow),
-         gid when is_binary(gid) <- workflow.open_parallel_group_id,
-         %ParallelGroup{} = pg <- Map.get(workflow.groups, gid),
-         true <- pg.status in [:open, :waiting_for_merge_step],
-         {:ok, step} <- to_step(step),
-         :ok <- ensure_unique_step(workflow, step.step_id),
-         {:ok, workflow} <- maybe_activate(workflow) do
-      branch_ids = parallel_branch_step_ids(workflow, gid)
-      step = apply_merge_parents(step, branch_ids)
+         {:ok, workflow} <- maybe_activate(workflow),
+         %Step{} = branch_root <- Map.get(workflow.steps, branch_id),
+         true <- branch_root.group_type == :parallel_branch,
+         %ParallelGroup{} = pg <- Map.get(workflow.groups, branch_root.group_id),
+         true <- Map.has_key?(pg.branch_statuses, branch_id),
+         :ok <- validate_terminal_step(workflow, branch_root.group_id, terminal_step_id) do
+      pg =
+        pg
+        |> put_in([Access.key(:branch_statuses), branch_id], :closed)
+        |> put_in([Access.key(:branch_terminal_step_ids), branch_id], terminal_step_id)
 
-      step = %{
-        step
-        | inserted_at: step.inserted_at || DateTime.utc_now(),
-          group_type: :parallel_merge,
-          group_id: gid
-      }
-
-      workflow = put_step(workflow, step)
-
-      pg = %{pg | merge_step_id: step.step_id, status: :waiting_for_merge_step}
-      workflow = put_group(workflow, pg)
+      merge_step = Map.fetch!(workflow.steps, pg.merge_step_id)
+      merge_step = %{merge_step | parent_ids: pg.branch_terminal_step_ids |> Map.values() |> Enum.sort()}
 
       workflow =
         workflow
-        |> Map.put(:open_parallel_group_id, nil)
-        |> Map.put(:serial_tail_step_id, step.step_id)
+        |> put_step(merge_step)
+        |> put_group(pg)
         |> touch()
 
       workflow = advance_and_enqueue(workflow)
       :ok = commit(workflow)
       :ok = maybe_broadcast_graph(workflow)
-      {:reply, {:ok, step}, workflow}
+      {:reply, {:ok, pg}, workflow}
     else
-      nil -> {:reply, {:error, :no_open_parallel_group}, workflow}
-      false -> {:reply, {:error, :parallel_group_not_open}, workflow}
-      %ParallelGroup{} -> {:reply, {:error, :parallel_group_not_open}, workflow}
+      nil -> {:reply, {:error, :not_found}, workflow}
+      false -> {:reply, {:error, :invalid_parallel_branch}, workflow}
       {:error, _} = err -> {:reply, err, workflow}
     end
   end
@@ -372,6 +385,33 @@ defmodule CachePuppyCore.WorkflowServer do
     {%{step | parent_ids: [tid]}, workflow}
   end
 
+  defp apply_serial_parents(%Step{parent_ids: parent_ids} = step, %Workflow{} = workflow)
+       when is_list(parent_ids) and parent_ids != [] do
+    parent_steps =
+      parent_ids
+      |> Enum.map(&Map.get(workflow.steps, &1))
+      |> Enum.reject(&is_nil/1)
+
+    case parent_steps do
+      [] ->
+        {step, workflow}
+
+      [first | rest] ->
+        same_group? = Enum.all?(rest, &(&1.group_id == first.group_id))
+        same_branch? = Enum.all?(rest, &(&1.branch_index == first.branch_index))
+
+        if same_group? and
+             is_binary(first.group_id) and
+             same_branch? and
+             first.group_type == :parallel_branch and
+             is_integer(first.branch_index) do
+          {%{step | group_id: first.group_id, group_type: :parallel_branch, branch_index: first.branch_index}, workflow}
+        else
+          {step, workflow}
+        end
+    end
+  end
+
   defp apply_serial_parents(%Step{} = step, workflow) do
     {step, workflow}
   end
@@ -382,12 +422,47 @@ defmodule CachePuppyCore.WorkflowServer do
 
   defp apply_merge_parents(%Step{} = step, _branch_ids), do: step
 
-  defp parallel_branch_step_ids(%Workflow{steps: steps}, group_id) do
-    steps
-    |> Map.values()
-    |> Enum.filter(&(&1.group_id == group_id))
-    |> Enum.map(& &1.step_id)
-    |> Enum.sort()
+  defp validate_terminal_step(%Workflow{steps: steps}, group_id, terminal_step_id) do
+    case Map.get(steps, terminal_step_id) do
+      %Step{group_id: ^group_id, group_type: :parallel_branch} -> :ok
+      %Step{} -> {:error, :invalid_terminal_step}
+      nil -> {:error, :not_found}
+    end
+  end
+
+  defp validate_branch_addition_allowed(%Workflow{groups: _groups}, %Step{group_id: nil}), do: :ok
+
+  defp validate_branch_addition_allowed(
+         %Workflow{groups: groups, steps: steps},
+         %Step{group_id: group_id, group_type: :parallel_branch, branch_index: branch_index}
+       ) do
+    case Map.get(groups, group_id) do
+      %ParallelGroup{} = pg ->
+        branch_root_id =
+          pg.branch_terminal_step_ids
+          |> Enum.find_value(fn {root_id, _terminal_id} ->
+            if pg.branch_statuses[root_id] == :open and
+                 root_branch_index(steps, root_id) == branch_index do
+              root_id
+            else
+              nil
+            end
+          end)
+
+        if branch_root_id, do: :ok, else: {:error, :parallel_branch_closed}
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp validate_branch_addition_allowed(_workflow, _step), do: :ok
+
+  defp root_branch_index(steps, root_id) do
+    case Map.get(steps, root_id) do
+      %Step{} = step -> step.branch_index
+      _ -> nil
+    end
   end
 
   defp ensure_unique_step(%Workflow{steps: steps}, step_id) do

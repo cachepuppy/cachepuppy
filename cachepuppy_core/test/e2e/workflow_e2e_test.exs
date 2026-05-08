@@ -115,7 +115,7 @@ defmodule CachePuppyCore.E2E.WorkflowE2ETest do
     :ok = Assertions.assert_graph_shape(workflow_id, %{node_count: 9, edge_count: 21})
   end
 
-  test "scenario 4 - dynamic parallel branch processing + merge + store", %{api_base: api_base} do
+  test "scenario 4 - dynamic parallel with per-branch summarize before final merge", %{api_base: api_base} do
     {:ok, dev_base, dev_ref} = ScenarioFourDeveloperServer.start(api_base: api_base)
     on_exit(fn -> ScenarioFourDeveloperServer.stop(dev_ref) end)
 
@@ -135,29 +135,16 @@ defmodule CachePuppyCore.E2E.WorkflowE2ETest do
     compile = Enum.find(workflow["steps"], &(&1["stepName"] == "compile"))
     store = Enum.find(workflow["steps"], &(&1["stepName"] == "store"))
     research_steps = Enum.filter(workflow["steps"], &(&1["stepName"] == "research"))
-
+    summarise_steps = Enum.filter(workflow["steps"], &(&1["stepName"] == "summarise"))
     assert length(research_steps) == 3
+    assert length(summarise_steps) == 3
     assert is_binary(compile["output"]["compiled"])
     assert store["output"]["stored"] == true
 
     :ok =
       Assertions.assert_graph_shape(workflow_id, %{
-        node_count: 7,
-        edge_types: [
-          "fan_in",
-          "fan_in",
-          "fan_in",
-          "fan_out",
-          "fan_out",
-          "fan_out",
-          "serial",
-          "serial",
-          "serial",
-          "serial",
-          "serial",
-          "serial",
-          "serial"
-        ]
+        node_count: 10,
+        edge_count: 16
       })
   end
 

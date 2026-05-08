@@ -37,6 +37,25 @@ function stepDelay() {
   return new Promise((r) => setTimeout(r, STEP_DELAY_MS));
 }
 
+/**
+ * @param {string} workflowId
+ * @param {unknown} parallelCreated
+ */
+async function closeParallelBranches(workflowId, parallelCreated) {
+  const steps = Array.isArray(parallelCreated?.steps) ? parallelCreated.steps : [];
+  for (const step of steps) {
+    const branchId = step?.stepId;
+    if (typeof branchId !== "string") {
+      continue;
+    }
+    await postJson(
+      `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/parallel/close_branch`,
+      { branchId, terminalStepId: branchId },
+      200,
+    );
+  }
+}
+
 function scenario1Router() {
   const r = express.Router();
   const base = `${PUBLIC_BASE}/scenario1`;
@@ -219,43 +238,43 @@ function scenario2Router() {
       }
       await stepDelay();
 
-      await postJson(
+      const parallelCreated = await postJson(
         `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/parallel`,
         {
           steps: [
             {
+              stepId: "research_A",
               stepName: "research_A",
               url: `${base}/research_A`,
               method: "post",
               data: { keyword: "alpha" },
             },
             {
+              stepId: "research_B",
               stepName: "research_B",
               url: `${base}/research_B`,
               method: "post",
               data: { keyword: "beta" },
             },
             {
+              stepId: "research_C",
               stepName: "research_C",
               url: `${base}/research_C`,
               method: "post",
               data: { keyword: "gamma" },
             },
           ],
+          mergeStep: {
+            stepId: "compile",
+            stepName: "compile",
+            url: `${base}/compile`,
+            method: "post",
+            data: {},
+          },
         },
         201,
       );
-
-      await postJson(
-        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/merge`,
-        {
-          stepName: "compile",
-          url: `${base}/compile`,
-          method: "post",
-          data: {},
-        },
-        201,
-      );
+      await closeParallelBranches(workflowId, parallelCreated);
 
       return res.status(200).json({ keywords: ["alpha", "beta", "gamma"] });
     } catch (e) {
@@ -298,6 +317,7 @@ function scenario2Router() {
           stepName: "store",
           url: `${base}/store`,
           method: "post",
+          parentIds: ["compile"],
           data: { compiled },
         },
         201,
@@ -373,7 +393,7 @@ function scenario3Router() {
       await stepDelay();
       const keywords = paragraph.split(/\s+/).filter(Boolean).slice(0, 5);
 
-      await postJson(
+      const parallelCreated = await postJson(
         `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/parallel`,
         {
           steps: keywords.map((keyword) => ({
@@ -382,20 +402,17 @@ function scenario3Router() {
             method: "post",
             data: { keyword },
           })),
+          mergeStep: {
+            stepId: "compile",
+            stepName: "compile",
+            url: `${base}/compile`,
+            method: "post",
+            data: {},
+          },
         },
         201,
       );
-
-      await postJson(
-        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/merge`,
-        {
-          stepName: "compile",
-          url: `${base}/compile`,
-          method: "post",
-          data: {},
-        },
-        201,
-      );
+      await closeParallelBranches(workflowId, parallelCreated);
 
       return res.status(200).json({ branchCount: keywords.length });
     } catch (e) {
@@ -517,23 +534,24 @@ function scenario4Router() {
       await postJson(
         `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/parallel`,
         {
-          steps: topics.map((topic) => ({
+          steps: topics.map((topic, idx) => ({
+            stepId: `research_${idx + 1}`,
             stepName: "research",
             url: `${base}/research`,
             method: "post",
-            data: { topic },
+            data: {
+              topic,
+              researchStepId: `research_${idx + 1}`,
+              summariseStepId: `summarise_${idx + 1}`,
+            },
           })),
-        },
-        201,
-      );
-
-      await postJson(
-        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/merge`,
-        {
-          stepName: "compile",
-          url: `${base}/compile`,
-          method: "post",
-          data: {},
+          mergeStep: {
+            stepId: "compile",
+            stepName: "compile",
+            url: `${base}/compile`,
+            method: "post",
+            data: {},
+          },
         },
         201,
       );
@@ -548,14 +566,70 @@ function scenario4Router() {
   r.post("/research", async (req, res) => {
     try {
       const input = req.body?.input;
+      const workflowId = input?.workflowId;
       const topic = input?.data?.topic;
-      if (typeof input !== "object" || typeof topic !== "string") {
+      const researchStepId = input?.data?.researchStepId;
+      const summariseStepId = input?.data?.summariseStepId;
+      if (
+        typeof input !== "object" ||
+        typeof workflowId !== "string" ||
+        typeof topic !== "string" ||
+        typeof researchStepId !== "string" ||
+        typeof summariseStepId !== "string"
+      ) {
         return res.status(400).json({ error: "invalid_research_request" });
       }
       await stepDelay();
       const notes = `facts about ${topic}`;
-      const summary = `summary: ${notes}`;
-      return res.status(200).json({ topic, notes, summary });
+      await postJson(
+        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/steps`,
+        {
+          stepId: summariseStepId,
+          stepName: "summarise",
+          url: `${base}/summarise`,
+          method: "post",
+          parentIds: [researchStepId],
+          data: {
+            topic,
+            notes,
+            researchStepId,
+            summariseStepId,
+          },
+        },
+        201,
+      );
+      return res.status(200).json({ topic, notes });
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: String(/** @type {Error} */ (e).message || e) });
+    }
+  });
+
+  r.post("/summarise", async (req, res) => {
+    try {
+      const input = req.body?.input;
+      const workflowId = input?.workflowId;
+      const topic = input?.data?.topic;
+      const notes = input?.data?.notes;
+      const researchStepId = input?.data?.researchStepId;
+      const summariseStepId = input?.data?.summariseStepId;
+      if (
+        typeof input !== "object" ||
+        typeof workflowId !== "string" ||
+        typeof topic !== "string" ||
+        typeof notes !== "string" ||
+        typeof researchStepId !== "string" ||
+        typeof summariseStepId !== "string"
+      ) {
+        return res.status(400).json({ error: "invalid_summarise_request" });
+      }
+      await stepDelay();
+      await postJson(
+        `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/parallel/close_branch`,
+        { branchId: researchStepId, terminalStepId: summariseStepId },
+        200,
+      );
+      return res.status(200).json({ topic, branchSummary: `${topic}: ${notes}` });
     } catch (e) {
       console.error(e);
       return res.status(500).json({ error: String(/** @type {Error} */ (e).message || e) });
@@ -571,7 +645,7 @@ function scenario4Router() {
         return res.status(400).json({ error: "invalid_compile_request" });
       }
       await stepDelay();
-      const compiled = mergeData.map((m) => m?.output?.summary).join(" | ");
+      const compiled = mergeData.map((m) => m?.output?.branchSummary).join(" | ");
 
       await postJson(
         `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/steps`,
@@ -579,6 +653,7 @@ function scenario4Router() {
           stepName: "store",
           url: `${base}/store`,
           method: "post",
+          parentIds: ["compile"],
           data: { compiled },
         },
         201,

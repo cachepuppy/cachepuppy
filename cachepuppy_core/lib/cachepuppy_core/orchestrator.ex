@@ -110,7 +110,13 @@ defmodule CachePuppyCore.Orchestrator do
 
   defp merge_data_for_step(workflow, %Step{group_type: :parallel_merge, group_id: gid}) do
     case Map.get(workflow.groups, gid) do
-      %ParallelGroup{} = g -> g.collected_outputs
+      %ParallelGroup{} = g ->
+        g.branch_terminal_step_ids
+        |> Enum.sort_by(fn {branch_id, _} -> branch_id end)
+        |> Enum.map(fn {_branch_id, terminal_id} ->
+          term_step = Map.get(workflow.steps, terminal_id)
+          %{"step_id" => terminal_id, "output" => term_step && term_step.output}
+        end)
       _ -> :omit
     end
   end
