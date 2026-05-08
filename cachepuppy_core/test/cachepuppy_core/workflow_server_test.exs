@@ -109,14 +109,12 @@ defmodule CachePuppyCore.WorkflowServerTest do
     end)
   end
 
-  test "add_merge_step returns error when no open parallel group", %{workflow_id: wid} do
+  test "close_parallel_branch returns error for unknown branch", %{workflow_id: wid} do
     assert {:ok, _} = WorkflowManager.ensure_started(wid)
-
-    merge = %{step_id: "m", step_name: "merge", url: "http://example/m"}
-    assert {:error, :no_open_parallel_group} = WorkflowServer.add_merge_step(wid, merge)
+    assert {:error, :not_found} = WorkflowServer.close_parallel_branch(wid, "missing_branch", "missing_terminal")
   end
 
-  test "parallel completion waits for merge then merge executes with merge_data", %{
+  test "parallel merge waits for explicit branch close and terminal completion", %{
     workflow_id: wid,
     response_agent: agent
   } do
@@ -148,7 +146,8 @@ defmodule CachePuppyCore.WorkflowServerTest do
       %{step_id: "p2", step_name: "b2", url: "http://example/p2"}
     ]
 
-    assert {:ok, gid, _} = WorkflowServer.add_parallel_steps(wid, branches)
+    merge = %{step_id: "m", step_name: "merge", url: "http://example/m"}
+    assert {:ok, gid, _, _} = WorkflowServer.add_parallel(wid, branches, merge)
 
     assert {:ok, wf} = WorkflowServer.get_state(wid)
     assert %ParallelGroup{} = wf.groups[gid]
@@ -156,13 +155,9 @@ defmodule CachePuppyCore.WorkflowServerTest do
     await_step_execution("p1")
     await_step_execution("p2")
 
-    wait_for(fn ->
-      assert {:ok, wf} = WorkflowServer.get_state(wid)
-      assert wf.groups[gid].status == :waiting_for_merge_step
-    end)
-
-    merge = %{step_id: "m", step_name: "merge", url: "http://example/m"}
-    assert {:ok, _} = WorkflowServer.add_merge_step(wid, merge)
+    assert {:ok, _group} = WorkflowServer.close_parallel_branch(wid, "p1", "p1")
+    refute_receive {:executed_step, "m", _}
+    assert {:ok, _group} = WorkflowServer.close_parallel_branch(wid, "p2", "p2")
     assert_receive {:executed_step, "m", merge_data}
     assert is_list(merge_data)
   end

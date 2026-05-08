@@ -158,19 +158,20 @@ defmodule CachePuppyCore.Integration.WorkflowIntegrationTest do
                data: %{"paragraph" => "alpha beta gamma"}
              })
 
-    assert {:ok, _gid, _branches} =
-             WorkflowServer.add_parallel_steps(workflow_id, [
+    assert {:ok, _gid, _branches, _merge} =
+             WorkflowServer.add_parallel(workflow_id, [
                step("ra", "research_A", base_url, %{"keyword" => "alpha"}),
                step("rb", "research_B", base_url, %{"keyword" => "beta"}),
                step("rc", "research_C", base_url, %{"keyword" => "gamma"})
-             ])
-
-    assert {:ok, _compile} =
-             WorkflowServer.add_merge_step(workflow_id, %{
+             ], %{
                step_id: "compile",
                step_name: "compile",
                url: base_url <> "/step"
              })
+
+    assert {:ok, _} = WorkflowServer.close_parallel_branch(workflow_id, "ra", "ra")
+    assert {:ok, _} = WorkflowServer.close_parallel_branch(workflow_id, "rb", "rb")
+    assert {:ok, _} = WorkflowServer.close_parallel_branch(workflow_id, "rc", "rc")
 
     workflow = WorkflowHelpers.wait_for_completion(workflow_id, timeout_ms: 12_000)
     broadcasts = WorkflowHelpers.collect_broadcasts(workflow_id)
@@ -232,14 +233,16 @@ defmodule CachePuppyCore.Integration.WorkflowIntegrationTest do
               step("research_#{idx}", "research", Agent.get(url_agent, & &1), %{"word" => word})
             end)
 
-          {:ok, _gid, _branches} = WorkflowServer.add_parallel_steps(workflow_id, steps)
-
-          {:ok, _compile} =
-            WorkflowServer.add_merge_step(workflow_id, %{
+          {:ok, _gid, _branches, _merge} =
+            WorkflowServer.add_parallel(workflow_id, steps, %{
               step_id: "compile",
               step_name: "compile",
               url: Agent.get(url_agent, &(&1 <> "/step"))
             })
+
+          Enum.each(steps, fn st ->
+            {:ok, _} = WorkflowServer.close_parallel_branch(workflow_id, st.step_id, st.step_id)
+          end)
 
           Agent.update(state_agent, &Map.put(&1, :dynamic_count, length(steps)))
           {200, %{"generated" => length(steps)}}
@@ -367,14 +370,16 @@ defmodule CachePuppyCore.Integration.WorkflowIntegrationTest do
               )
             end)
 
-          {:ok, _gid, _branches} = WorkflowServer.add_parallel_steps(workflow_id, summarise_steps)
-
-          {:ok, _compile} =
-            WorkflowServer.add_merge_step(workflow_id, %{
+          {:ok, _gid, _branches, _merge} =
+            WorkflowServer.add_parallel(workflow_id, summarise_steps, %{
               step_id: "compile",
               step_name: "compile",
               url: Agent.get(url_agent, &(&1 <> "/step"))
             })
+
+          Enum.each(summarise_steps, fn st ->
+            {:ok, _} = WorkflowServer.close_parallel_branch(workflow_id, st.step_id, st.step_id)
+          end)
 
           {200, %{"topics" => topics}}
         end,

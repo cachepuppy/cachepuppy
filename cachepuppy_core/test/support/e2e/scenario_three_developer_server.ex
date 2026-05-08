@@ -74,7 +74,7 @@ defmodule CachePuppy.Test.E2E.ScenarioThreeDeveloperServer do
       jitter_sleep()
       keywords = paragraph |> String.split() |> Enum.take(5)
 
-      _ =
+      parallel_created =
         post_json!(
           api_base <> "/api/workflows/" <> workflow_id <> "/parallel",
           %{
@@ -86,17 +86,20 @@ defmodule CachePuppy.Test.E2E.ScenarioThreeDeveloperServer do
                   "method" => "post",
                   "data" => %{"keyword" => keyword}
                 }
-              end)
+              end),
+            "mergeStep" => %{"stepName" => "compile", "url" => base_url(conn) <> "/compile", "method" => "post", "data" => %{}}
           },
           201
         )
 
-      _ =
-        post_json!(
-          api_base <> "/api/workflows/" <> workflow_id <> "/merge",
-          %{"stepName" => "compile", "url" => base_url(conn) <> "/compile", "method" => "post", "data" => %{}},
-          201
-        )
+      Enum.each(parallel_created["steps"] || [], fn step ->
+        _ =
+          post_json!(
+            api_base <> "/api/workflows/" <> workflow_id <> "/parallel/close_branch",
+            %{"branchId" => step["stepId"], "terminalStepId" => step["stepId"]},
+            200
+          )
+      end)
 
       send_json(conn, 200, %{"branchCount" => length(keywords)})
     else

@@ -5,6 +5,7 @@ import type {
   TopicPresenceResponse,
   WorkflowExecuteNowResponse,
   WorkflowLoopCreatedResponse,
+  WorkflowParallelBranchCloseResponse,
   WorkflowParallelCreatedResponse,
   WorkflowResumeInput,
   WorkflowStateResponse,
@@ -139,19 +140,32 @@ export class CachePuppyAdminClient {
     });
   }
 
-  async addWorkflowParallel(workflowId: string, steps: WorkflowStepInput[]): Promise<WorkflowParallelCreatedResponse> {
-    const body = { steps: steps.map((step) => toStepBody(step)) };
+  async addWorkflowParallel(
+    workflowId: string,
+    steps: WorkflowStepInput[],
+    mergeStep: WorkflowStepInput,
+  ): Promise<WorkflowParallelCreatedResponse> {
+    const body = { steps: steps.map((step) => toStepBody(step)), mergeStep: toStepBody(mergeStep) };
     return this.requestJson<WorkflowParallelCreatedResponse>("POST", workflowActionPath(workflowId, "parallel"), body, {
       useServerApiPrefix: false,
       okStatuses: [201],
     });
   }
 
-  async addWorkflowMerge(workflowId: string, step: WorkflowStepInput): Promise<WorkflowStepSummary> {
-    return this.requestJson<WorkflowStepSummary>("POST", workflowActionPath(workflowId, "merge"), toStepBody(step), {
+  async closeWorkflowParallelBranch(
+    workflowId: string,
+    branchId: string,
+    terminalStepId: string,
+  ): Promise<WorkflowParallelBranchCloseResponse> {
+    return this.requestJson<WorkflowParallelBranchCloseResponse>(
+      "POST",
+      workflowActionPath(workflowId, "parallel/close_branch"),
+      { branchId, terminalStepId },
+      {
       useServerApiPrefix: false,
-      okStatuses: [201],
-    });
+      okStatuses: [200],
+    },
+    );
   }
 
   async addWorkflowLoop(
@@ -266,6 +280,12 @@ function toStepBody(step: WorkflowStepInput): Record<string, unknown> {
   };
   if (step.data !== undefined) {
     body.data = step.data;
+  }
+  if (step.stepId !== undefined) {
+    body.stepId = step.stepId;
+  }
+  if (step.parentIds !== undefined) {
+    body.parentIds = step.parentIds;
   }
   if (step.successCodes !== undefined) {
     body.successCodes = step.successCodes;

@@ -30,11 +30,12 @@ defmodule CachePuppyCoreWeb.WorkflowJSON do
     }
   end
 
-  def parallel_created(group_id, steps) do
+  def parallel_created(group_id, steps, merge_step) do
     %{
       "groupId" => group_id,
       "totalBranches" => length(steps),
-      "steps" => Enum.map(steps, &step_json/1)
+      "steps" => Enum.map(steps, &step_json/1),
+      "mergeStep" => step_json(merge_step)
     }
   end
 
@@ -78,10 +79,12 @@ defmodule CachePuppyCoreWeb.WorkflowJSON do
       "type" => "parallel",
       "groupId" => group.group_id,
       "totalBranches" => group.total_branches,
-      "completedBranches" => group.completed_branches,
+      "completedBranches" => completed_branch_count(group),
       "collectedOutputs" => group.collected_outputs,
       "mergeStepId" => group.merge_step_id,
-      "status" => to_status(group.status)
+      "status" => to_status(group.status),
+      "branchStatuses" => group.branch_statuses,
+      "branchTerminalStepIds" => group.branch_terminal_step_ids
     }
   end
 
@@ -108,4 +111,10 @@ defmodule CachePuppyCoreWeb.WorkflowJSON do
 
   defp to_status(status) when is_atom(status), do: Atom.to_string(status)
   defp to_status(status), do: status
+
+  defp completed_branch_count(group) do
+    group.branch_statuses
+    |> Map.values()
+    |> Enum.count(&(&1 == :closed))
+  end
 end

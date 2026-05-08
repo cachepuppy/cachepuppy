@@ -13,7 +13,7 @@ defmodule CachePuppyCoreWeb.Router do
     get "/workflows/:id", WorkflowController, :show
     post "/workflows/:id/steps", StepController, :add_step
     post "/workflows/:id/parallel", StepController, :add_parallel
-    post "/workflows/:id/merge", StepController, :add_merge
+    post "/workflows/:id/parallel/close_branch", StepController, :close_parallel_branch
     post "/workflows/:id/loop", StepController, :add_loop
     post "/workflows/:id/resume", StepController, :resume
     post "/workflows/:id/execute_now", StepController, :execute_now

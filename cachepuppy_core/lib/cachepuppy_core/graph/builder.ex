@@ -64,24 +64,33 @@ defmodule CachePuppyCore.Graph.Builder do
     |> Map.values()
     |> Enum.flat_map(fn
       %ParallelGroup{} = pg ->
-        branch_steps =
+        parallel_steps =
           workflow.steps
           |> Map.values()
           |> Enum.filter(&(&1.group_id == pg.group_id and &1.group_type == :parallel_branch))
 
+        branch_root_ids = root_branch_ids(pg)
+
+        branch_roots =
+          parallel_steps
+          |> Enum.filter(&(&1.step_id in branch_root_ids))
+
         parent_ids =
-          branch_steps
+          branch_roots
           |> Enum.flat_map(& &1.parent_ids)
           |> Enum.uniq()
 
         fan_out =
-          for parent <- parent_ids, branch <- branch_steps do
+          for parent <- parent_ids, branch <- branch_roots do
             Edge.build(parent, branch.step_id, :fan_out)
           end
 
         fan_in =
           if is_binary(pg.merge_step_id) do
-            Enum.map(branch_steps, fn s -> Edge.build(s.step_id, pg.merge_step_id, :fan_in) end)
+            pg.branch_terminal_step_ids
+            |> Map.values()
+            |> Enum.uniq()
+            |> Enum.map(&Edge.build(&1, pg.merge_step_id, :fan_in))
           else
             []
           end
@@ -143,11 +152,37 @@ defmodule CachePuppyCore.Graph.Builder do
   end
 
   defp parallel_parent_ids(workflow, group_id) do
-    workflow.steps
-    |> Map.values()
-    |> Enum.filter(&(&1.group_id == group_id and &1.group_type == :parallel_branch))
+    parallel_steps =
+      workflow.steps
+      |> Map.values()
+      |> Enum.filter(&(&1.group_id == group_id and &1.group_type == :parallel_branch))
+
+    group =
+      workflow.groups
+      |> Map.values()
+      |> Enum.find(fn
+        %ParallelGroup{group_id: ^group_id} -> true
+        _ -> false
+      end)
+
+    root_ids =
+      case group do
+        %ParallelGroup{} = pg -> root_branch_ids(pg)
+        _ -> []
+      end
+
+    parallel_steps
+    |> Enum.filter(&(&1.step_id in root_ids))
     |> Enum.flat_map(& &1.parent_ids)
     |> Enum.uniq()
+  end
+
+  defp root_branch_ids(%ParallelGroup{} = pg) do
+    if map_size(pg.branch_statuses) > 0 do
+      Map.keys(pg.branch_statuses)
+    else
+      Map.keys(pg.branch_terminal_step_ids)
+    end
   end
 
   defp loop_parent_ids(workflow, group_id) do

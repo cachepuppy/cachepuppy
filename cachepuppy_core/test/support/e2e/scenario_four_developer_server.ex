@@ -37,7 +37,8 @@ defmodule CachePuppy.Test.E2E.ScenarioFourDeveloperServer do
     case {conn.method, conn.request_path} do
       {"POST", "/start"} -> handle_start(conn, api_base)
       {"POST", "/extract"} -> handle_extract(conn, api_base)
-      {"POST", "/research"} -> handle_research(conn)
+      {"POST", "/research"} -> handle_research(conn, api_base)
+      {"POST", "/summarise"} -> handle_summarise(conn, api_base)
       {"POST", "/compile"} -> handle_compile(conn, api_base)
       {"POST", "/store"} -> handle_store(conn)
       _ -> send_json(conn, 404, %{"error" => "not_found"})
@@ -79,22 +80,29 @@ defmodule CachePuppy.Test.E2E.ScenarioFourDeveloperServer do
           api_base <> "/api/workflows/" <> workflow_id <> "/parallel",
           %{
             "steps" =>
-              Enum.map(topics, fn topic ->
+              topics
+              |> Enum.with_index(1)
+              |> Enum.map(fn {topic, idx} ->
                 %{
+                  "stepId" => "research_#{idx}",
                   "stepName" => "research",
                   "url" => base_url(conn) <> "/research",
                   "method" => "post",
-                  "data" => %{"topic" => topic}
+                  "data" => %{
+                    "topic" => topic,
+                    "researchStepId" => "research_#{idx}",
+                    "summariseStepId" => "summarise_#{idx}"
+                  }
                 }
-              end)
+              end),
+            "mergeStep" => %{
+              "stepId" => "compile",
+              "stepName" => "compile",
+              "url" => base_url(conn) <> "/compile",
+              "method" => "post",
+              "data" => %{}
+            }
           },
-          201
-        )
-
-      _ =
-        post_json!(
-          api_base <> "/api/workflows/" <> workflow_id <> "/merge",
-          %{"stepName" => "compile", "url" => base_url(conn) <> "/compile", "method" => "post", "data" => %{}},
           201
         )
 
@@ -104,15 +112,58 @@ defmodule CachePuppy.Test.E2E.ScenarioFourDeveloperServer do
     end
   end
 
-  defp handle_research(conn) do
+  defp handle_research(conn, api_base) do
     with {:ok, payload, conn} <- decode_json(conn),
          input when is_map(input) <- Map.get(payload, "input"),
-         topic when is_binary(topic) <- get_in(input, ["data", "topic"]) do
+         workflow_id when is_binary(workflow_id) <- input["workflowId"],
+         topic when is_binary(topic) <- get_in(input, ["data", "topic"]),
+         research_step_id when is_binary(research_step_id) <- get_in(input, ["data", "researchStepId"]),
+         summarise_step_id when is_binary(summarise_step_id) <- get_in(input, ["data", "summariseStepId"]) do
       notes = "facts about #{topic}"
-      summary = "summary: #{notes}"
-      send_json(conn, 200, %{"topic" => topic, "notes" => notes, "summary" => summary})
+
+      _ =
+        post_json!(
+          api_base <> "/api/workflows/" <> workflow_id <> "/steps",
+          %{
+            "stepId" => summarise_step_id,
+            "stepName" => "summarise",
+            "url" => base_url(conn) <> "/summarise",
+            "method" => "post",
+            "parentIds" => [research_step_id],
+            "data" => %{
+              "topic" => topic,
+              "notes" => notes,
+              "researchStepId" => research_step_id,
+              "summariseStepId" => summarise_step_id
+            }
+          },
+          201
+        )
+
+      send_json(conn, 200, %{"topic" => topic, "notes" => notes})
     else
       _ -> send_json(conn, 400, %{"error" => "invalid_research_request"})
+    end
+  end
+
+  defp handle_summarise(conn, api_base) do
+    with {:ok, payload, conn} <- decode_json(conn),
+         input when is_map(input) <- Map.get(payload, "input"),
+         workflow_id when is_binary(workflow_id) <- input["workflowId"],
+         topic when is_binary(topic) <- get_in(input, ["data", "topic"]),
+         notes when is_binary(notes) <- get_in(input, ["data", "notes"]),
+         research_step_id when is_binary(research_step_id) <- get_in(input, ["data", "researchStepId"]),
+         summarise_step_id when is_binary(summarise_step_id) <- get_in(input, ["data", "summariseStepId"]) do
+      _ =
+        post_json!(
+          api_base <> "/api/workflows/" <> workflow_id <> "/parallel/close_branch",
+          %{"branchId" => research_step_id, "terminalStepId" => summarise_step_id},
+          200
+        )
+
+      send_json(conn, 200, %{"topic" => topic, "branchSummary" => "#{topic}: #{notes}"})
+    else
+      _ -> send_json(conn, 400, %{"error" => "invalid_summarise_request"})
     end
   end
 
@@ -123,7 +174,7 @@ defmodule CachePuppy.Test.E2E.ScenarioFourDeveloperServer do
          merge_data when is_list(merge_data) <- Map.get(input, "mergeData") do
       compiled =
         merge_data
-        |> Enum.map(& &1["output"]["summary"])
+        |> Enum.map(& &1["output"]["branchSummary"])
         |> Enum.join(" | ")
 
       _ =
@@ -133,6 +184,7 @@ defmodule CachePuppy.Test.E2E.ScenarioFourDeveloperServer do
             "stepName" => "store",
             "url" => base_url(conn) <> "/store",
             "method" => "post",
+            "parentIds" => ["compile"],
             "data" => %{"compiled" => compiled}
           },
           201

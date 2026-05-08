@@ -10,7 +10,8 @@ defmodule CachePuppyCoreWeb.Changesets.StepChangeset do
     data: :map,
     success_codes: {:array, :integer},
     max_retries: :integer,
-    step_id: :string
+    step_id: :string,
+    parent_ids: {:array, :string}
   }
 
   @spec changeset(map()) :: Ecto.Changeset.t()
@@ -44,6 +45,17 @@ defmodule CachePuppyCoreWeb.Changesets.StepChangeset do
     end)
     |> put_default(:max_retries, 3)
     |> validate_number(:max_retries, greater_than_or_equal_to: 0, less_than_or_equal_to: 10)
+    |> maybe_validate_parent_ids()
+  end
+
+  defp maybe_validate_parent_ids(changeset) do
+    if Map.has_key?(changeset.types, :parent_ids) do
+      validate_change(changeset, :parent_ids, fn :parent_ids, list ->
+        if is_list(list) and Enum.all?(list, &is_binary/1), do: [], else: [parent_ids: "must be a list of strings"]
+      end)
+    else
+      changeset
+    end
   end
 
   @spec validate_params(map()) :: {:ok, map()} | {:error, Ecto.Changeset.t()}
@@ -67,7 +79,8 @@ defmodule CachePuppyCoreWeb.Changesets.StepChangeset do
       method: String.upcase(validated.method),
       data: validated.data || %{},
       success_codes: validated.success_codes || [200],
-      max_retries: validated.max_retries || 3
+      max_retries: validated.max_retries || 3,
+      parent_ids: Map.get(validated, :parent_ids, []) || []
     }
 
     case resolved_step_id do
@@ -92,7 +105,8 @@ defmodule CachePuppyCoreWeb.Changesets.StepChangeset do
       data: Map.get(params, "data"),
       success_codes: Map.get(params, "successCodes"),
       max_retries: Map.get(params, "maxRetries"),
-      step_id: Map.get(params, "stepId")
+      step_id: Map.get(params, "stepId"),
+      parent_ids: Map.get(params, "parentIds")
     }
   end
 end

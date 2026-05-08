@@ -52,7 +52,9 @@ defmodule CachePuppyCore.Graph.BuilderTest do
       total_branches: 2,
       completed_branches: 1,
       merge_step_id: "m1",
-      status: :waiting_for_merge_step
+      branch_terminal_step_ids: %{"p1" => "p1", "p2" => "p2"},
+      branch_statuses: %{"p1" => :open, "p2" => :open},
+      status: :open
     }
 
     wf = %Workflow{
