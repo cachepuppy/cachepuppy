@@ -4,6 +4,7 @@ import express from "express";
 const PORT = Number(process.env.PORT || 8787);
 const CACHEPUPPY_API_BASE = (process.env.CACHEPUPPY_API_BASE || "http://127.0.0.1:4000").replace(/\/$/, "");
 const PUBLIC_BASE = (process.env.WORKFLOW_DEMO_PUBLIC_URL || `http://127.0.0.1:${PORT}`).replace(/\/$/, "");
+const STEP_DELAY_MS = Math.max(0, Number(process.env.WORKFLOW_STEP_DELAY_MS || 5000));
 
 /**
  * @param {string} url
@@ -32,9 +33,8 @@ async function postJson(url, body, expectedStatus = 200) {
   return data;
 }
 
-function jitterSleep() {
-  const ms = 50 + Math.floor(Math.random() * 251);
-  return new Promise((r) => setTimeout(r, ms));
+function stepDelay() {
+  return new Promise((r) => setTimeout(r, STEP_DELAY_MS));
 }
 
 function scenario1Router() {
@@ -79,7 +79,7 @@ function scenario1Router() {
       if (typeof input !== "object" || typeof workflowId !== "string" || typeof paragraph !== "string") {
         return res.status(400).json({ error: "invalid_extract_request" });
       }
-      await jitterSleep();
+      await stepDelay();
       const keywords = paragraph.split(/\s+/).filter(Boolean).slice(0, 3);
 
       await postJson(
@@ -108,6 +108,7 @@ function scenario1Router() {
       if (typeof input !== "object" || typeof workflowId !== "string" || !Array.isArray(keywords)) {
         return res.status(400).json({ error: "invalid_research_request" });
       }
+      await stepDelay();
       const summary = `summary: ${keywords.join(", ")}`;
 
       await postJson(
@@ -136,6 +137,7 @@ function scenario1Router() {
       if (typeof input !== "object" || typeof workflowId !== "string" || typeof summary !== "string") {
         return res.status(400).json({ error: "invalid_compile_request" });
       }
+      await stepDelay();
       const report = `report: ${summary}`;
 
       await postJson(
@@ -163,6 +165,7 @@ function scenario1Router() {
       if (typeof input !== "object" || typeof report !== "string") {
         return res.status(400).json({ error: "invalid_store_request" });
       }
+      await stepDelay();
       return res.status(200).json({ stored: true, reportLength: report.length });
     } catch (e) {
       console.error(e);
@@ -214,6 +217,7 @@ function scenario2Router() {
       if (typeof input !== "object" || typeof workflowId !== "string") {
         return res.status(400).json({ error: "invalid_extract_request" });
       }
+      await stepDelay();
 
       await postJson(
         `${CACHEPUPPY_API_BASE}/api/workflows/${encodeURIComponent(workflowId)}/parallel`,
@@ -268,6 +272,7 @@ function scenario2Router() {
         if (typeof input !== "object" || typeof keyword !== "string") {
           return res.status(400).json({ error: "invalid_research_request" });
         }
+        await stepDelay();
         return res.status(200).json({ branch, result: `res:${keyword}` });
       } catch (e) {
         console.error(e);
@@ -284,6 +289,7 @@ function scenario2Router() {
       if (typeof input !== "object" || typeof workflowId !== "string" || !Array.isArray(mergeData)) {
         return res.status(400).json({ error: "invalid_compile_request" });
       }
+      await stepDelay();
       const compiled = mergeData.map((m) => m?.output?.result).join(", ");
 
       await postJson(
@@ -311,6 +317,7 @@ function scenario2Router() {
       if (typeof input !== "object" || typeof compiled !== "string") {
         return res.status(400).json({ error: "invalid_store_request" });
       }
+      await stepDelay();
       return res.status(200).json({ stored: true, compiledLength: compiled.length });
     } catch (e) {
       console.error(e);
@@ -363,7 +370,7 @@ function scenario3Router() {
       if (typeof input !== "object" || typeof workflowId !== "string" || typeof paragraph !== "string") {
         return res.status(400).json({ error: "invalid_extract_request" });
       }
-      await jitterSleep();
+      await stepDelay();
       const keywords = paragraph.split(/\s+/).filter(Boolean).slice(0, 5);
 
       await postJson(
@@ -404,6 +411,7 @@ function scenario3Router() {
       if (typeof input !== "object" || typeof keyword !== "string") {
         return res.status(400).json({ error: "invalid_research_request" });
       }
+      await stepDelay();
       return res.status(200).json({
         word: keyword,
         definition: `definition of ${keyword}`,
@@ -422,6 +430,7 @@ function scenario3Router() {
       if (typeof input !== "object" || typeof workflowId !== "string" || !Array.isArray(mergeData)) {
         return res.status(400).json({ error: "invalid_compile_request" });
       }
+      await stepDelay();
       const definitions = mergeData.map((m) => m?.output);
 
       await postJson(
@@ -449,6 +458,7 @@ function scenario3Router() {
       if (typeof input !== "object" || !Array.isArray(definitions)) {
         return res.status(400).json({ error: "invalid_store_request" });
       }
+      await stepDelay();
       return res.status(200).json({ stored: true, definitionsCount: definitions.length });
     } catch (e) {
       console.error(e);
@@ -501,7 +511,7 @@ function scenario4Router() {
       if (typeof input !== "object" || typeof workflowId !== "string" || typeof paragraph !== "string") {
         return res.status(400).json({ error: "invalid_extract_request" });
       }
-      await jitterSleep();
+      await stepDelay();
       const topics = paragraph.split(/\s+/).filter(Boolean).slice(0, 3);
 
       await postJson(
@@ -542,6 +552,7 @@ function scenario4Router() {
       if (typeof input !== "object" || typeof topic !== "string") {
         return res.status(400).json({ error: "invalid_research_request" });
       }
+      await stepDelay();
       const notes = `facts about ${topic}`;
       const summary = `summary: ${notes}`;
       return res.status(200).json({ topic, notes, summary });
@@ -559,6 +570,7 @@ function scenario4Router() {
       if (typeof input !== "object" || typeof workflowId !== "string" || !Array.isArray(mergeData)) {
         return res.status(400).json({ error: "invalid_compile_request" });
       }
+      await stepDelay();
       const compiled = mergeData.map((m) => m?.output?.summary).join(" | ");
 
       await postJson(
@@ -586,6 +598,7 @@ function scenario4Router() {
       if (typeof input !== "object" || typeof compiled !== "string") {
         return res.status(400).json({ error: "invalid_store_request" });
       }
+      await stepDelay();
       return res.status(200).json({ stored: true, compiledLength: compiled.length });
     } catch (e) {
       console.error(e);
@@ -612,4 +625,5 @@ app.use("/scenario4", scenario4Router());
 app.listen(PORT, () => {
   console.log(`Workflows demo server listening on ${PUBLIC_BASE} (port ${PORT})`);
   console.log(`CachePuppy API: ${CACHEPUPPY_API_BASE}`);
+  console.log(`Workflow step delay: ${STEP_DELAY_MS}ms`);
 });
