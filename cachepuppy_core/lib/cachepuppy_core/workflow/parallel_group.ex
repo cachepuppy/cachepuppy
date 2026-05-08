@@ -1,8 +1,7 @@
 defmodule CachePuppyCore.Workflow.ParallelGroup do
   @moduledoc false
 
-  @type branch_status :: :open | :closed
-  @type status :: :open | :completed | :failed
+  @type status :: :open | :merge_waiting | :completed | :failed
 
   @type t :: %__MODULE__{
           group_id: String.t(),
@@ -10,8 +9,9 @@ defmodule CachePuppyCore.Workflow.ParallelGroup do
           completed_branches: non_neg_integer(),
           collected_outputs: [map()],
           merge_step_id: String.t() | nil,
+          branch_root_step_ids: [String.t()],
           branch_terminal_step_ids: %{String.t() => String.t()},
-          branch_statuses: %{String.t() => branch_status()},
+          merge_armed: boolean(),
           parent_group_id: String.t() | nil,
           status: status()
         }
@@ -22,8 +22,9 @@ defmodule CachePuppyCore.Workflow.ParallelGroup do
     completed_branches: 0,
     collected_outputs: [],
     merge_step_id: nil,
+    branch_root_step_ids: [],
     branch_terminal_step_ids: %{},
-    branch_statuses: %{},
+    merge_armed: false,
     parent_group_id: nil,
     status: :open
   ]

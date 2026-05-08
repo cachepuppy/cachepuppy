@@ -52,8 +52,8 @@ defmodule CachePuppyCore.Graph.BuilderTest do
       total_branches: 2,
       completed_branches: 1,
       merge_step_id: "m1",
+      branch_root_step_ids: ["p1", "p2"],
       branch_terminal_step_ids: %{"p1" => "p1", "p2" => "p2"},
-      branch_statuses: %{"p1" => :open, "p2" => :open},
       status: :open
     }
 

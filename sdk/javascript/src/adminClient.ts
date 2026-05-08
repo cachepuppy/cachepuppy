@@ -5,7 +5,7 @@ import type {
   TopicPresenceResponse,
   WorkflowExecuteNowResponse,
   WorkflowLoopCreatedResponse,
-  WorkflowParallelBranchCloseResponse,
+  WorkflowParallelMergeNowResponse,
   WorkflowParallelCreatedResponse,
   WorkflowResumeInput,
   WorkflowStateResponse,
@@ -152,19 +152,18 @@ export class CachePuppyAdminClient {
     });
   }
 
-  async closeWorkflowParallelBranch(
+  async mergeWorkflowParallelNow(
     workflowId: string,
-    branchId: string,
-    terminalStepId: string,
-  ): Promise<WorkflowParallelBranchCloseResponse> {
-    return this.requestJson<WorkflowParallelBranchCloseResponse>(
+    mergeStepId: string,
+  ): Promise<WorkflowParallelMergeNowResponse> {
+    return this.requestJson<WorkflowParallelMergeNowResponse>(
       "POST",
-      workflowActionPath(workflowId, "parallel/close_branch"),
-      { branchId, terminalStepId },
+      workflowActionPath(workflowId, "parallel/merge_now"),
+      { mergeStepId },
       {
-      useServerApiPrefix: false,
-      okStatuses: [200],
-    },
+        useServerApiPrefix: false,
+        okStatuses: [200],
+      },
     );
   }
 

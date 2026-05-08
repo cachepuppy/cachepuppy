@@ -4,7 +4,7 @@ defmodule CachePuppyCoreWeb.StepController do
   import Ecto.Changeset
 
   alias CachePuppyCore.{WorkflowManager, WorkflowServer}
-  alias CachePuppyCoreWeb.Changesets.{LoopChangeset, ParallelBranchCloseChangeset, ParallelChangeset, StepChangeset}
+  alias CachePuppyCoreWeb.Changesets.{LoopChangeset, ParallelMergeNowChangeset, ParallelChangeset, StepChangeset}
   alias CachePuppyCoreWeb.{ErrorJSON, WorkflowJSON}
 
   @resume_types %{step_id: :string, output: :map}
@@ -44,10 +44,10 @@ defmodule CachePuppyCoreWeb.StepController do
     end
   end
 
-  def close_parallel_branch(conn, %{"id" => workflow_id} = params) do
+  def merge_now(conn, %{"id" => workflow_id} = params) do
     with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
-         {:ok, attrs} <- ParallelBranchCloseChangeset.validate_params(params) do
-      case WorkflowServer.close_parallel_branch(workflow_id, attrs.branch_id, attrs.terminal_step_id) do
+         {:ok, attrs} <- ParallelMergeNowChangeset.validate_params(params) do
+      case WorkflowServer.merge_now(workflow_id, attrs.merge_step_id) do
         {:ok, _group} -> conn |> put_status(:ok) |> json(%{"workflowId" => workflow_id, "status" => "ok"})
         other -> map_server_error(conn, workflow_id, other)
       end
@@ -219,16 +219,16 @@ defmodule CachePuppyCoreWeb.StepController do
     |> json(ErrorJSON.validation_failed(%{"branchId" => ["invalid parallel branch"]}))
   end
 
-  defp map_server_error(conn, _workflow_id, {:error, :invalid_terminal_step}) do
-    conn
-    |> put_status(:bad_request)
-    |> json(ErrorJSON.validation_failed(%{"terminalStepId" => ["invalid terminal step"]}))
-  end
-
-  defp map_server_error(conn, _workflow_id, {:error, :parallel_branch_closed}) do
+  defp map_server_error(conn, _workflow_id, {:error, :merge_already_armed}) do
     conn
     |> put_status(:conflict)
-    |> json(ErrorJSON.validation_failed(%{"branch" => ["branch already closed"]}))
+    |> json(ErrorJSON.validation_failed(%{"mergeStepId" => ["merge already armed"]}))
+  end
+
+  defp map_server_error(conn, _workflow_id, {:error, :parallel_merge_started}) do
+    conn
+    |> put_status(:conflict)
+    |> json(ErrorJSON.validation_failed(%{"mergeStepId" => ["merge already started"]}))
   end
 
   defp map_server_error(conn, _workflow_id, _other) do
