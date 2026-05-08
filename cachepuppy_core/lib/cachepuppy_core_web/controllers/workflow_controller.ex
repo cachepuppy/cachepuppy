@@ -14,10 +14,20 @@ defmodule CachePuppyCoreWeb.WorkflowController do
         workflow_id = "wf_" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
         name = attrs.name
 
-        case WorkflowManager.start_workflow(workflow_id, name) do
+        case WorkflowManager.start_workflow_confirmed(workflow_id, name) do
           {:ok, _pid} ->
-            {:ok, workflow} = WorkflowServer.get_state(workflow_id)
-            conn |> put_status(:created) |> json(WorkflowJSON.created(workflow))
+            conn
+            |> put_status(:created)
+            |> json(%{
+              "workflowId" => workflow_id,
+              "name" => name,
+              "status" => "pending"
+            })
+
+          {:error, :workflow_visibility_timeout} ->
+            conn
+            |> put_status(:service_unavailable)
+            |> json(%{"error" => "workflow_unavailable", "message" => "Workflow did not become visible in time"})
 
           {:error, _reason} ->
             conn |> put_status(:internal_server_error) |> json(ErrorJSON.internal_error())
@@ -72,4 +82,5 @@ defmodule CachePuppyCoreWeb.WorkflowController do
       {:error, traverse_errors(cs, fn {msg, _opts} -> msg end)}
     end
   end
+
 end

@@ -3,6 +3,7 @@ defmodule CachePuppyCore.Graph.Broadcaster do
 
   alias CachePuppyCore.Graph.{Builder, Differ, Snapshot}
   alias CachePuppyCore.Workflow.WorkflowStore
+  alias CachePuppyCoreWeb.TopicRoom
 
   @spec broadcast(String.t()) :: :ok
   def broadcast(workflow_id) when is_binary(workflow_id) do
@@ -21,6 +22,12 @@ defmodule CachePuppyCore.Graph.Broadcaster do
               "workflow:" <> workflow_id,
               {:graph_diff, diff}
             )
+
+          logical_topic = "workflow:" <> workflow_id
+
+          logical_topic
+          |> TopicRoom.build_publish("graph_diff", diff, "workflow_engine")
+          |> then(&TopicRoom.broadcast_message!(logical_topic, &1))
 
           workflow
           |> Snapshot.put(current)
