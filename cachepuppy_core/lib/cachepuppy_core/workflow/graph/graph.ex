@@ -14,4 +14,3 @@ defmodule CachePuppyCore.Graph do
 
   defstruct [:workflow_id, :name, :status, nodes: [], edges: [], updated_at: nil]
 end
-

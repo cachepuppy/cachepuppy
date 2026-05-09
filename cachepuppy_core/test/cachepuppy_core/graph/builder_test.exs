@@ -78,5 +78,4 @@ defmodule CachePuppyCore.Graph.BuilderTest do
              &(&1["from"] == "p2" and &1["to"] == "m1" and &1["type"] == "fan_in")
            )
   end
-
 end

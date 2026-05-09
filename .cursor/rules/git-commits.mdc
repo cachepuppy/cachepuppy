@@ -4,6 +4,10 @@ globs: **/*
 alwaysApply: true
 ---
 
+# Git Commit Rule
+
+Never make a commit yourself unless triggered by the user. If you attempt to make a commit as part of a current job, you probably shouldn't. The user will always explicitly ask you to make a commit.
+
 # Git Commit Standards
 
 You MUST follow the Conventional Commits specification for all commit messages.
