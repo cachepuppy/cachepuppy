@@ -4,16 +4,17 @@ import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { createEmptyGraphState, mergeGraphDiff, STEP_NODE_TYPES, type GraphState } from "./graphMerge.js";
 
-const SCENARIO_LABELS: Record<1 | 2 | 3 | 4 | 5, string> = {
+const SCENARIO_LABELS: Record<1 | 2 | 3 | 4 | 5 | 6, string> = {
   1: "Serial: extract → research → compile → store",
   2: "Static parallel (3 branches) + merge → store",
   3: "Dynamic parallel (word count) + merge → store",
   4: "Dynamic parallel research → summarize branches → final merge compile → store",
   5: "Nested parallel: research branches each fan out to search → collect → summarise → merge",
+  6: "Nested parallel + flaky inner step (retries exhausted) → manual Retry → completes",
 };
 
 export function ScenarioCard(props: {
-  scenario: 1 | 2 | 3 | 4 | 5;
+  scenario: 1 | 2 | 3 | 4 | 5 | 6;
   apiBase: string;
   paragraph: string;
 }) {
@@ -24,6 +25,7 @@ export function ScenarioCard(props: {
   const [workflowStatus, setWorkflowStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [retryBusy, setRetryBusy] = useState(false);
 
   useEffect(() => {
     if (!workflowId || connectionState !== "connected") {
@@ -71,6 +73,8 @@ export function ScenarioCard(props: {
     };
   }, [client, connectionState, workflowId]);
 
+  const failedStepIdForRetry = useMemo(() => pickFailedStepIdForRetry(graph), [graph]);
+
   async function play() {
     setBusy(true);
     setError(null);
@@ -99,6 +103,38 @@ export function ScenarioCard(props: {
     }
   }
 
+  async function retryFailedStep() {
+    if (scenario !== 6 || !workflowId || !failedStepIdForRetry) {
+      return;
+    }
+    setRetryBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`${apiBase}/scenario6/retry`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workflowId, stepId: failedStepIdForRetry }),
+      });
+      const data = (await res.json()) as { workflowId?: string; status?: string; error?: string };
+      if (!res.ok) {
+        throw new Error(data.error ?? JSON.stringify(data));
+      }
+      if (typeof data.status === "string") {
+        setWorkflowStatus(data.status);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRetryBusy(false);
+    }
+  }
+
+  const showRetry =
+    scenario === 6 &&
+    workflowId &&
+    (workflowStatus === "failed" || workflowStatus === "failing") &&
+    Boolean(failedStepIdForRetry);
+
   const orderedRows = useMemo(() => buildHierarchyRows(graph), [graph]);
 
   const hasRows = orderedRows.length > 0;
@@ -108,9 +144,22 @@ export function ScenarioCard(props: {
       <div className="scenario-card__head">
         <h2>Scenario {scenario}</h2>
         <p className="scenario-card__desc">{SCENARIO_LABELS[scenario]}</p>
-        <button type="button" className="play-btn" disabled={busy || connectionState !== "connected"} onClick={() => void play()}>
-          {busy ? "Starting…" : "Play"}
-        </button>
+        <div className="scenario-card__buttons">
+          <button type="button" className="play-btn" disabled={busy || connectionState !== "connected"} onClick={() => void play()}>
+            {busy ? "Starting…" : "Play"}
+          </button>
+          {showRetry ? (
+            <button
+              type="button"
+              className="play-btn play-btn--secondary"
+              disabled={retryBusy || connectionState !== "connected"}
+              onClick={() => void retryFailedStep()}
+              title={failedStepIdForRetry ?? undefined}
+            >
+              {retryBusy ? "Retrying…" : `Retry failed step (${failedStepIdForRetry})`}
+            </button>
+          ) : null}
+        </div>
       </div>
       {connectionState !== "connected" ? (
         <p className="muted">Connect websocket to run scenarios…</p>
@@ -149,14 +198,16 @@ export function ScenarioCard(props: {
                       {row.label}
                     </span>
                     <span className="muted">fan_out</span>
-                    <span className="muted">group</span>
+                    <span />
                     <span className="muted">-</span>
                   </>
                 ) : (
                   <>
                     <span className="steps-tree__step">{row.stepName}</span>
                     <span>{row.nodeType}</span>
-                    <span>{row.status}</span>
+                    <span>
+                      <StepStatusPill status={row.status} />
+                    </span>
                     <span>{row.retryCount}</span>
                   </>
                 )}
@@ -188,6 +239,46 @@ type HierarchyRow =
       status: string;
       retryCount: string;
     };
+
+function StepStatusPill(props: { status: string }) {
+  const { status } = props;
+  const normalized = status.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  let variant = "step-status-pill step-status-pill--plain";
+  if (normalized === "completed") {
+    variant = "step-status-pill step-status-pill--completed";
+  } else if (normalized === "running") {
+    variant = "step-status-pill step-status-pill--running";
+  } else if (normalized === "failed") {
+    variant = "step-status-pill step-status-pill--failed";
+  }
+  return <span className={variant}>{status}</span>;
+}
+
+function pickFailedStepIdForRetry(graph: GraphState): string | null {
+  const rows: { id: string; stepName: string }[] = [];
+  for (const node of graph.nodesById.values()) {
+    const t = node["type"];
+    if (typeof t !== "string" || !STEP_NODE_TYPES.has(t) || node["status"] !== "failed") {
+      continue;
+    }
+    const id = typeof node["nodeId"] === "string" ? node["nodeId"] : null;
+    if (!id) {
+      continue;
+    }
+    const stepName = typeof node["stepName"] === "string" ? node["stepName"] : "";
+    rows.push({ id, stepName });
+  }
+  rows.sort((a, b) => {
+    if (a.stepName !== b.stepName) {
+      return a.stepName.localeCompare(b.stepName);
+    }
+    return a.id.localeCompare(b.id);
+  });
+  return rows[0]?.id ?? null;
+}
 
 function buildHierarchyRows(graph: GraphState): HierarchyRow[] {
   const stepNodes = Array.from(graph.nodesById.values()).filter((node) => {

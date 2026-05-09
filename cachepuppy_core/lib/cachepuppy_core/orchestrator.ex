@@ -9,7 +9,8 @@ defmodule CachePuppyCore.Orchestrator do
   @type action :: {:execute_step, Step.t(), keyword()}
 
   @spec advance(Workflow.t()) :: {Workflow.t(), [action()]}
-  def advance(%Workflow{status: s} = workflow) when s in [:failed, :completed], do: {workflow, []}
+  def advance(%Workflow{status: s} = workflow) when s in [:failed, :failing, :completed],
+    do: {workflow, []}
 
   def advance(%Workflow{} = workflow) do
     workflow =
@@ -68,8 +69,13 @@ defmodule CachePuppyCore.Orchestrator do
               |> ParallelHandler.on_step_completed(completed)
               |> LoopHandler.on_step_completed(completed)
               |> touch()
+              |> maybe_finalize_failure()
 
-            advance(workflow)
+            if workflow.status == :failing do
+              {workflow, []}
+            else
+              advance(workflow)
+            end
 
           {:error, reason} ->
             failed = %{
@@ -83,9 +89,14 @@ defmodule CachePuppyCore.Orchestrator do
               workflow
               |> put_step(failed)
               |> ParallelHandler.mark_group_failed(step.group_id)
-              |> Map.put(:status, :failed)
+              |> Map.put(:status, :failing)
+              |> Map.put(
+                :failed_step_ids,
+                add_failed_step_id(workflow.failed_step_ids, step.step_id)
+              )
               |> Map.put(:failure_reason, reason)
               |> touch()
+              |> maybe_finalize_failure()
 
             {workflow, []}
         end
@@ -126,11 +137,27 @@ defmodule CachePuppyCore.Orchestrator do
   defp merge_data_for_step(_workflow, _step), do: :omit
 
   defp terminal_success?(workflow) do
-    workflow.status not in [:failed, :completed] and
+    workflow.status not in [:failed, :failing, :completed] and
       map_size(workflow.steps) > 0 and
       Enum.all?(workflow.steps, fn {_id, step} -> step.status == :completed end) and
       Enum.all?(workflow.groups, fn {_id, group} -> Map.get(group, :status) == :completed end) and
       workflow.active_step_ids == MapSet.new()
+  end
+
+  defp maybe_finalize_failure(%Workflow{status: :failing, active_step_ids: active} = workflow) do
+    if MapSet.size(active) == 0 do
+      %{workflow | status: :failed}
+    else
+      workflow
+    end
+  end
+
+  defp maybe_finalize_failure(%Workflow{} = workflow), do: workflow
+
+  defp add_failed_step_id(ids, step_id) when is_list(ids) and is_binary(step_id) do
+    ids
+    |> List.insert_at(0, step_id)
+    |> Enum.uniq()
   end
 
   defp put_step(%Workflow{steps: steps} = workflow, %Step{} = step) do

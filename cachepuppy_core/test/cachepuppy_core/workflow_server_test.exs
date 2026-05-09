@@ -13,6 +13,13 @@ defmodule CachePuppyCore.WorkflowServerTest do
         send(pid, {:executed_step, step.step_id, Keyword.get(opts, :merge_data, :omit)})
       end
 
+      delay_ms =
+        opts
+        |> Keyword.get(:delay_by_step_id, %{})
+        |> Map.get(step.step_id, 0)
+
+      if is_integer(delay_ms) and delay_ms > 0, do: Process.sleep(delay_ms)
+
       agent = Keyword.fetch!(opts, :response_agent)
 
       Agent.get_and_update(agent, fn
@@ -244,6 +251,136 @@ defmodule CachePuppyCore.WorkflowServerTest do
 
     assert {:ok, wf_after} = WorkflowServer.get_state(wid)
     assert Enum.sort(wf_after.steps["m"].parent_ids) == ["m2", "p2"]
+  end
+
+  test "workflow transitions failing then failed after active steps drain", %{
+    workflow_id: wid,
+    response_agent: agent
+  } do
+    assert {:ok, _} = WorkflowManager.ensure_started(wid)
+
+    old_opts = Application.get_env(:cachepuppy_core, :workflow_step_executor_opts, [])
+
+    Application.put_env(
+      :cachepuppy_core,
+      :workflow_step_executor_opts,
+      Keyword.merge(old_opts, max_retries: 0, delay_by_step_id: %{"p2" => 200})
+    )
+
+    on_exit(fn ->
+      Application.put_env(:cachepuppy_core, :workflow_step_executor_opts, old_opts)
+    end)
+
+    set_responses(agent, [
+      {:error, %{reason: :boom, attempts: 1, step: %{step_id: "p1"}}},
+      {:ok,
+       %{
+         status_code: 200,
+         body: %{"ok" => true},
+         step: %CachePuppyCore.Workflow.Step{retry_count: 0}
+       }}
+    ])
+
+    assert {:ok, _gid, _branches, _merge} =
+             WorkflowServer.add_parallel(
+               wid,
+               [
+                 %{step_id: "p1", step_name: "p1", url: "http://example/p1"},
+                 %{step_id: "p2", step_name: "p2", url: "http://example/p2"}
+               ],
+               %{step_id: "merge", step_name: "merge", url: "http://example/merge"}
+             )
+
+    wait_for(fn ->
+      assert {:ok, wf} = WorkflowServer.get_state(wid)
+      assert wf.status == :failing
+      assert wf.steps["p1"].status == :failed
+      assert MapSet.member?(wf.active_step_ids, "p2")
+    end)
+
+    wait_for(fn ->
+      assert {:ok, wf} = WorkflowServer.get_state(wid)
+      assert wf.steps["p2"].status == :completed
+      assert wf.active_step_ids == MapSet.new()
+      assert wf.status == :failed
+    end)
+  end
+
+  test "retry_step reruns failed step and continues downstream propagation", %{
+    workflow_id: wid,
+    response_agent: agent
+  } do
+    assert {:ok, _} = WorkflowManager.ensure_started(wid)
+
+    old_opts = Application.get_env(:cachepuppy_core, :workflow_step_executor_opts, [])
+
+    Application.put_env(
+      :cachepuppy_core,
+      :workflow_step_executor_opts,
+      Keyword.merge(old_opts, max_retries: 0)
+    )
+
+    on_exit(fn ->
+      Application.put_env(:cachepuppy_core, :workflow_step_executor_opts, old_opts)
+    end)
+
+    set_responses(agent, [
+      {:error, %{reason: :temporary, attempts: 1, step: %{step_id: "a"}}},
+      {:ok,
+       %{
+         status_code: 200,
+         body: %{"a" => 1},
+         step: %CachePuppyCore.Workflow.Step{retry_count: 0}
+       }}
+    ])
+
+    assert {:ok, _} =
+             WorkflowServer.add_step(wid, %{
+               step_id: "a",
+               step_name: "a",
+               url: "http://example/a"
+             })
+
+    wait_for(
+      fn ->
+        assert {:ok, wf} = WorkflowServer.get_state(wid)
+        assert wf.status == :failed
+        assert wf.steps["a"].status == :failed
+      end,
+      200
+    )
+
+    assert {:ok, retried} = WorkflowServer.retry_step(wid, "a")
+    assert retried.step_id == "a"
+
+    wait_for(fn ->
+      assert {:ok, wf} = WorkflowServer.get_state(wid)
+      assert wf.steps["a"].status == :completed
+      assert wf.status == :completed
+    end)
+  end
+
+  test "retry_step rejects invalid retry states", %{workflow_id: wid, response_agent: agent} do
+    assert {:ok, _} = WorkflowManager.ensure_started(wid)
+
+    set_responses(agent, [
+      {:ok, %{status_code: 200, body: %{}, step: %CachePuppyCore.Workflow.Step{retry_count: 0}}}
+    ])
+
+    assert {:ok, _} =
+             WorkflowServer.add_step(wid, %{
+               step_id: "ok_step",
+               step_name: "ok",
+               url: "http://example/ok"
+             })
+
+    wait_for(fn ->
+      assert {:ok, wf} = WorkflowServer.get_state(wid)
+      assert wf.status == :completed
+    end)
+
+    assert {:error, :invalid_retry_state} = WorkflowServer.retry_step(wid, "ok_step")
+    assert {:error, :invalid_retry_state} = WorkflowServer.retry_step(wid, "missing")
   end
 
   test "reloads workflow from ETS after supervisor terminates child", %{workflow_id: wid} do

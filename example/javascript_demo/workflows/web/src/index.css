@@ -80,6 +80,13 @@ body {
   color: #475569;
 }
 
+.scenario-card__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
 .play-btn {
   cursor: pointer;
   border: none;
@@ -88,6 +95,10 @@ body {
   font-weight: 600;
   padding: 0.45rem 1rem;
   border-radius: 8px;
+}
+
+.play-btn--secondary {
+  background: #64748b;
 }
 
 .play-btn:disabled {
@@ -153,4 +164,35 @@ body {
 
 .steps-tree__step {
   padding-left: calc(var(--step-level, 0) * 1rem);
+}
+
+.step-status-pill {
+  display: inline-block;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.step-status-pill--completed {
+  background: #16a34a;
+  color: #fff;
+}
+
+.step-status-pill--running {
+  background: #facc15;
+  color: #0f172a;
+}
+
+.step-status-pill--failed {
+  background: #dc2626;
+  color: #fff;
+}
+
+.step-status-pill--plain {
+  background: #e2e8f0;
+  color: #334155;
+  font-weight: 500;
 }
