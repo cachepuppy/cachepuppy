@@ -597,8 +597,136 @@ defmodule CachePuppyCore.Integration.WorkflowIntegrationTest do
            |> Enum.count(&match?(%CachePuppyCore.Workflow.ParallelGroup{}, &1)) == 3
   end
 
+  test "failed parallel branch can be retried after process reconstruction" do
+    workflow_id = unique_workflow_id("retry-reconstruct")
+    {:ok, state_agent} = Agent.start_link(fn -> %{p1_attempts: 0, p2_runs: 0} end)
+    {:ok, url_agent} = Agent.start_link(fn -> nil end)
+
+    {:ok, base_url, server_ref} =
+      StepServer.start(%{
+        "extract" => fn _input ->
+          {:ok, _gid, _branches, _merge} =
+            WorkflowServer.add_parallel(
+              workflow_id,
+              [
+                %{
+                  step_id: "p1",
+                  step_name: "p1",
+                  url: Agent.get(url_agent, &(&1 <> "/step")),
+                  data: %{},
+                  max_retries: 0
+                },
+                %{
+                  step_id: "p2",
+                  step_name: "p2",
+                  url: Agent.get(url_agent, &(&1 <> "/step")),
+                  data: %{},
+                  max_retries: 0
+                }
+              ],
+              %{
+                step_id: "compile",
+                step_name: "compile",
+                url: Agent.get(url_agent, &(&1 <> "/step"))
+              }
+            )
+
+          {:ok, _} = WorkflowServer.merge_now(workflow_id, "compile")
+          {200, %{"ok" => true}}
+        end,
+        "p1" => fn _input ->
+          attempt =
+            Agent.get_and_update(state_agent, fn s ->
+              {s.p1_attempts + 1, %{s | p1_attempts: s.p1_attempts + 1}}
+            end)
+
+          if attempt <= 4 do
+            {500, %{"error" => "p1_failed_once"}}
+          else
+            {200, %{"p1" => "ok"}}
+          end
+        end,
+        "p2" => fn _input ->
+          Agent.update(state_agent, &Map.update!(&1, :p2_runs, fn n -> n + 1 end))
+          {200, %{"p2" => "ok"}}
+        end,
+        "compile" => fn input ->
+          merge_data = Map.get(input, "mergeData", [])
+          merged = merge_data |> Enum.map(& &1["step_id"]) |> Enum.sort()
+
+          {:ok, _} =
+            WorkflowServer.add_step(workflow_id, %{
+              step_id: "store",
+              step_name: "store",
+              url: Agent.get(url_agent, &(&1 <> "/step")),
+              data: %{"merged" => merged}
+            })
+
+          {200, %{"merged" => merged}}
+        end,
+        "store" => fn _input ->
+          {200, %{"stored" => true}}
+        end
+      })
+
+    Agent.update(url_agent, fn _ -> base_url end)
+
+    on_exit(fn ->
+      StepServer.stop(server_ref)
+      WorkflowStore.delete(workflow_id)
+    end)
+
+    assert {:ok, pid} = WorkflowManager.start_workflow(workflow_id, "retry_reconstruct")
+    assert :ok = WorkflowHelpers.subscribe_to_workflow(workflow_id)
+
+    assert {:ok, _extract} =
+             WorkflowServer.add_step(workflow_id, %{
+               step_id: "extract",
+               step_name: "extract",
+               url: base_url <> "/step",
+               data: %{}
+             })
+
+    wait_for(
+      fn ->
+        assert {:ok, wf} = WorkflowServer.get_state(workflow_id)
+        assert wf.status == :failed
+        assert wf.steps["p1"].status == :failed
+        assert wf.steps["p2"].status == :completed
+      end,
+      500
+    )
+
+    ref = Process.monitor(pid)
+    assert :ok = Horde.DynamicSupervisor.terminate_child(CachePuppyCore.WorkflowSupervisor, pid)
+    assert_receive {:DOWN, ^ref, :process, ^pid, _}
+
+    assert {:ok, _pid2} = WorkflowManager.lookup(workflow_id)
+    assert {:ok, _} = WorkflowServer.retry_step(workflow_id, "p1")
+
+    workflow = WorkflowHelpers.wait_for_completion(workflow_id, timeout_ms: 15_000)
+    assert workflow.status == :completed
+    assert workflow.steps["p1"].status == :completed
+    assert workflow.steps["p2"].status == :completed
+    assert workflow.steps["store"].status == :completed
+    assert Agent.get(state_agent, & &1.p2_runs) == 1
+  end
+
   defp unique_workflow_id(prefix) do
     "#{prefix}-#{Base.encode16(:crypto.strong_rand_bytes(5), case: :lower)}"
+  end
+
+  defp wait_for(assertion_fun, attempts)
+  defp wait_for(assertion_fun, 0), do: assertion_fun.()
+
+  defp wait_for(assertion_fun, attempts) do
+    try do
+      assertion_fun.()
+    rescue
+      ExUnit.AssertionError ->
+        Process.sleep(20)
+        wait_for(assertion_fun, attempts - 1)
+    end
   end
 
   defp step(step_id, step_name, base_url, data, parent_ids \\ []) do

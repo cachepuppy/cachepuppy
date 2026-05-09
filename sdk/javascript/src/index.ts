@@ -20,6 +20,7 @@ export type {
   WorkflowParallelCreatedResponse,
   WorkflowStepOptions,
   WorkflowResumeInput,
+  WorkflowRetryInput,
   WorkflowStateResponse,
   WorkflowStatus,
   WorkflowStatusHandler,

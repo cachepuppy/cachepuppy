@@ -5,6 +5,7 @@ defmodule CachePuppyCore.E2E.WorkflowE2ETest do
   alias CachePuppy.Test.E2E.ScenarioFiveDeveloperServer
   alias CachePuppy.Test.E2E.ScenarioFourDeveloperServer
   alias CachePuppy.Test.E2E.ScenarioOneDeveloperServer
+  alias CachePuppy.Test.E2E.ScenarioRetryDeveloperServer
   alias CachePuppy.Test.E2E.ScenarioThreeDeveloperServer
   alias CachePuppy.Test.E2E.ScenarioTwoDeveloperServer
   alias CachePuppyCore.Workflow.WorkflowStore
@@ -190,6 +191,38 @@ defmodule CachePuppyCore.E2E.WorkflowE2ETest do
       })
   end
 
+  test "retry endpoint recovers failed workflow from failed step", %{api_base: api_base} do
+    {:ok, dev_base, dev_ref} = ScenarioRetryDeveloperServer.start(api_base: api_base)
+    on_exit(fn -> ScenarioRetryDeveloperServer.stop(dev_ref) end)
+
+    start_response =
+      post_json!(dev_base <> "/start", %{
+        "paragraph" => "retry scenario"
+      })
+
+    workflow_id = start_response["workflowId"]
+    on_exit(fn -> WorkflowStore.delete(workflow_id) end)
+
+    failed_workflow = wait_for_failed(api_base, workflow_id, timeout_ms: 15_000)
+    flaky = Enum.find(failed_workflow["steps"], &(&1["stepId"] == "flaky"))
+
+    assert failed_workflow["status"] == "failed"
+    assert flaky["status"] == "failed"
+
+    retry_response =
+      post_retry!(api_base <> "/api/workflows/" <> workflow_id <> "/retry", %{
+        "stepId" => "flaky"
+      })
+
+    assert retry_response["status"] in ["running", "completed"]
+
+    workflow = Assertions.wait_for_completion(api_base, workflow_id, timeout_ms: 15_000)
+
+    assert workflow["status"] == "completed"
+    assert Enum.find(workflow["steps"], &(&1["stepId"] == "flaky"))["status"] == "completed"
+    assert Enum.find(workflow["steps"], &(&1["stepId"] == "store"))["status"] == "completed"
+  end
+
   defp post_json!(url, payload) do
     case Req.post(url, json: payload) do
       {:ok, %{status: 201, body: body}} when is_map(body) ->
@@ -200,6 +233,57 @@ defmodule CachePuppyCore.E2E.WorkflowE2ETest do
 
       {:error, reason} ->
         raise "POST #{url} failed: #{inspect(reason)}"
+    end
+  end
+
+  defp post_retry!(url, payload) do
+    case Req.post(url, json: payload) do
+      {:ok, %{status: 200, body: body}} when is_map(body) ->
+        body
+
+      {:ok, %{status: status, body: body}} ->
+        raise "POST #{url} expected 200, got #{status}: #{inspect(body)}"
+
+      {:error, reason} ->
+        raise "POST #{url} failed: #{inspect(reason)}"
+    end
+  end
+
+  defp wait_for_failed(api_base, workflow_id, opts) do
+    timeout_ms = Keyword.get(opts, :timeout_ms, 12_000)
+    interval_ms = Keyword.get(opts, :interval_ms, 50)
+    deadline_ms = System.monotonic_time(:millisecond) + timeout_ms
+    do_wait_for_failed(api_base, workflow_id, deadline_ms, interval_ms)
+  end
+
+  defp do_wait_for_failed(api_base, workflow_id, deadline_ms, interval_ms) do
+    url = api_base <> "/api/workflows/" <> workflow_id
+
+    workflow =
+      case Req.get(url) do
+        {:ok, %{status: 200, body: body}} when is_map(body) ->
+          body
+
+        {:ok, %{status: status, body: body}} ->
+          raise "GET #{url} expected 200, got #{status}: #{inspect(body)}"
+
+        {:error, reason} ->
+          raise "GET #{url} failed: #{inspect(reason)}"
+      end
+
+    cond do
+      workflow["status"] == "failed" ->
+        workflow
+
+      workflow["status"] == "completed" ->
+        flunk("workflow #{workflow_id} completed unexpectedly while waiting for failure")
+
+      System.monotonic_time(:millisecond) > deadline_ms ->
+        flunk("workflow #{workflow_id} did not fail before timeout")
+
+      true ->
+        Process.sleep(interval_ms)
+        do_wait_for_failed(api_base, workflow_id, deadline_ms, interval_ms)
     end
   end
 end

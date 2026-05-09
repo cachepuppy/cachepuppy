@@ -3,7 +3,7 @@ defmodule CachePuppyCore.Workflow do
 
   alias CachePuppyCore.Workflow.{LoopGroup, ParallelGroup, Step}
 
-  @type status :: :pending | :running | :waiting | :completed | :failed
+  @type status :: :pending | :running | :waiting | :failing | :completed | :failed
 
   @type t :: %__MODULE__{
           id: String.t(),
@@ -14,6 +14,7 @@ defmodule CachePuppyCore.Workflow do
           open_parallel_group_id: String.t() | nil,
           serial_tail_step_id: String.t() | nil,
           active_step_ids: MapSet.t(String.t()),
+          failed_step_ids: [String.t()],
           failure_reason: term() | nil,
           graph_snapshot: CachePuppyCore.Graph.t() | nil,
           inserted_at: DateTime.t() | nil,
@@ -29,6 +30,7 @@ defmodule CachePuppyCore.Workflow do
     open_parallel_group_id: nil,
     serial_tail_step_id: nil,
     active_step_ids: MapSet.new(),
+    failed_step_ids: [],
     failure_reason: nil,
     graph_snapshot: nil,
     inserted_at: nil,

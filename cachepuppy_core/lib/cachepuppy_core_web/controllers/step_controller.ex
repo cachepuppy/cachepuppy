@@ -15,6 +15,7 @@ defmodule CachePuppyCoreWeb.StepController do
   alias CachePuppyCoreWeb.{ErrorJSON, WorkflowJSON}
 
   @resume_types %{step_id: :string, output: :map}
+  @retry_types %{step_id: :string}
 
   def add_step(conn, %{"id" => workflow_id} = params) do
     invoking_step_id = invoking_step_id(params)
@@ -130,6 +131,19 @@ defmodule CachePuppyCoreWeb.StepController do
     end
   end
 
+  def retry_step(conn, %{"id" => workflow_id} = params) do
+    with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
+         {:ok, attrs} <- validate_retry(params),
+         {:ok, _step} <- WorkflowServer.retry_step(workflow_id, attrs.step_id),
+         {:ok, wf} <- WorkflowServer.get_state(workflow_id) do
+      json(conn, WorkflowJSON.workflow_status(wf))
+    else
+      {:conn, conn} -> conn
+      {:error, %Ecto.Changeset{} = cs} -> bad_validation(conn, cs)
+      other -> map_server_error(conn, workflow_id, other)
+    end
+  end
+
   def execute_now(conn, %{"id" => workflow_id} = params) do
     with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
          {:ok, attrs} <- StepChangeset.validate_params(params) do
@@ -180,6 +194,15 @@ defmodule CachePuppyCoreWeb.StepController do
 
   defp put_output_default(cs) do
     if get_field(cs, :output) == nil, do: put_change(cs, :output, %{}), else: cs
+  end
+
+  defp validate_retry(params) do
+    cs =
+      {%{}, @retry_types}
+      |> cast(%{step_id: Map.get(params, "stepId")}, [:step_id])
+      |> validate_required([:step_id])
+
+    if cs.valid?, do: {:ok, apply_changes(cs)}, else: {:error, cs}
   end
 
   defp with_step_id(attrs) do
@@ -235,6 +258,24 @@ defmodule CachePuppyCoreWeb.StepController do
     conn
     |> put_status(:bad_request)
     |> json(ErrorJSON.validation_failed(%{"invokingStepId" => ["invalid or unknown step id"]}))
+  end
+
+  defp map_server_error(conn, _workflow_id, {:error, :invalid_retry_state}) do
+    conn
+    |> put_status(:conflict)
+    |> json(ErrorJSON.validation_failed(%{"workflow" => ["workflow is not in a failed state"]}))
+  end
+
+  defp map_server_error(conn, _workflow_id, {:error, :retry_step_not_failed}) do
+    conn
+    |> put_status(:bad_request)
+    |> json(ErrorJSON.validation_failed(%{"stepId" => ["step is not failed"]}))
+  end
+
+  defp map_server_error(conn, _workflow_id, {:error, :retry_step_still_running}) do
+    conn
+    |> put_status(:conflict)
+    |> json(ErrorJSON.validation_failed(%{"stepId" => ["step is still running"]}))
   end
 
   defp map_server_error(conn, _workflow_id, {:error, :invalid_steps}) do
