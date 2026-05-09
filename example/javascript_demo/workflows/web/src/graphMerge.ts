@@ -105,4 +105,4 @@ export function mergeGraphDiff(prev: GraphState, diff: Record<string, unknown>):
 }
 
 /** Graph node `type` values that represent executable steps in the demo UI */
-export const STEP_NODE_TYPES = new Set(["serial", "parallel_branch", "merge", "loop_iteration"]);
+export const STEP_NODE_TYPES = new Set(["serial", "parallel_branch", "merge"]);

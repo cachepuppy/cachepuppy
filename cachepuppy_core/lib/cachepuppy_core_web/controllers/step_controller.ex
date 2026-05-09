@@ -6,7 +6,6 @@ defmodule CachePuppyCoreWeb.StepController do
   alias CachePuppyCore.{WorkflowManager, WorkflowServer}
 
   alias CachePuppyCoreWeb.Changesets.{
-    LoopChangeset,
     ParallelMergeNowChangeset,
     ParallelChangeset,
     StepChangeset
@@ -83,41 +82,6 @@ defmodule CachePuppyCoreWeb.StepController do
     end
   end
 
-  def add_loop(conn, %{"id" => workflow_id} = params) do
-    with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
-         {:ok, attrs} <- LoopChangeset.validate_params(params) do
-      step_params =
-        attrs
-        |> with_step_id()
-        |> StepChangeset.to_step_params()
-
-      case WorkflowServer.add_loop(
-             workflow_id,
-             step_params,
-             attrs.continue_if,
-             attrs.max_iterations
-           ) do
-        {:ok, group_id} ->
-          conn
-          |> put_status(:created)
-          |> json(
-            WorkflowJSON.loop_created(
-              group_id,
-              attrs.step_name,
-              attrs.max_iterations,
-              attrs.continue_if
-            )
-          )
-
-        other ->
-          map_server_error(conn, workflow_id, other)
-      end
-    else
-      {:conn, conn} -> conn
-      {:error, %Ecto.Changeset{} = cs} -> bad_validation(conn, cs)
-    end
-  end
-
   def resume(conn, %{"id" => workflow_id} = params) do
     with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
          {:ok, attrs} <- validate_resume(params),
@@ -141,30 +105,6 @@ defmodule CachePuppyCoreWeb.StepController do
       {:conn, conn} -> conn
       {:error, %Ecto.Changeset{} = cs} -> bad_validation(conn, cs)
       other -> map_server_error(conn, workflow_id, other)
-    end
-  end
-
-  def execute_now(conn, %{"id" => workflow_id} = params) do
-    with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
-         {:ok, attrs} <- StepChangeset.validate_params(params) do
-      case WorkflowServer.execute_now(
-             workflow_id,
-             attrs |> with_step_id() |> StepChangeset.to_step_params()
-           ) do
-        {:ok, step} ->
-          json(conn, WorkflowJSON.execute_now(step))
-
-        {:error, %{} = reason} ->
-          conn
-          |> put_status(:internal_server_error)
-          |> json(ErrorJSON.internal_error(inspect(reason)))
-
-        other ->
-          map_server_error(conn, workflow_id, other)
-      end
-    else
-      {:conn, conn} -> conn
-      {:error, %Ecto.Changeset{} = cs} -> bad_validation(conn, cs)
     end
   end
 
@@ -282,12 +222,6 @@ defmodule CachePuppyCoreWeb.StepController do
     conn
     |> put_status(:bad_request)
     |> json(ErrorJSON.validation_failed(%{"steps" => ["invalid steps payload"]}))
-  end
-
-  defp map_server_error(conn, _workflow_id, {:error, :invalid_loop_args}) do
-    conn
-    |> put_status(:bad_request)
-    |> json(ErrorJSON.validation_failed(%{"loop" => ["invalid loop args"]}))
   end
 
   defp map_server_error(conn, _workflow_id, {:error, :not_found}) do

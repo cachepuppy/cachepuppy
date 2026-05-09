@@ -9,7 +9,7 @@ defmodule CachePuppyCore.WorkflowServer do
   alias CachePuppyCore.Graph.Broadcaster
   alias CachePuppyCore.Orchestrator
   alias CachePuppyCore.Workflow
-  alias CachePuppyCore.Workflow.{LoopGroup, ParallelGroup, Step}
+  alias CachePuppyCore.Workflow.{ParallelGroup, Step}
   alias CachePuppyCore.Workflow.WorkflowStore
 
   # --- Client ---
@@ -38,17 +38,11 @@ defmodule CachePuppyCore.WorkflowServer do
   def merge_now(workflow_id, merge_step_id),
     do: GenServer.call(via(workflow_id), {:merge_now, merge_step_id})
 
-  def add_loop(workflow_id, step, continue_if, max_iterations),
-    do: GenServer.call(via(workflow_id), {:add_loop, step, continue_if, max_iterations})
-
   def resume(workflow_id, step_id, output),
     do: GenServer.call(via(workflow_id), {:resume, step_id, output})
 
   def retry_step(workflow_id, step_id),
     do: GenServer.call(via(workflow_id), {:retry_step, step_id})
-
-  def execute_now(workflow_id, step),
-    do: GenServer.call(via(workflow_id), {:execute_now, step})
 
   def end_workflow(workflow_id), do: GenServer.call(via(workflow_id), :end_workflow)
 
@@ -237,51 +231,6 @@ defmodule CachePuppyCore.WorkflowServer do
     end
   end
 
-  def handle_call({:add_loop, step, continue_if, max_iterations}, _from, workflow)
-      when is_binary(continue_if) and is_integer(max_iterations) and max_iterations >= 0 do
-    with :ok <- ensure_mutable(workflow),
-         {:ok, step} <- to_step(step),
-         :ok <- ensure_unique_step(workflow, step.step_id),
-         {:ok, workflow} <- maybe_activate(workflow) do
-      group_id = generate_id("lg")
-      {step, workflow} = apply_serial_parents(step, workflow)
-
-      step = %{
-        step
-        | group_id: group_id,
-          group_type: :loop_iteration,
-          inserted_at: step.inserted_at || DateTime.utc_now()
-      }
-
-      workflow = put_step(workflow, step)
-
-      group = %LoopGroup{
-        group_id: group_id,
-        step_name: step.step_name,
-        continue_if: continue_if,
-        max_iterations: max_iterations,
-        current_iteration: 0,
-        iterations: [],
-        template_step_id: step.step_id,
-        status: :running
-      }
-
-      workflow =
-        workflow |> put_group(group) |> Map.put(:serial_tail_step_id, step.step_id) |> touch()
-
-      workflow = advance_and_enqueue(workflow)
-      :ok = commit(workflow)
-      :ok = maybe_broadcast_graph(workflow)
-      {:reply, {:ok, group_id}, workflow}
-    else
-      {:error, _} = err -> {:reply, err, workflow}
-    end
-  end
-
-  def handle_call({:add_loop, _, _, _}, _from, workflow) do
-    {:reply, {:error, :invalid_loop_args}, workflow}
-  end
-
   def handle_call({:resume, step_id, output}, _from, workflow) do
     with :ok <- ensure_mutable(workflow) do
       resume_step(workflow, step_id, output)
@@ -316,62 +265,6 @@ defmodule CachePuppyCore.WorkflowServer do
       :ok = commit(workflow)
       :ok = maybe_broadcast_graph(workflow)
       {:reply, {:ok, step}, workflow}
-    else
-      {:error, _} = err -> {:reply, err, workflow}
-    end
-  end
-
-  def handle_call({:execute_now, step}, _from, workflow) do
-    with :ok <- ensure_mutable(workflow),
-         {:ok, step} <- to_step(step),
-         :ok <- ensure_unique_step(workflow, step.step_id),
-         {:ok, workflow} <- maybe_activate(workflow) do
-      {step, workflow} = apply_serial_parents(step, workflow)
-      now = DateTime.utc_now()
-
-      step = %{step | inserted_at: step.inserted_at || now, started_at: now}
-      exec_opts = [merge_data: nil]
-      result = step_executor_module().execute(step, workflow.id, execution_opts(exec_opts))
-
-      {workflow, reply} =
-        case result do
-          {:ok, %{body: body, step: executed}} ->
-            done = %{
-              step
-              | status: :completed,
-                retry_count: executed.retry_count,
-                output: body,
-                completed_at: DateTime.utc_now()
-            }
-
-            wf =
-              workflow
-              |> put_step(done)
-              |> Map.put(:serial_tail_step_id, step.step_id)
-              |> touch()
-
-            {wf, {:ok, done}}
-
-          {:error, reason} ->
-            failed = %{
-              step
-              | status: :failed,
-                execution_error: reason,
-                completed_at: DateTime.utc_now()
-            }
-
-            wf =
-              workflow
-              |> put_step(failed)
-              |> Map.put(:serial_tail_step_id, step.step_id)
-              |> touch()
-
-            {wf, {:error, reason}}
-        end
-
-      :ok = commit(workflow)
-      :ok = maybe_broadcast_graph(workflow)
-      {:reply, reply, workflow}
     else
       {:error, _} = err -> {:reply, err, workflow}
     end

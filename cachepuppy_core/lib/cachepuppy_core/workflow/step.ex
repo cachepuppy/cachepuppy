@@ -17,7 +17,7 @@ defmodule CachePuppyCore.Workflow.Step do
           output: term(),
           parent_ids: [String.t()],
           group_id: String.t() | nil,
-          group_type: :parallel_branch | :parallel_merge | :loop_iteration | nil,
+          group_type: :parallel_branch | :parallel_merge | nil,
           parent_group_id: String.t() | nil,
           execution_error: term() | nil,
           branch_index: non_neg_integer() | nil,

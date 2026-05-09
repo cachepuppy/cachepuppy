@@ -3,7 +3,7 @@ defmodule CachePuppyCore.Graph.BuilderTest do
 
   alias CachePuppyCore.Graph.Builder
   alias CachePuppyCore.Workflow
-  alias CachePuppyCore.Workflow.{LoopGroup, LoopIteration, ParallelGroup, Step}
+  alias CachePuppyCore.Workflow.{ParallelGroup, Step}
 
   test "builds serial graph with parent edge" do
     s1 = %Step{step_id: "a", step_name: "extract", url: "http://x", status: :completed}
@@ -79,56 +79,4 @@ defmodule CachePuppyCore.Graph.BuilderTest do
            )
   end
 
-  test "builds loop_next and loop_exit edges" do
-    t1 = %Step{
-      step_id: "loop1",
-      step_name: "loop",
-      url: "http://x",
-      group_id: "lg1",
-      group_type: :loop_iteration,
-      inserted_at: ~U[2026-01-01 00:00:00Z]
-    }
-
-    t2 = %Step{
-      step_id: "loop2",
-      step_name: "loop",
-      url: "http://x",
-      group_id: "lg1",
-      group_type: :loop_iteration,
-      parent_ids: ["loop1"],
-      inserted_at: ~U[2026-01-01 00:00:01Z]
-    }
-
-    next = %Step{step_id: "after", step_name: "after", url: "http://x", parent_ids: ["loop2"]}
-
-    lg = %LoopGroup{
-      group_id: "lg1",
-      step_name: "loop",
-      continue_if: "result.x < 1",
-      max_iterations: 3,
-      template_step_id: "loop1",
-      current_iteration: 2,
-      status: :completed,
-      iterations: [%LoopIteration{step_id: "loop1"}, %LoopIteration{step_id: "loop2"}]
-    }
-
-    wf = %Workflow{
-      id: "wf3",
-      status: :running,
-      steps: %{"loop1" => t1, "loop2" => t2, "after" => next},
-      groups: %{"lg1" => lg}
-    }
-
-    g = Builder.build(wf)
-
-    assert Enum.any?(
-             g.edges,
-             &(&1["from"] == "loop1" and &1["to"] == "loop2" and &1["type"] == "loop_next")
-           )
-
-    assert Enum.any?(
-             g.edges,
-             &(&1["from"] == "loop2" and &1["to"] == "after" and &1["type"] == "loop_exit")
-           )
-  end
 end

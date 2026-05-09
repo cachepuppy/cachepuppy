@@ -3,8 +3,6 @@ import type { CacheSetDataOptions, TopicStateResponse } from "./transport/transp
 import type {
   AdminClientOptions,
   TopicPresenceResponse,
-  WorkflowExecuteNowResponse,
-  WorkflowLoopCreatedResponse,
   WorkflowParallelMergeNowResponse,
   WorkflowParallelOptions,
   WorkflowParallelCreatedResponse,
@@ -183,18 +181,6 @@ export class CachePuppyAdminClient {
     );
   }
 
-  async addWorkflowLoop(
-    workflowId: string,
-    step: WorkflowStepInput,
-    options: { continueIf: string; maxIterations: number },
-  ): Promise<WorkflowLoopCreatedResponse> {
-    const body = { ...toStepBody(step), continueIf: options.continueIf, maxIterations: options.maxIterations };
-    return this.requestJson<WorkflowLoopCreatedResponse>("POST", workflowActionPath(workflowId, "loop"), body, {
-      useServerApiPrefix: false,
-      okStatuses: [201],
-    });
-  }
-
   async resumeWorkflow(workflowId: string, input: WorkflowResumeInput): Promise<WorkflowStatusResponse> {
     return this.requestJson<WorkflowStatusResponse>(
       "POST",
@@ -212,15 +198,6 @@ export class CachePuppyAdminClient {
       "POST",
       workflowActionPath(workflowId, "retry"),
       { stepId: input.stepId },
-      { useServerApiPrefix: false },
-    );
-  }
-
-  async executeWorkflowNow(workflowId: string, step: WorkflowStepInput): Promise<WorkflowExecuteNowResponse> {
-    return this.requestJson<WorkflowExecuteNowResponse>(
-      "POST",
-      workflowActionPath(workflowId, "execute_now"),
-      toStepBody(step),
       { useServerApiPrefix: false },
     );
   }

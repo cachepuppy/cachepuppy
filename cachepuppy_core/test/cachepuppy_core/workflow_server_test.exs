@@ -419,61 +419,6 @@ defmodule CachePuppyCore.WorkflowServerTest do
     assert {:error, :invalid_status} = WorkflowServer.add_step(wid, step)
   end
 
-  test "add_loop starts first iteration and continue_if false completes loop", %{
-    workflow_id: wid,
-    response_agent: agent
-  } do
-    assert {:ok, _} = WorkflowManager.ensure_started(wid)
-
-    set_responses(agent, [
-      {:ok,
-       %{
-         status_code: 200,
-         body: %{"score" => 0.9},
-         step: %CachePuppyCore.Workflow.Step{retry_count: 0}
-       }}
-    ])
-
-    step = %{step_id: "loop1", step_name: "refine", url: "http://example/r"}
-    assert {:ok, gid} = WorkflowServer.add_loop(wid, step, "result.score < 0.8", 5)
-    await_step_execution("loop1")
-
-    wait_for(fn ->
-      assert {:ok, wf} = WorkflowServer.get_state(wid)
-      assert wf.groups[gid].status == :completed
-    end)
-  end
-
-  test "execute_now returns synchronously and does not trigger orchestrator", %{
-    workflow_id: wid,
-    response_agent: agent
-  } do
-    assert {:ok, _} = WorkflowManager.ensure_started(wid)
-
-    set_responses(agent, [
-      {:ok,
-       %{
-         status_code: 200,
-         body: %{"immediate" => true},
-         step: %CachePuppyCore.Workflow.Step{retry_count: 0}
-       }}
-    ])
-
-    assert {:ok, step} =
-             WorkflowServer.execute_now(wid, %{
-               step_id: "now",
-               step_name: "now",
-               url: "http://example/now"
-             })
-
-    assert_receive {:executed_step, "now", nil}
-    assert step.status == :completed
-    assert step.output == %{"immediate" => true}
-
-    assert {:ok, wf} = WorkflowServer.get_state(wid)
-    assert wf.steps["now"].status == :completed
-  end
-
   test "add_step broadcasts graph diff over pubsub", %{workflow_id: wid, response_agent: agent} do
     assert {:ok, _} = WorkflowManager.ensure_started(wid)
 

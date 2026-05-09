@@ -1,7 +1,7 @@
 defmodule CachePuppyCore.Workflow do
   @moduledoc false
 
-  alias CachePuppyCore.Workflow.{LoopGroup, ParallelGroup, Step}
+  alias CachePuppyCore.Workflow.{ParallelGroup, Step}
 
   @type status :: :pending | :running | :waiting | :failing | :completed | :failed
 
@@ -10,7 +10,7 @@ defmodule CachePuppyCore.Workflow do
           name: String.t() | nil,
           status: status(),
           steps: %{String.t() => Step.t()},
-          groups: %{String.t() => ParallelGroup.t() | LoopGroup.t()},
+          groups: %{String.t() => ParallelGroup.t()},
           open_parallel_group_id: String.t() | nil,
           serial_tail_step_id: String.t() | nil,
           active_step_ids: MapSet.t(String.t()),
