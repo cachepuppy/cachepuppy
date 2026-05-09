@@ -68,7 +68,13 @@ export interface TopicWebhookConfigOptions {
 
 export type TopicHandler = (message: CachePuppyEnvelope) => void;
 
-export type WorkflowStatus = "pending" | "running" | "completed" | "failed";
+export type WorkflowStatus =
+  | "pending"
+  | "running"
+  | "waiting"
+  | "failing"
+  | "completed"
+  | "failed";
 
 export interface WorkflowStepInput {
   stepId?: string;
@@ -166,6 +172,11 @@ export interface WorkflowExecuteNowResponse {
 export interface WorkflowResumeInput {
   stepId: string;
   output?: Record<string, unknown>;
+}
+
+/** Body for `CachePuppyAdminClient.retryWorkflow` — re-run a failed step after the workflow is `failed` or `failing`. */
+export interface WorkflowRetryInput {
+  stepId: string;
 }
 
 export interface WorkflowTopicEvent {

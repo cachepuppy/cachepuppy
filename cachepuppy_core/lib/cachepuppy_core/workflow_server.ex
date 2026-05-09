@@ -44,6 +44,9 @@ defmodule CachePuppyCore.WorkflowServer do
   def resume(workflow_id, step_id, output),
     do: GenServer.call(via(workflow_id), {:resume, step_id, output})
 
+  def retry_step(workflow_id, step_id),
+    do: GenServer.call(via(workflow_id), {:retry_step, step_id})
+
   def execute_now(workflow_id, step),
     do: GenServer.call(via(workflow_id), {:execute_now, step})
 
@@ -287,6 +290,37 @@ defmodule CachePuppyCore.WorkflowServer do
     end
   end
 
+  def handle_call({:retry_step, step_id}, _from, workflow) do
+    with :ok <- validate_retry_state(workflow),
+         {:ok, step} <- fetch_retryable_step(workflow, step_id),
+         :ok <- ensure_step_not_active(workflow, step_id) do
+      failed_step_ids = List.delete(workflow.failed_step_ids || [], step_id)
+
+      step =
+        %{
+          step
+          | status: :pending,
+            execution_error: nil,
+            completed_at: nil
+        }
+
+      workflow =
+        workflow
+        |> put_step(step)
+        |> Map.put(:status, :running)
+        |> Map.put(:failure_reason, nil)
+        |> Map.put(:failed_step_ids, failed_step_ids)
+        |> touch()
+
+      workflow = advance_and_enqueue(workflow)
+      :ok = commit(workflow)
+      :ok = maybe_broadcast_graph(workflow)
+      {:reply, {:ok, step}, workflow}
+    else
+      {:error, _} = err -> {:reply, err, workflow}
+    end
+  end
+
   def handle_call({:execute_now, step}, _from, workflow) do
     with :ok <- ensure_mutable(workflow),
          {:ok, step} <- to_step(step),
@@ -375,7 +409,7 @@ defmodule CachePuppyCore.WorkflowServer do
     %{workflow | updated_at: DateTime.utc_now()}
   end
 
-  defp ensure_mutable(%Workflow{status: s}) when s in [:completed, :failed] do
+  defp ensure_mutable(%Workflow{status: s}) when s in [:completed, :failed, :failing] do
     {:error, :invalid_status}
   end
 
@@ -391,6 +425,23 @@ defmodule CachePuppyCore.WorkflowServer do
 
   defp maybe_activate(%Workflow{}) do
     {:error, :invalid_status}
+  end
+
+  defp validate_retry_state(%Workflow{status: s}) when s in [:failed, :failing], do: :ok
+  defp validate_retry_state(%Workflow{}), do: {:error, :invalid_retry_state}
+
+  defp fetch_retryable_step(%Workflow{steps: steps}, step_id) when is_binary(step_id) do
+    case Map.get(steps, step_id) do
+      nil -> {:error, :not_found}
+      %Step{status: :failed} = step -> {:ok, step}
+      _ -> {:error, :retry_step_not_failed}
+    end
+  end
+
+  defp fetch_retryable_step(%Workflow{}, _step_id), do: {:error, :not_found}
+
+  defp ensure_step_not_active(%Workflow{active_step_ids: active}, step_id) do
+    if MapSet.member?(active, step_id), do: {:error, :retry_step_still_running}, else: :ok
   end
 
   defp put_step(%Workflow{steps: steps} = workflow, %Step{} = step) do

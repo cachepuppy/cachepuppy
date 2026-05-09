@@ -9,6 +9,7 @@ import type {
   WorkflowParallelOptions,
   WorkflowParallelCreatedResponse,
   WorkflowResumeInput,
+  WorkflowRetryInput,
   WorkflowStateResponse,
   WorkflowStatusResponse,
   WorkflowStepInput,
@@ -202,6 +203,15 @@ export class CachePuppyAdminClient {
         stepId: input.stepId,
         output: input.output ?? {},
       },
+      { useServerApiPrefix: false },
+    );
+  }
+
+  async retryWorkflow(workflowId: string, input: WorkflowRetryInput): Promise<WorkflowStatusResponse> {
+    return this.requestJson<WorkflowStatusResponse>(
+      "POST",
+      workflowActionPath(workflowId, "retry"),
+      { stepId: input.stepId },
       { useServerApiPrefix: false },
     );
   }

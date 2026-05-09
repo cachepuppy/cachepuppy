@@ -1,6 +1,6 @@
 # Workflows demo — Node server
 
-Implements the five e2e scenario flows (serial, static parallel + merge, dynamic parallel + merge, parallel + summary merge, nested parallel fan-out) under `/scenario1` … `/scenario5`.
+Implements the six e2e scenario flows (serial, static parallel + merge, dynamic parallel + merge, parallel + summary merge, nested parallel fan-out, nested parallel with a flaky inner step and `POST /scenario6/retry` for manual replay) under `/scenario1` … `/scenario6`.
 
 ## Environment
 

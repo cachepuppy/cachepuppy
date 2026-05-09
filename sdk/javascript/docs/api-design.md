@@ -90,6 +90,7 @@ Use **`createAdminClient(options)`** when calling the server’s **HTTP** routes
 - `mergeWorkflowParallelNow(workflowId, mergeStepId)` — `POST /api/workflows/:id/parallel/merge_now`; returns `{ workflowId, status: "ok" }` (**200**).
 - `addWorkflowLoop(workflowId, step, { continueIf, maxIterations })` — `POST /api/workflows/:id/loop`; returns loop metadata `{ groupId, stepName, maxIterations, continueIf }` (**201**).
 - `resumeWorkflow(workflowId, { stepId, output? })` — `POST /api/workflows/:id/resume`; returns `{ workflowId, status }`.
+- `retryWorkflow(workflowId, { stepId })` — `POST /api/workflows/:id/retry`; returns `{ workflowId, status }` (**200**). Use when the workflow is **`failed`** or **`failing`** and `stepId` refers to a step in **`failed`** status (manual replay after automatic step retries are exhausted).
 - `executeWorkflowNow(workflowId, step)` — `POST /api/workflows/:id/execute_now`; returns `{ stepId, output, status }`.
 - `endWorkflow(workflowId)` — `POST /api/workflows/:id/end`; returns `{ workflowId, status }`.
 
