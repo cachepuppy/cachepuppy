@@ -107,7 +107,7 @@ export interface WorkflowStepSummary {
   status: WorkflowStatus;
   parentIds?: string[];
   groupId?: string | null;
-  groupType?: "parallel_branch" | "parallel_merge" | "loop_iteration" | null;
+  groupType?: "parallel_branch" | "parallel_merge" | null;
   parentGroupId?: string | null;
   branchIndex?: number | null;
   retryCount?: number;
@@ -126,12 +126,10 @@ export interface WorkflowStepSummary {
 
 export interface WorkflowGroupSummary {
   groupId: string;
-  type: "parallel" | "loop";
+  type: "parallel";
   stepIds: string[];
   branchCount?: number | null;
   mergeStepId?: string | null;
-  maxIterations?: number | null;
-  continueIf?: string | null;
 }
 
 export interface WorkflowStateResponse extends WorkflowSummary {
@@ -151,21 +149,8 @@ export interface WorkflowParallelMergeNowResponse {
   status: "ok";
 }
 
-export interface WorkflowLoopCreatedResponse {
-  groupId: string;
-  stepName: string;
-  maxIterations: number;
-  continueIf: string;
-}
-
 export interface WorkflowStatusResponse {
   workflowId: string;
-  status: WorkflowStatus;
-}
-
-export interface WorkflowExecuteNowResponse {
-  stepId: string;
-  output: unknown;
   status: WorkflowStatus;
 }
 

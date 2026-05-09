@@ -4,7 +4,7 @@ defmodule CachePuppyCore.Graph.Builder do
   alias CachePuppyCore.Graph
   alias CachePuppyCore.Graph.{Edge, Node}
   alias CachePuppyCore.Workflow
-  alias CachePuppyCore.Workflow.{LoopGroup, ParallelGroup, Step}
+  alias CachePuppyCore.Workflow.{ParallelGroup, Step}
 
   @spec build(Workflow.t()) :: Graph.t()
   def build(%Workflow{} = workflow) do
@@ -23,13 +23,9 @@ defmodule CachePuppyCore.Graph.Builder do
   end
 
   defp build_step_nodes(workflow) do
-    loop_iteration_map = loop_iteration_numbers(workflow)
-
     workflow.steps
     |> Map.values()
-    |> Enum.map(fn step ->
-      Node.from_step(step, Map.get(loop_iteration_map, step.step_id))
-    end)
+    |> Enum.map(&Node.from_step/1)
   end
 
   defp build_group_nodes(workflow) do
@@ -38,17 +34,13 @@ defmodule CachePuppyCore.Graph.Builder do
     |> Enum.map(fn
       %ParallelGroup{} = group ->
         Node.from_parallel_group(group, parallel_parent_ids(workflow, group.group_id))
-
-      %LoopGroup{} = group ->
-        Node.from_loop_group(group, loop_parent_ids(workflow, group.group_id))
     end)
   end
 
   defp build_edges(workflow) do
     serial_edges = serial_edges(workflow)
     parallel_edges = parallel_edges(workflow)
-    loop_edges = loop_edges(workflow)
-    serial_edges ++ parallel_edges ++ loop_edges
+    serial_edges ++ parallel_edges
   end
 
   defp serial_edges(workflow) do
@@ -102,55 +94,6 @@ defmodule CachePuppyCore.Graph.Builder do
     end)
   end
 
-  defp loop_edges(workflow) do
-    workflow.groups
-    |> Map.values()
-    |> Enum.flat_map(fn
-      %LoopGroup{} = lg ->
-        loop_steps =
-          workflow.steps
-          |> Map.values()
-          |> Enum.filter(&(&1.group_id == lg.group_id and &1.group_type == :loop_iteration))
-          |> Enum.sort_by(&(&1.inserted_at || ~U[1970-01-01 00:00:00Z]), DateTime)
-
-        next_edges =
-          loop_steps
-          |> Enum.chunk_every(2, 1, :discard)
-          |> Enum.map(fn [a, b] -> Edge.build(a.step_id, b.step_id, :loop_next) end)
-
-        exit_edges =
-          case List.last(loop_steps) do
-            nil ->
-              []
-
-            last ->
-              workflow.steps
-              |> Map.values()
-              |> Enum.filter(&(last.step_id in &1.parent_ids and &1.group_id != lg.group_id))
-              |> Enum.map(&Edge.build(last.step_id, &1.step_id, :loop_exit))
-          end
-
-        next_edges ++ exit_edges
-
-      _ ->
-        []
-    end)
-  end
-
-  defp loop_iteration_numbers(workflow) do
-    workflow.groups
-    |> Map.values()
-    |> Enum.reduce(%{}, fn
-      %LoopGroup{} = lg, acc ->
-        lg.iterations
-        |> Enum.with_index(1)
-        |> Enum.reduce(acc, fn {iter, idx}, inner -> Map.put(inner, iter.step_id, idx) end)
-
-      _, acc ->
-        acc
-    end)
-  end
-
   defp parallel_parent_ids(workflow, group_id) do
     parallel_steps =
       workflow.steps
@@ -183,14 +126,6 @@ defmodule CachePuppyCore.Graph.Builder do
     else
       Map.keys(pg.branch_terminal_step_ids)
     end
-  end
-
-  defp loop_parent_ids(workflow, group_id) do
-    workflow.steps
-    |> Map.values()
-    |> Enum.filter(&(&1.group_id == group_id and &1.group_type == :loop_iteration))
-    |> Enum.flat_map(& &1.parent_ids)
-    |> Enum.uniq()
   end
 
   defp atom_to_string(v) when is_atom(v), do: Atom.to_string(v)

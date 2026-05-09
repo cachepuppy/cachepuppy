@@ -1,19 +1,19 @@
 defmodule CachePuppyCore.Graph.Node do
   @moduledoc false
 
-  alias CachePuppyCore.Workflow.{LoopGroup, ParallelGroup, Step}
+  alias CachePuppyCore.Workflow.{ParallelGroup, Step}
 
   @type t :: map()
 
-  @spec from_step(Step.t(), non_neg_integer() | nil) :: t()
-  def from_step(%Step{} = step, iteration_number \\ nil) do
+  @spec from_step(Step.t()) :: t()
+  def from_step(%Step{} = step) do
     %{
       "nodeId" => step.step_id,
       "stepName" => step.step_name,
       "type" => step_type(step),
       "status" => atom_to_string(step.status),
       "groupId" => step.group_id,
-      "iterationNumber" => iteration_number,
+      "iterationNumber" => nil,
       "parentIds" => step.parent_ids,
       "input" => step.input,
       "output" => step.output,
@@ -37,22 +37,8 @@ defmodule CachePuppyCore.Graph.Node do
     }
   end
 
-  @spec from_loop_group(LoopGroup.t(), [String.t()]) :: t()
-  def from_loop_group(%LoopGroup{} = group, parent_ids) do
-    %{
-      "nodeId" => group.group_id,
-      "type" => "loop_group",
-      "status" => atom_to_string(group.status),
-      "currentIteration" => group.current_iteration,
-      "maxIterations" => group.max_iterations,
-      "continueIf" => group.continue_if,
-      "parentIds" => parent_ids
-    }
-  end
-
   defp step_type(%Step{group_type: :parallel_branch}), do: "parallel_branch"
   defp step_type(%Step{group_type: :parallel_merge}), do: "merge"
-  defp step_type(%Step{group_type: :loop_iteration}), do: "loop_iteration"
   defp step_type(%Step{}), do: "serial"
 
   defp iso(%DateTime{} = dt), do: DateTime.to_iso8601(dt)

@@ -1,7 +1,7 @@
 defmodule CachePuppyCore.Orchestrator do
   @moduledoc false
 
-  alias CachePuppyCore.Orchestrator.{LoopHandler, ParallelHandler, SerialHandler}
+  alias CachePuppyCore.Orchestrator.{ParallelHandler, SerialHandler}
   alias CachePuppyCore.Execution.StepExecutor
   alias CachePuppyCore.Workflow
   alias CachePuppyCore.Workflow.{ParallelGroup, Step}
@@ -67,7 +67,6 @@ defmodule CachePuppyCore.Orchestrator do
               workflow
               |> put_step(completed)
               |> ParallelHandler.on_step_completed(completed)
-              |> LoopHandler.on_step_completed(completed)
               |> touch()
               |> maybe_finalize_failure()
 

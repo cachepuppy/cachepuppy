@@ -1,7 +1,7 @@
 defmodule CachePuppyCore.Graph.Edge do
   @moduledoc false
 
-  @type edge_type :: :serial | :fan_out | :fan_in | :loop_next | :loop_exit
+  @type edge_type :: :serial | :fan_out | :fan_in
   @type t :: %{required(String.t()) => String.t()}
 
   @spec build(String.t(), String.t(), edge_type()) :: t()

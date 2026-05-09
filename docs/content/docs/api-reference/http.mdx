@@ -17,9 +17,7 @@ description: JSON APIs, admin topic routes, and process-level health checks.
 | `POST` | `/api/workflows/:id/steps` | `StepController#add_step` | Add a sequential step. |
 | `POST` | `/api/workflows/:id/parallel` | `StepController#add_parallel` | Add a parallel branch group. |
 | `POST` | `/api/workflows/:id/merge` | `StepController#add_merge` | Add a merge step for branches. |
-| `POST` | `/api/workflows/:id/loop` | `StepController#add_loop` | Add a loop group definition. |
 | `POST` | `/api/workflows/:id/resume` | `StepController#resume` | Resume from a specific failed step. |
-| `POST` | `/api/workflows/:id/execute_now` | `StepController#execute_now` | Execute a one-off step immediately. |
 | `POST` | `/api/workflows/:id/end` | `StepController#end_workflow` | End workflow execution. |
 
 ## Server admin topic API (`/api/server/v1`)
