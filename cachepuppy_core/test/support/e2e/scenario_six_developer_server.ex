@@ -1,12 +1,13 @@
-defmodule CachePuppy.Test.E2E.ScenarioRetryDeveloperServer do
+defmodule CachePuppy.Test.E2E.ScenarioSixDeveloperServer do
   @moduledoc """
-  Retry scenario flow:
-  start -> extract -> flaky(fails once) -> compile -> store.
+  E2E scenario 6: fail then recover via manual retry API.
+
+  Flow: start -> extract -> flaky (fails until attempts exhausted) -> compile -> store.
   """
 
   import Plug.Conn
 
-  @attempts_table :cachepuppy_retry_attempts
+  @attempts_table :cachepuppy_e2e_scenario6_attempts
 
   @spec start(keyword()) :: {:ok, String.t(), reference()} | {:error, term()}
   def start(opts) do
@@ -45,7 +46,7 @@ defmodule CachePuppy.Test.E2E.ScenarioRetryDeveloperServer do
     with {:ok, payload, conn} <- decode_json(conn),
          paragraph when is_binary(paragraph) <- Map.get(payload, "paragraph"),
          workflow <-
-           post_json!(api_base <> "/api/workflows", %{"name" => "e2e-retry-scenario"}, 201),
+           post_json!(api_base <> "/api/workflows", %{"name" => "e2e-scenario-6"}, 201),
          workflow_id when is_binary(workflow_id) <- workflow["workflowId"],
          _ <-
            post_json!(
