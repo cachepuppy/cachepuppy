@@ -44,6 +44,8 @@ defmodule CachePuppyCore.WorkflowServer do
   def retry_step(workflow_id, step_id),
     do: GenServer.call(via(workflow_id), {:retry_step, step_id})
 
+  def retry_failed_steps(workflow_id), do: GenServer.call(via(workflow_id), :retry_failed_steps)
+
   def end_workflow(workflow_id), do: GenServer.call(via(workflow_id), :end_workflow)
 
   def get_state(workflow_id), do: GenServer.call(via(workflow_id), :get_state)
@@ -244,14 +246,7 @@ defmodule CachePuppyCore.WorkflowServer do
          {:ok, step} <- fetch_retryable_step(workflow, step_id),
          :ok <- ensure_step_not_active(workflow, step_id) do
       failed_step_ids = List.delete(workflow.failed_step_ids || [], step_id)
-
-      step =
-        %{
-          step
-          | status: :pending,
-            execution_error: nil,
-            completed_at: nil
-        }
+      step = reset_failed_step_to_pending(step)
 
       workflow =
         workflow
@@ -265,6 +260,42 @@ defmodule CachePuppyCore.WorkflowServer do
       :ok = commit(workflow)
       :ok = maybe_broadcast_graph(workflow)
       {:reply, {:ok, step}, workflow}
+    else
+      {:error, _} = err -> {:reply, err, workflow}
+    end
+  end
+
+  def handle_call(:retry_failed_steps, _from, workflow) do
+    failed_steps =
+      workflow.steps
+      |> Map.values()
+      |> Enum.filter(&match?(%Step{status: :failed}, &1))
+      |> Enum.sort_by(& &1.step_id)
+
+    with :ok <- validate_retry_state(workflow),
+         :ok <- ensure_any_failed_steps(failed_steps),
+         :ok <- ensure_failed_steps_not_active(workflow, failed_steps) do
+      retried_ids = MapSet.new(Enum.map(failed_steps, & &1.step_id))
+
+      failed_step_ids =
+        Enum.reject(workflow.failed_step_ids || [], &MapSet.member?(retried_ids, &1))
+
+      workflow =
+        failed_steps
+        |> Enum.reduce(workflow, fn step, wf ->
+          put_step(wf, reset_failed_step_to_pending(step))
+        end)
+        |> Map.put(:status, :running)
+        |> Map.put(:failure_reason, nil)
+        |> Map.put(:failed_step_ids, failed_step_ids)
+        |> touch()
+
+      retried = Enum.map(failed_steps, &reset_failed_step_to_pending/1)
+
+      workflow = advance_and_enqueue(workflow)
+      :ok = commit(workflow)
+      :ok = maybe_broadcast_graph(workflow)
+      {:reply, {:ok, retried}, workflow}
     else
       {:error, _} = err -> {:reply, err, workflow}
     end
@@ -335,6 +366,22 @@ defmodule CachePuppyCore.WorkflowServer do
 
   defp ensure_step_not_active(%Workflow{active_step_ids: active}, step_id) do
     if MapSet.member?(active, step_id), do: {:error, :retry_step_still_running}, else: :ok
+  end
+
+  defp ensure_any_failed_steps([]), do: {:error, :no_failed_steps}
+  defp ensure_any_failed_steps(_), do: :ok
+
+  defp ensure_failed_steps_not_active(%Workflow{} = workflow, failed_steps) do
+    Enum.reduce_while(failed_steps, :ok, fn %Step{step_id: sid}, _ ->
+      case ensure_step_not_active(workflow, sid) do
+        :ok -> {:cont, :ok}
+        {:error, _} = err -> {:halt, err}
+      end
+    end)
+  end
+
+  defp reset_failed_step_to_pending(%Step{} = step) do
+    %{step | status: :pending, execution_error: nil, completed_at: nil}
   end
 
   defp put_step(%Workflow{steps: steps} = workflow, %Step{} = step) do

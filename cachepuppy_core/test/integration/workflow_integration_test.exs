@@ -712,6 +712,119 @@ defmodule CachePuppyCore.Integration.WorkflowIntegrationTest do
     assert Agent.get(state_agent, & &1.p2_runs) == 1
   end
 
+  test "retry_failed_steps recovers when two parallel branches fail HTTP then succeed" do
+    workflow_id = unique_workflow_id("retry-failed-batch")
+    old_exec = Application.get_env(:cachepuppy_core, :step_executor, [])
+
+    Application.put_env(
+      :cachepuppy_core,
+      :step_executor,
+      Keyword.put(old_exec, :default_max_retries, 0)
+    )
+
+    {:ok, state_agent} = Agent.start_link(fn -> %{p1: 0, p2: 0} end)
+    {:ok, url_agent} = Agent.start_link(fn -> nil end)
+
+    {:ok, base_url, server_ref} =
+      StepServer.start(%{
+        "extract" => fn _input ->
+          {:ok, _gid, _branches, merge_created} =
+            WorkflowServer.add_parallel(
+              workflow_id,
+              [
+                %{
+                  step_id: "p1",
+                  step_name: "p1",
+                  url: Agent.get(url_agent, &(&1 <> "/step")),
+                  data: %{},
+                  max_retries: 0
+                },
+                %{
+                  step_id: "p2",
+                  step_name: "p2",
+                  url: Agent.get(url_agent, &(&1 <> "/step")),
+                  data: %{},
+                  max_retries: 0
+                }
+              ],
+              %{
+                step_id: "compile",
+                step_name: "compile",
+                url: Agent.get(url_agent, &(&1 <> "/step"))
+              }
+            )
+
+          {:ok, _} = WorkflowServer.merge_now(workflow_id, merge_created.step_id)
+          {200, %{"ok" => true}}
+        end,
+        "p1" => fn _input ->
+          n = Agent.get_and_update(state_agent, fn s -> {s.p1 + 1, %{s | p1: s.p1 + 1}} end)
+          if n == 1, do: {500, %{"error" => "p1"}}, else: {200, %{"p1" => "ok"}}
+        end,
+        "p2" => fn _input ->
+          n = Agent.get_and_update(state_agent, fn s -> {s.p2 + 1, %{s | p2: s.p2 + 1}} end)
+          if n == 1, do: {500, %{"error" => "p2"}}, else: {200, %{"p2" => "ok"}}
+        end,
+        "compile" => fn input ->
+          merge_data = Map.get(input, "mergeData", [])
+
+          {:ok, _} =
+            WorkflowServer.add_step(workflow_id, %{
+              step_id: "store",
+              step_name: "store",
+              url: Agent.get(url_agent, &(&1 <> "/step")),
+              data: %{"merged" => merge_data |> length()}
+            })
+
+          {200, %{"merged" => merge_data |> Enum.map(& &1["step_id"]) |> Enum.sort()}}
+        end,
+        "store" => fn _input ->
+          {200, %{"stored" => true}}
+        end
+      })
+
+    Agent.update(url_agent, fn _ -> base_url end)
+
+    on_exit(fn ->
+      StepServer.stop(server_ref)
+      WorkflowStore.delete(workflow_id)
+      Application.put_env(:cachepuppy_core, :step_executor, old_exec)
+    end)
+
+    assert {:ok, _pid} = WorkflowManager.start_workflow(workflow_id, "retry_failed_batch")
+    assert :ok = WorkflowHelpers.subscribe_to_workflow(workflow_id)
+
+    assert {:ok, _extract} =
+             WorkflowServer.add_step(workflow_id, %{
+               step_id: "extract",
+               step_name: "extract",
+               url: base_url <> "/step",
+               data: %{}
+             })
+
+    wait_for(
+      fn ->
+        assert {:ok, wf} = WorkflowServer.get_state(workflow_id)
+        assert wf.status == :failed
+        assert wf.steps["p1"].status == :failed
+        assert wf.steps["p2"].status == :failed
+      end,
+      500
+    )
+
+    assert {:ok, _} = WorkflowServer.retry_failed_steps(workflow_id)
+
+    workflow = WorkflowHelpers.wait_for_completion(workflow_id, timeout_ms: 15_000)
+
+    assert workflow.status == :completed
+    assert workflow.steps["p1"].status == :completed
+    assert workflow.steps["p2"].status == :completed
+    assert workflow.steps["compile"].status == :completed
+    assert workflow.steps["store"].status == :completed
+    assert Agent.get(state_agent, & &1.p1) == 2
+    assert Agent.get(state_agent, & &1.p2) == 2
+  end
+
   defp unique_workflow_id(prefix) do
     "#{prefix}-#{Base.encode16(:crypto.strong_rand_bytes(5), case: :lower)}"
   end
