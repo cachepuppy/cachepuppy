@@ -4,17 +4,18 @@ import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { createEmptyGraphState, mergeGraphDiff, STEP_NODE_TYPES, type GraphState } from "./graphMerge.js";
 
-const SCENARIO_LABELS: Record<1 | 2 | 3 | 4 | 5 | 6, string> = {
+const SCENARIO_LABELS: Record<1 | 2 | 3 | 4 | 5 | 6 | 7, string> = {
   1: "Serial: extract → research → compile → store",
   2: "Static parallel (3 branches) + merge → store",
   3: "Dynamic parallel (word count) + merge → store",
   4: "Dynamic parallel research → summarize branches → final merge compile → store",
   5: "Nested parallel: research branches each fan out to search → collect → summarise → merge",
   6: "Nested parallel + flaky inner step (retries exhausted) → manual Retry → completes",
+  7: "Two parallel branches fail (retries exhausted) → Retry all failed steps → completes",
 };
 
 export function ScenarioCard(props: {
-  scenario: 1 | 2 | 3 | 4 | 5 | 6;
+  scenario: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   apiBase: string;
   paragraph: string;
 }) {
@@ -129,11 +130,40 @@ export function ScenarioCard(props: {
     }
   }
 
-  const showRetry =
+  async function retryAllFailedSteps() {
+    if (scenario !== 7 || !workflowId) {
+      return;
+    }
+    setRetryBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`${apiBase}/scenario7/retry_failed_steps`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workflowId }),
+      });
+      const data = (await res.json()) as { workflowId?: string; status?: string; error?: string };
+      if (!res.ok) {
+        throw new Error(data.error ?? JSON.stringify(data));
+      }
+      if (typeof data.status === "string") {
+        setWorkflowStatus(data.status);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRetryBusy(false);
+    }
+  }
+
+  const showRetrySingle =
     scenario === 6 &&
     workflowId &&
     (workflowStatus === "failed" || workflowStatus === "failing") &&
     Boolean(failedStepIdForRetry);
+
+  const showRetryAllFailed =
+    scenario === 7 && workflowId && (workflowStatus === "failed" || workflowStatus === "failing");
 
   const orderedRows = useMemo(() => buildHierarchyRows(graph), [graph]);
 
@@ -148,7 +178,7 @@ export function ScenarioCard(props: {
           <button type="button" className="play-btn" disabled={busy || connectionState !== "connected"} onClick={() => void play()}>
             {busy ? "Starting…" : "Play"}
           </button>
-          {showRetry ? (
+          {showRetrySingle ? (
             <button
               type="button"
               className="play-btn play-btn--secondary"
@@ -157,6 +187,16 @@ export function ScenarioCard(props: {
               title={failedStepIdForRetry ?? undefined}
             >
               {retryBusy ? "Retrying…" : `Retry failed step (${failedStepIdForRetry})`}
+            </button>
+          ) : null}
+          {showRetryAllFailed ? (
+            <button
+              type="button"
+              className="play-btn play-btn--secondary"
+              disabled={retryBusy || connectionState !== "connected"}
+              onClick={() => void retryAllFailedSteps()}
+            >
+              {retryBusy ? "Retrying…" : "Retry all failed steps"}
             </button>
           ) : null}
         </div>

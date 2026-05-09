@@ -13,7 +13,7 @@ Interactive React demo for validating CachePuppy SDK usage against the managed E
 
 - `webhook-server`: Minimal Node server that logs `POST /topic-state` JSON bodies (run this when demoing server-side webhook flush).
 - `interactive`: Vite + React browser app — uses `@cachepuppy/react` (backed by `@cachepuppy/core`) to join `sticky_notes_room`, share ephemeral `cursor_tracked` publishes (notes board only), and collaborative sticky notes in topic state.
-- `workflows/server`: Express server that mirrors the six e2e workflow scenarios (serial, static parallel + merge, dynamic parallel + merge, parallel + summary merge, nested parallel fan-out, nested parallel with flaky step + manual retry) under `/scenario1` … `/scenario6`.
+- `workflows/server`: Express server that mirrors the seven e2e workflow scenarios (serial, static parallel + merge, dynamic parallel + merge, parallel + summary merge, nested parallel fan-out, nested parallel with flaky step + single-step retry, two parallel branches + batch retry failed steps) under `/scenario1` … `/scenario7`.
 - `workflows/web`: Vite + React UI to start each scenario and show live step status from `graph_diff` websocket events on `workflow:<id>`.
 
 ## Workflows demo (orchestration + realtime graph)

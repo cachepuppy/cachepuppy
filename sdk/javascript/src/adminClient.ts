@@ -202,6 +202,16 @@ export class CachePuppyAdminClient {
     );
   }
 
+  /** Reset every step in `failed` status and resume orchestration (workflow must be `failed` or `failing`). */
+  async retryFailedWorkflowSteps(workflowId: string): Promise<WorkflowStatusResponse> {
+    return this.requestJson<WorkflowStatusResponse>(
+      "POST",
+      workflowActionPath(workflowId, "retry_failed_steps"),
+      {},
+      { useServerApiPrefix: false },
+    );
+  }
+
   async endWorkflow(workflowId: string): Promise<WorkflowStatusResponse> {
     return this.requestJson<WorkflowStatusResponse>("POST", workflowActionPath(workflowId, "end"), {}, {
       useServerApiPrefix: false,

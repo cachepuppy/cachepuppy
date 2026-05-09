@@ -12,6 +12,9 @@ const admin = createAdminClient({ url: CACHEPUPPY_SOCKET_URL });
 /** Invocations of `search_b_1` per workflow; first 3 return 500 (exhaust maxRetries:2), later calls succeed (manual retry). */
 const flakySearchB1Attempts = new Map();
 
+/** Per `{workflowId}:{stepId}` for scenario 7 parallel branches; first 4 HTTP responses are 500 (exhaust retries), then 200 until manual `retry_failed_steps`. */
+const scenario7BranchAttempts = new Map();
+
 function stepDelay() {
   return new Promise((r) => setTimeout(r, STEP_DELAY_MS));
 }
@@ -1138,6 +1141,174 @@ function scenario6Router() {
   return r;
 }
 
+function scenario7Router() {
+  const r = express.Router();
+  const base = `${PUBLIC_BASE}/scenario7`;
+
+  r.post("/retry_failed_steps", async (req, res) => {
+    try {
+      const workflowId = req.body?.workflowId;
+      if (typeof workflowId !== "string") {
+        return res.status(400).json({ error: "invalid_retry_failed_steps_request" });
+      }
+      const result = await admin.retryFailedWorkflowSteps(workflowId);
+      return res.status(200).json(result);
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: String(/** @type {Error} */ (e).message || e) });
+    }
+  });
+
+  r.post("/start", async (req, res) => {
+    try {
+      const paragraph = req.body?.paragraph;
+      if (typeof paragraph !== "string") {
+        return res.status(400).json({ error: "invalid_start_request" });
+      }
+      const workflow = await admin.createWorkflow("e2e-scenario-7");
+      const workflowId = workflow.workflowId;
+      if (typeof workflowId !== "string") {
+        return res.status(500).json({ error: "no_workflow_id" });
+      }
+
+      await admin.addWorkflowStep(workflowId, {
+        stepName: "extract",
+        url: `${base}/extract`,
+        method: "post",
+        data: { paragraph },
+      });
+
+      return res.status(201).json({ workflowId });
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: String(/** @type {Error} */ (e).message || e) });
+    }
+  });
+
+  r.post("/extract", async (req, res) => {
+    try {
+      const input = req.body?.input;
+      const workflowId = input?.workflowId;
+      if (typeof input !== "object" || typeof workflowId !== "string") {
+        return res.status(400).json({ error: "invalid_extract_request" });
+      }
+      await stepDelay();
+
+      const parallelCreated = await admin.addWorkflowParallel(
+        workflowId,
+        [
+          {
+            stepId: "branch_a",
+            stepName: "branch_a",
+            url: `${base}/branch_a`,
+            method: "post",
+            maxRetries: 0,
+            data: {},
+          },
+          {
+            stepId: "branch_b",
+            stepName: "branch_b",
+            url: `${base}/branch_b`,
+            method: "post",
+            maxRetries: 0,
+            data: {},
+          },
+        ],
+        {
+          stepId: "compile",
+          stepName: "compile",
+          url: `${base}/compile`,
+          method: "post",
+          data: {},
+        },
+      );
+      await armParallelMerge(workflowId, parallelCreated);
+
+      return res.status(200).json({ keywords: ["a", "b"] });
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: String(/** @type {Error} */ (e).message || e) });
+    }
+  });
+
+  r.post("/branch_a", async (req, res) => {
+    return scenario7BranchResponse(req, res, "branch_a");
+  });
+
+  r.post("/branch_b", async (req, res) => {
+    return scenario7BranchResponse(req, res, "branch_b");
+  });
+
+  r.post("/compile", async (req, res) => {
+    try {
+      const input = req.body?.input;
+      const workflowId = input?.workflowId;
+      const mergeData = input?.mergeData;
+      if (typeof input !== "object" || typeof workflowId !== "string" || !Array.isArray(mergeData)) {
+        return res.status(400).json({ error: "invalid_compile_request" });
+      }
+      await stepDelay();
+      const compiled = mergeData.map((m) => m?.output?.result).join(", ");
+
+      await admin.addWorkflowStep(workflowId, {
+        stepName: "store",
+        url: `${base}/store`,
+        method: "post",
+        parentIds: ["compile"],
+        data: { compiled },
+      });
+
+      return res.status(200).json({ compiled });
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: String(/** @type {Error} */ (e).message || e) });
+    }
+  });
+
+  r.post("/store", async (req, res) => {
+    try {
+      const input = req.body?.input;
+      const compiled = input?.data?.compiled;
+      if (typeof input !== "object" || typeof compiled !== "string") {
+        return res.status(400).json({ error: "invalid_store_request" });
+      }
+      await stepDelay();
+      return res.status(200).json({ stored: true, compiledLength: compiled.length });
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: String(/** @type {Error} */ (e).message || e) });
+    }
+  });
+
+  return r;
+}
+
+/**
+ * @param {import("express").Request} req
+ * @param {import("express").Response} res
+ * @param {string} stepId
+ */
+async function scenario7BranchResponse(req, res, stepId) {
+  try {
+    const input = req.body?.input;
+    const workflowId = input?.workflowId;
+    if (typeof input !== "object" || typeof workflowId !== "string") {
+      return res.status(400).json({ error: "invalid_branch_request" });
+    }
+    await stepDelay();
+    const key = `${workflowId}:${stepId}`;
+    const n = (scenario7BranchAttempts.get(key) ?? 0) + 1;
+    scenario7BranchAttempts.set(key, n);
+    if (n <= 4) {
+      return res.status(500).json({ error: "branch_fail" });
+    }
+    return res.status(200).json({ result: `${stepId}_ok` });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: String(/** @type {Error} */ (e).message || e) });
+  }
+}
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -1152,6 +1323,7 @@ app.use("/scenario3", scenario3Router());
 app.use("/scenario4", scenario4Router());
 app.use("/scenario5", scenario5Router());
 app.use("/scenario6", scenario6Router());
+app.use("/scenario7", scenario7Router());
 
 app.listen(PORT, () => {
   console.log(`Workflows demo server listening on ${PUBLIC_BASE} (port ${PORT})`);
