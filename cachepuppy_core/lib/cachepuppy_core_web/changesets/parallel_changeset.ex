@@ -31,7 +31,8 @@ defmodule CachePuppyCoreWeb.Changesets.ParallelChangeset do
     end)
   end
 
-  @spec validate_params(map()) :: {:ok, %{steps: [map()], merge_step: map()}} | {:error, Ecto.Changeset.t()}
+  @spec validate_params(map()) ::
+          {:ok, %{steps: [map()], merge_step: map()}} | {:error, Ecto.Changeset.t()}
   def validate_params(params) when is_map(params) do
     cs = changeset(params)
 
@@ -47,10 +48,12 @@ defmodule CachePuppyCoreWeb.Changesets.ParallelChangeset do
           {:ok, %{steps: Enum.map(step_results, fn {:ok, step} -> step end), merge_step: merge}}
 
         {{:error, step_cs}, _} ->
-          {:error, add_error(cs, :steps, "contains invalid step payload: #{inspect(humanize(step_cs))}")}
+          {:error,
+           add_error(cs, :steps, "contains invalid step payload: #{inspect(humanize(step_cs))}")}
 
         {_, {:error, merge_cs}} ->
-          {:error, add_error(cs, :mergeStep, "invalid merge step payload: #{inspect(humanize(merge_cs))}")}
+          {:error,
+           add_error(cs, :mergeStep, "invalid merge step payload: #{inspect(humanize(merge_cs))}")}
       end
     else
       {:error, cs}

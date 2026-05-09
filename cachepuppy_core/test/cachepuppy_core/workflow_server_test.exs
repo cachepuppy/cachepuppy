@@ -162,6 +162,90 @@ defmodule CachePuppyCore.WorkflowServerTest do
     assert is_list(merge_data)
   end
 
+  test "invoking_step_id attaches new step to invoking parallel branch", %{workflow_id: wid} do
+    assert {:ok, _} = WorkflowManager.ensure_started(wid)
+
+    branches = [
+      %{step_id: "p1", step_name: "b1", url: "http://example/p1"},
+      %{step_id: "p2", step_name: "b2", url: "http://example/p2"}
+    ]
+
+    merge = %{step_id: "m", step_name: "merge", url: "http://example/m"}
+    assert {:ok, gid, _, _} = WorkflowServer.add_parallel(wid, branches, merge)
+
+    assert {:ok, step} =
+             WorkflowServer.add_step(
+               wid,
+               %{step_id: "p1_next", step_name: "next", url: "http://example/p1_next"},
+               invoking_step_id: "p1"
+             )
+
+    assert step.parent_ids == ["p1"]
+    assert step.group_id == gid
+    assert step.group_type == :parallel_branch
+
+    assert {:ok, wf} = WorkflowServer.get_state(wid)
+    assert wf.groups[gid].branch_terminal_step_ids["p1"] == "p1_next"
+  end
+
+  test "nested add_parallel from branch records parent group and updates parent terminal", %{
+    workflow_id: wid
+  } do
+    assert {:ok, _} = WorkflowManager.ensure_started(wid)
+
+    branches = [
+      %{step_id: "p1", step_name: "b1", url: "http://example/p1"},
+      %{step_id: "p2", step_name: "b2", url: "http://example/p2"}
+    ]
+
+    merge = %{step_id: "m", step_name: "merge", url: "http://example/m"}
+    assert {:ok, outer_gid, _, _} = WorkflowServer.add_parallel(wid, branches, merge)
+
+    inner_steps = [
+      %{step_id: "s1", step_name: "search", url: "http://example/s1"},
+      %{step_id: "s2", step_name: "search", url: "http://example/s2"}
+    ]
+
+    inner_merge = %{step_id: "m2", step_name: "collect", url: "http://example/m2"}
+
+    assert {:ok, inner_gid, _, _} =
+             WorkflowServer.add_parallel(wid, inner_steps, inner_merge, invoking_step_id: "p1")
+
+    assert {:ok, wf} = WorkflowServer.get_state(wid)
+    assert wf.groups[inner_gid].parent_group_id == outer_gid
+    assert wf.groups[outer_gid].branch_terminal_step_ids["p1"] == "m2"
+  end
+
+  test "outer merge parents include nested merge terminal for invoking branch", %{
+    workflow_id: wid
+  } do
+    assert {:ok, _} = WorkflowManager.ensure_started(wid)
+
+    branches = [
+      %{step_id: "p1", step_name: "b1", url: "http://example/p1"},
+      %{step_id: "p2", step_name: "b2", url: "http://example/p2"}
+    ]
+
+    merge = %{step_id: "m", step_name: "merge", url: "http://example/m"}
+    assert {:ok, _outer_gid, _, _} = WorkflowServer.add_parallel(wid, branches, merge)
+
+    assert {:ok, _inner_gid, _, _} =
+             WorkflowServer.add_parallel(
+               wid,
+               [
+                 %{step_id: "s1", step_name: "search", url: "http://example/s1"},
+                 %{step_id: "s2", step_name: "search", url: "http://example/s2"}
+               ],
+               %{step_id: "m2", step_name: "collect", url: "http://example/m2"},
+               invoking_step_id: "p1"
+             )
+
+    assert {:ok, _} = WorkflowServer.merge_now(wid, "m")
+
+    assert {:ok, wf_after} = WorkflowServer.get_state(wid)
+    assert Enum.sort(wf_after.steps["m"].parent_ids) == ["m2", "p2"]
+  end
+
   test "reloads workflow from ETS after supervisor terminates child", %{workflow_id: wid} do
     assert {:ok, pid} = WorkflowManager.ensure_started(wid)
 

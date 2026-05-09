@@ -11,6 +11,7 @@ defmodule CachePuppyCore.Execution.PayloadTest do
     assert body == %{
              "input" => %{
                "workflowId" => "wf-1",
+               "stepId" => "1",
                "data" => %{"a" => 1}
              }
            }
@@ -41,6 +42,7 @@ defmodule CachePuppyCore.Execution.PayloadTest do
 
     assert headers["content-type"] == "application/json"
     assert headers["x-cachepuppy-step"] == "extract"
+    assert headers["x-cachepuppy-step-id"] == "1"
     assert headers["x-cachepuppy-workflow"] == "wf-9"
   end
 end

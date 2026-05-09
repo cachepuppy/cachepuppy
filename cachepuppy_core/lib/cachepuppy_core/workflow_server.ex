@@ -29,10 +29,11 @@ defmodule CachePuppyCore.WorkflowServer do
     GenServer.start_link(__MODULE__, opts, name: via(workflow_id))
   end
 
-  def add_step(workflow_id, step), do: GenServer.call(via(workflow_id), {:add_step, step})
+  def add_step(workflow_id, step, opts \\ []),
+    do: GenServer.call(via(workflow_id), {:add_step, step, opts})
 
-  def add_parallel(workflow_id, steps, merge_step),
-    do: GenServer.call(via(workflow_id), {:add_parallel, steps, merge_step})
+  def add_parallel(workflow_id, steps, merge_step, opts \\ []),
+    do: GenServer.call(via(workflow_id), {:add_parallel, steps, merge_step, opts})
 
   def merge_now(workflow_id, merge_step_id),
     do: GenServer.call(via(workflow_id), {:merge_now, merge_step_id})
@@ -96,12 +97,16 @@ defmodule CachePuppyCore.WorkflowServer do
     end
   end
 
-  def handle_call({:add_step, step}, _from, workflow) do
+  def handle_call({:add_step, step, opts}, _from, workflow) do
     with :ok <- ensure_mutable(workflow),
          {:ok, step} <- to_step(step),
+         {:ok, invoking_step_id} <- normalize_invoking_step_id(opts),
+         :ok <- validate_invoking_step(workflow, invoking_step_id),
+         step <- apply_invoking_parent(step, invoking_step_id),
          :ok <- ensure_unique_step(workflow, step.step_id),
          {:ok, workflow} <- maybe_activate(workflow) do
       {step, workflow} = apply_serial_parents(step, workflow)
+
       with :ok <- validate_branch_addition_allowed(workflow, step) do
         step = %{step | inserted_at: step.inserted_at || DateTime.utc_now()}
         workflow = put_step(workflow, step)
@@ -119,21 +124,25 @@ defmodule CachePuppyCore.WorkflowServer do
     end
   end
 
-  def handle_call({:add_parallel, steps, merge_step}, _from, workflow) do
+  def handle_call({:add_parallel, steps, merge_step, opts}, _from, workflow) do
     with :ok <- ensure_mutable(workflow),
          {:ok, steps} <- normalize_steps_list(steps),
          {:ok, merge_step} <- to_step(merge_step),
+         {:ok, invoking_step_id} <- normalize_invoking_step_id(opts),
+         :ok <- validate_invoking_step(workflow, invoking_step_id),
          :ok <- ensure_all_unique_steps(workflow, steps),
          :ok <- ensure_unique_step(workflow, merge_step.step_id),
          false <- steps == [],
          {:ok, workflow} <- maybe_activate(workflow) do
       group_id = generate_id("pg")
+      parent_ctx = parallel_parent_context(workflow, invoking_step_id)
       n = length(steps)
 
       {branch_steps, workflow} =
         steps
         |> Enum.with_index()
         |> Enum.map_reduce(workflow, fn {step, idx}, wf ->
+          step = apply_invoking_parent(step, invoking_step_id)
           {step, wf} = apply_serial_parents(step, wf)
           step = %{step | group_id: group_id, branch_index: idx}
           step = %{step | inserted_at: step.inserted_at || DateTime.utc_now()}
@@ -159,12 +168,14 @@ defmodule CachePuppyCore.WorkflowServer do
         branch_root_step_ids: branch_ids,
         branch_terminal_step_ids: Map.new(branch_ids, fn sid -> {sid, sid} end),
         merge_armed: false,
+        parent_group_id: parent_ctx.parent_group_id,
         status: :open
       }
 
       workflow =
         workflow
         |> put_group(group)
+        |> maybe_update_parent_parallel_terminal(parent_ctx, merge_step.step_id)
         |> Map.put(:open_parallel_group_id, nil)
         |> Map.put(:serial_tail_step_id, merge_step.step_id)
         |> touch()
@@ -179,6 +190,14 @@ defmodule CachePuppyCore.WorkflowServer do
     end
   end
 
+  def handle_call({:add_step, step}, from, workflow) do
+    handle_call({:add_step, step, []}, from, workflow)
+  end
+
+  def handle_call({:add_parallel, steps, merge_step}, from, workflow) do
+    handle_call({:add_parallel, steps, merge_step, []}, from, workflow)
+  end
+
   def handle_call({:merge_now, merge_step_id}, _from, workflow) do
     with :ok <- ensure_mutable(workflow),
          {:ok, workflow} <- maybe_activate(workflow),
@@ -188,25 +207,25 @@ defmodule CachePuppyCore.WorkflowServer do
       if pg.merge_armed do
         {:reply, {:ok, pg}, workflow}
       else
-      merge_parents =
-        pg.branch_terminal_step_ids
-        |> Map.values()
-        |> Enum.uniq()
-        |> Enum.sort()
+        merge_parents =
+          pg.branch_terminal_step_ids
+          |> Map.values()
+          |> Enum.uniq()
+          |> Enum.sort()
 
-      merge_step = %{merge_step | parent_ids: merge_parents}
-      pg = %{pg | merge_armed: true, status: :merge_waiting}
+        merge_step = %{merge_step | parent_ids: merge_parents}
+        pg = %{pg | merge_armed: true, status: :merge_waiting}
 
-      workflow =
-        workflow
-        |> put_step(merge_step)
-        |> put_group(pg)
-        |> touch()
+        workflow =
+          workflow
+          |> put_step(merge_step)
+          |> put_group(pg)
+          |> touch()
 
-      workflow = advance_and_enqueue(workflow)
-      :ok = commit(workflow)
-      :ok = maybe_broadcast_graph(workflow)
-      {:reply, {:ok, pg}, workflow}
+        workflow = advance_and_enqueue(workflow)
+        :ok = commit(workflow)
+        :ok = maybe_broadcast_graph(workflow)
+        {:reply, {:ok, pg}, workflow}
       end
     else
       nil -> {:reply, {:error, :not_found}, workflow}
@@ -410,15 +429,87 @@ defmodule CachePuppyCore.WorkflowServer do
              same_branch? and
              first.group_type == :parallel_branch and
              is_integer(first.branch_index) do
-          {%{step | group_id: first.group_id, group_type: :parallel_branch, branch_index: first.branch_index}, workflow}
+          {%{
+             step
+             | group_id: first.group_id,
+               group_type: :parallel_branch,
+               branch_index: first.branch_index
+           }, workflow}
         else
-          {step, workflow}
+          case infer_enclosing_parallel_context(parent_steps, workflow) do
+            {:ok, group_id, branch_index} ->
+              {%{
+                 step
+                 | group_id: group_id,
+                   group_type: :parallel_branch,
+                   branch_index: branch_index
+               }, workflow}
+
+            :error ->
+              {step, workflow}
+          end
         end
     end
   end
 
   defp apply_serial_parents(%Step{} = step, workflow) do
     {step, workflow}
+  end
+
+  defp infer_enclosing_parallel_context(parent_steps, workflow) do
+    cond do
+      parent_steps == [] ->
+        :error
+
+      Enum.all?(parent_steps, &(&1.group_type == :parallel_merge)) ->
+        infer_from_parallel_merges(parent_steps, workflow)
+
+      true ->
+        :error
+    end
+  end
+
+  defp infer_from_parallel_merges(parent_steps, workflow) do
+    group_ids = parent_steps |> Enum.map(& &1.group_id) |> Enum.uniq()
+
+    with [merge_group_id] <- group_ids,
+         %ParallelGroup{} = merge_group <- Map.get(workflow.groups, merge_group_id),
+         parent_group_id when is_binary(parent_group_id) <- merge_group.parent_group_id,
+         {:ok, branch_index} <- parent_group_branch_index(workflow, merge_group, parent_group_id) do
+      {:ok, parent_group_id, branch_index}
+    else
+      _ -> :error
+    end
+  end
+
+  defp parent_group_branch_index(workflow, merge_group, parent_group_id) do
+    branch_index =
+      merge_group.branch_root_step_ids
+      |> Enum.find_value(fn root_id ->
+        case Map.get(workflow.steps, root_id) do
+          %Step{parent_ids: parent_ids} ->
+            parent_ids
+            |> Enum.find_value(fn pid ->
+              case Map.get(workflow.steps, pid) do
+                %Step{
+                  group_type: :parallel_branch,
+                  group_id: ^parent_group_id,
+                  branch_index: bidx
+                }
+                when is_integer(bidx) ->
+                  bidx
+
+                _ ->
+                  nil
+              end
+            end)
+
+          _ ->
+            nil
+        end
+      end)
+
+    if is_integer(branch_index), do: {:ok, branch_index}, else: :error
   end
 
   defp apply_merge_parents(%Step{parent_ids: []} = step, branch_ids) do
@@ -452,6 +543,83 @@ defmodule CachePuppyCore.WorkflowServer do
 
   defp validate_branch_addition_allowed(_workflow, _step), do: :ok
 
+  defp normalize_invoking_step_id(opts) when is_list(opts) do
+    case Keyword.get(opts, :invoking_step_id) do
+      nil -> {:ok, nil}
+      id when is_binary(id) and id != "" -> {:ok, id}
+      _ -> {:error, :invalid_invoking_step}
+    end
+  end
+
+  defp normalize_invoking_step_id(_), do: {:error, :invalid_invoking_step}
+
+  defp validate_invoking_step(_workflow, nil), do: :ok
+
+  defp validate_invoking_step(%Workflow{steps: steps}, invoking_step_id) do
+    if Map.has_key?(steps, invoking_step_id), do: :ok, else: {:error, :invalid_invoking_step}
+  end
+
+  defp apply_invoking_parent(%Step{parent_ids: []} = step, invoking_step_id)
+       when is_binary(invoking_step_id) do
+    %{step | parent_ids: [invoking_step_id]}
+  end
+
+  defp apply_invoking_parent(%Step{} = step, _invoking_step_id), do: step
+
+  defp parallel_parent_context(%Workflow{} = workflow, invoking_step_id)
+       when is_binary(invoking_step_id) do
+    case Map.get(workflow.steps, invoking_step_id) do
+      %Step{group_type: :parallel_branch, group_id: group_id, branch_index: branch_index}
+      when is_binary(group_id) and is_integer(branch_index) ->
+        branch_root_id =
+          case Map.get(workflow.groups, group_id) do
+            %ParallelGroup{} = pg ->
+              pg.branch_root_step_ids
+              |> Enum.find(fn root_id ->
+                root_branch_index(workflow.steps, root_id) == branch_index
+              end)
+
+            _ ->
+              nil
+          end
+
+        %{parent_group_id: group_id, branch_root_id: branch_root_id}
+
+      _ ->
+        %{parent_group_id: nil, branch_root_id: nil}
+    end
+  end
+
+  defp parallel_parent_context(_workflow, _invoking_step_id) do
+    %{parent_group_id: nil, branch_root_id: nil}
+  end
+
+  defp maybe_update_parent_parallel_terminal(
+         %Workflow{} = workflow,
+         %{parent_group_id: group_id, branch_root_id: branch_root_id},
+         terminal_step_id
+       )
+       when is_binary(group_id) and is_binary(branch_root_id) and is_binary(terminal_step_id) do
+    case Map.get(workflow.groups, group_id) do
+      %ParallelGroup{} = pg ->
+        pg = put_in(pg.branch_terminal_step_ids[branch_root_id], terminal_step_id)
+
+        workflow
+        |> put_group(pg)
+        |> maybe_update_armed_merge_parents(pg)
+
+      _ ->
+        workflow
+    end
+  end
+
+  defp maybe_update_parent_parallel_terminal(
+         %Workflow{} = workflow,
+         _parent_ctx,
+         _terminal_step_id
+       ),
+       do: workflow
+
   defp root_branch_index(steps, root_id) do
     case Map.get(steps, root_id) do
       %Step{} = step -> step.branch_index
@@ -469,12 +637,17 @@ defmodule CachePuppyCore.WorkflowServer do
 
   defp merge_step_started?(_steps, _), do: false
 
-  defp update_parallel_branch_terminal(%Workflow{} = workflow, %Step{group_type: :parallel_branch} = step) do
+  defp update_parallel_branch_terminal(
+         %Workflow{} = workflow,
+         %Step{group_type: :parallel_branch} = step
+       ) do
     case Map.get(workflow.groups, step.group_id) do
       %ParallelGroup{} = pg ->
         branch_root_id =
           pg.branch_root_step_ids
-          |> Enum.find(fn root_id -> root_branch_index(workflow.steps, root_id) == step.branch_index end)
+          |> Enum.find(fn root_id ->
+            root_branch_index(workflow.steps, root_id) == step.branch_index
+          end)
 
         case branch_root_id do
           nil ->
@@ -499,7 +672,10 @@ defmodule CachePuppyCore.WorkflowServer do
 
   defp update_parallel_branch_terminal(workflow, _step), do: workflow
 
-  defp maybe_update_armed_merge_parents(%Workflow{} = workflow, %ParallelGroup{merge_armed: true} = pg) do
+  defp maybe_update_armed_merge_parents(
+         %Workflow{} = workflow,
+         %ParallelGroup{merge_armed: true} = pg
+       ) do
     case Map.get(workflow.steps, pg.merge_step_id) do
       %Step{} = merge_step ->
         merge_parents =

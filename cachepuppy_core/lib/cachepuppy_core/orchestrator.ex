@@ -117,7 +117,9 @@ defmodule CachePuppyCore.Orchestrator do
           term_step = Map.get(workflow.steps, terminal_id)
           %{"step_id" => terminal_id, "output" => term_step && term_step.output}
         end)
-      _ -> :omit
+
+      _ ->
+        :omit
     end
   end
 

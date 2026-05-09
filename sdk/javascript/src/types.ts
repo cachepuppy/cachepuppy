@@ -81,6 +81,14 @@ export interface WorkflowStepInput {
   parentIds?: string[];
 }
 
+export interface WorkflowStepOptions {
+  invokingStepId?: string;
+}
+
+export interface WorkflowParallelOptions {
+  invokingStepId?: string;
+}
+
 export interface WorkflowSummary {
   workflowId: string;
   name: string;
