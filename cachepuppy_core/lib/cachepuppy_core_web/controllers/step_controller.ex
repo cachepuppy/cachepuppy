@@ -108,6 +108,17 @@ defmodule CachePuppyCoreWeb.StepController do
     end
   end
 
+  def retry_failed_steps(conn, %{"id" => workflow_id}) do
+    with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
+         {:ok, _steps} <- WorkflowServer.retry_failed_steps(workflow_id),
+         {:ok, wf} <- WorkflowServer.get_state(workflow_id) do
+      json(conn, WorkflowJSON.workflow_status(wf))
+    else
+      {:conn, conn} -> conn
+      other -> map_server_error(conn, workflow_id, other)
+    end
+  end
+
   def end_workflow(conn, %{"id" => workflow_id}) do
     with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
          :ok <- WorkflowServer.end_workflow(workflow_id),
@@ -204,6 +215,12 @@ defmodule CachePuppyCoreWeb.StepController do
     conn
     |> put_status(:conflict)
     |> json(ErrorJSON.validation_failed(%{"workflow" => ["workflow is not in a failed state"]}))
+  end
+
+  defp map_server_error(conn, _workflow_id, {:error, :no_failed_steps}) do
+    conn
+    |> put_status(:bad_request)
+    |> json(ErrorJSON.validation_failed(%{"workflow" => ["no failed steps to retry"]}))
   end
 
   defp map_server_error(conn, _workflow_id, {:error, :retry_step_not_failed}) do

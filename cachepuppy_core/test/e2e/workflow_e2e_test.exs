@@ -5,6 +5,7 @@ defmodule CachePuppyCore.E2E.WorkflowE2ETest do
   alias CachePuppy.Test.E2E.ScenarioFiveDeveloperServer
   alias CachePuppy.Test.E2E.ScenarioFourDeveloperServer
   alias CachePuppy.Test.E2E.ScenarioOneDeveloperServer
+  alias CachePuppy.Test.E2E.ScenarioSevenDeveloperServer
   alias CachePuppy.Test.E2E.ScenarioSixDeveloperServer
   alias CachePuppy.Test.E2E.ScenarioThreeDeveloperServer
   alias CachePuppy.Test.E2E.ScenarioTwoDeveloperServer
@@ -191,7 +192,9 @@ defmodule CachePuppyCore.E2E.WorkflowE2ETest do
       })
   end
 
-  test "scenario 6 - retry endpoint recovers failed workflow from failed step", %{api_base: api_base} do
+  test "scenario 6 - retry endpoint recovers failed workflow from failed step", %{
+    api_base: api_base
+  } do
     {:ok, dev_base, dev_ref} = ScenarioSixDeveloperServer.start(api_base: api_base)
     on_exit(fn -> ScenarioSixDeveloperServer.stop(dev_ref) end)
 
@@ -223,6 +226,46 @@ defmodule CachePuppyCore.E2E.WorkflowE2ETest do
     assert Enum.find(workflow["steps"], &(&1["stepId"] == "store"))["status"] == "completed"
   end
 
+  test "scenario 7 - retry_failed_steps recovers workflow with two failed parallel branches", %{
+    api_base: api_base
+  } do
+    {:ok, dev_base, dev_ref} = ScenarioSevenDeveloperServer.start(api_base: api_base)
+    on_exit(fn -> ScenarioSevenDeveloperServer.stop(dev_ref) end)
+
+    start_response =
+      post_json!(dev_base <> "/start", %{
+        "paragraph" => "scenario 7 parallel retry_failed_steps"
+      })
+
+    workflow_id = start_response["workflowId"]
+    on_exit(fn -> WorkflowStore.delete(workflow_id) end)
+
+    failed_workflow = wait_for_failed(api_base, workflow_id, timeout_ms: 25_000)
+
+    assert failed_workflow["status"] == "failed"
+
+    assert Enum.find(failed_workflow["steps"], &(&1["stepId"] == "branch_a"))["status"] ==
+             "failed"
+
+    assert Enum.find(failed_workflow["steps"], &(&1["stepId"] == "branch_b"))["status"] ==
+             "failed"
+
+    retry_response =
+      post_retry_failed_steps!(
+        api_base <> "/api/workflows/" <> workflow_id <> "/retry_failed_steps"
+      )
+
+    assert retry_response["status"] in ["running", "completed"]
+
+    workflow = Assertions.wait_for_completion(api_base, workflow_id, timeout_ms: 25_000)
+
+    assert workflow["status"] == "completed"
+    assert Enum.find(workflow["steps"], &(&1["stepId"] == "branch_a"))["status"] == "completed"
+    assert Enum.find(workflow["steps"], &(&1["stepId"] == "branch_b"))["status"] == "completed"
+    assert Enum.find(workflow["steps"], &(&1["stepId"] == "compile"))["status"] == "completed"
+    assert Enum.find(workflow["steps"], &(&1["stepId"] == "store"))["status"] == "completed"
+  end
+
   defp post_json!(url, payload) do
     case Req.post(url, json: payload) do
       {:ok, %{status: 201, body: body}} when is_map(body) ->
@@ -238,6 +281,19 @@ defmodule CachePuppyCore.E2E.WorkflowE2ETest do
 
   defp post_retry!(url, payload) do
     case Req.post(url, json: payload) do
+      {:ok, %{status: 200, body: body}} when is_map(body) ->
+        body
+
+      {:ok, %{status: status, body: body}} ->
+        raise "POST #{url} expected 200, got #{status}: #{inspect(body)}"
+
+      {:error, reason} ->
+        raise "POST #{url} failed: #{inspect(reason)}"
+    end
+  end
+
+  defp post_retry_failed_steps!(url) do
+    case Req.post(url, json: %{}) do
       {:ok, %{status: 200, body: body}} when is_map(body) ->
         body
 

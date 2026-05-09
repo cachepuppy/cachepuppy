@@ -16,6 +16,7 @@ defmodule CachePuppyCoreWeb.Router do
     post "/workflows/:id/parallel/merge_now", StepController, :merge_now
     post "/workflows/:id/resume", StepController, :resume
     post "/workflows/:id/retry", StepController, :retry_step
+    post "/workflows/:id/retry_failed_steps", StepController, :retry_failed_steps
     post "/workflows/:id/end", StepController, :end_workflow
     post "/cache/setdata", CacheController, :setdata
     post "/cache/getdata", CacheController, :getdata
