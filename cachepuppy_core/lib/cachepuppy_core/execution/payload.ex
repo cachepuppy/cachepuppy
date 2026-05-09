@@ -15,11 +15,12 @@ defmodule CachePuppyCore.Execution.Payload do
     input =
       case merge_data do
         :omit ->
-          %{"workflowId" => workflow_id, "data" => step.data}
+          %{"workflowId" => workflow_id, "stepId" => step.step_id, "data" => step.data}
 
         md ->
           %{
             "workflowId" => workflow_id,
+            "stepId" => step.step_id,
             "data" => step.data,
             "mergeData" => md
           }
@@ -33,6 +34,7 @@ defmodule CachePuppyCore.Execution.Payload do
     [
       {"content-type", "application/json"},
       {"x-cachepuppy-step", step.step_name},
+      {"x-cachepuppy-step-id", step.step_id},
       {"x-cachepuppy-workflow", workflow_id}
     ]
   end

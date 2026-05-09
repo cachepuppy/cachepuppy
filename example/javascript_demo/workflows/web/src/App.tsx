@@ -60,6 +60,7 @@ export default function App() {
           <ScenarioCard scenario={2} apiBase={WORKFLOW_DEMO_API} paragraph={paragraph} />
           <ScenarioCard scenario={3} apiBase={WORKFLOW_DEMO_API} paragraph={paragraph} />
           <ScenarioCard scenario={4} apiBase={WORKFLOW_DEMO_API} paragraph={paragraph} />
+          <ScenarioCard scenario={5} apiBase={WORKFLOW_DEMO_API} paragraph={paragraph} />
         </div>
       </div>
     </CachePuppyProvider>

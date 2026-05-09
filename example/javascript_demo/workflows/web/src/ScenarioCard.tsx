@@ -4,15 +4,16 @@ import type { CSSProperties } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { createEmptyGraphState, mergeGraphDiff, STEP_NODE_TYPES, type GraphState } from "./graphMerge.js";
 
-const SCENARIO_LABELS: Record<1 | 2 | 3 | 4, string> = {
+const SCENARIO_LABELS: Record<1 | 2 | 3 | 4 | 5, string> = {
   1: "Serial: extract → research → compile → store",
   2: "Static parallel (3 branches) + merge → store",
   3: "Dynamic parallel (word count) + merge → store",
   4: "Dynamic parallel research → summarize branches → final merge compile → store",
+  5: "Nested parallel: research branches each fan out to search → collect → summarise → merge",
 };
 
 export function ScenarioCard(props: {
-  scenario: 1 | 2 | 3 | 4;
+  scenario: 1 | 2 | 3 | 4 | 5;
   apiBase: string;
   paragraph: string;
 }) {

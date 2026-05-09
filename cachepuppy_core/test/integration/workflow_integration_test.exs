@@ -159,15 +159,19 @@ defmodule CachePuppyCore.Integration.WorkflowIntegrationTest do
              })
 
     assert {:ok, _gid, _branches, _merge} =
-             WorkflowServer.add_parallel(workflow_id, [
-               step("ra", "research_A", base_url, %{"keyword" => "alpha"}),
-               step("rb", "research_B", base_url, %{"keyword" => "beta"}),
-               step("rc", "research_C", base_url, %{"keyword" => "gamma"})
-             ], %{
-               step_id: "compile",
-               step_name: "compile",
-               url: base_url <> "/step"
-             })
+             WorkflowServer.add_parallel(
+               workflow_id,
+               [
+                 step("ra", "research_A", base_url, %{"keyword" => "alpha"}),
+                 step("rb", "research_B", base_url, %{"keyword" => "beta"}),
+                 step("rc", "research_C", base_url, %{"keyword" => "gamma"})
+               ],
+               %{
+                 step_id: "compile",
+                 step_name: "compile",
+                 url: base_url <> "/step"
+               }
+             )
 
     assert {:ok, _} = WorkflowServer.merge_now(workflow_id, "compile")
 
@@ -477,6 +481,120 @@ defmodule CachePuppyCore.Integration.WorkflowIntegrationTest do
       ],
       ["running", "completed"]
     )
+  end
+
+  test "context-driven nested parallel without explicit parent_ids" do
+    workflow_id = unique_workflow_id("context-nested")
+    {:ok, state_agent} = Agent.start_link(fn -> %{final_merge_count: 0} end)
+    {:ok, url_agent} = Agent.start_link(fn -> nil end)
+
+    {:ok, base_url, server_ref} =
+      StepServer.start(%{
+        "extract" => fn _input ->
+          steps = [
+            step("research_a", "research", Agent.get(url_agent, & &1), %{"topic" => "A"}),
+            step("research_b", "research", Agent.get(url_agent, & &1), %{"topic" => "B"})
+          ]
+
+          {:ok, _gid, _branches, _merge} =
+            WorkflowServer.add_parallel(workflow_id, steps, %{
+              step_id: "final_merge",
+              step_name: "final_merge",
+              url: Agent.get(url_agent, &(&1 <> "/step"))
+            })
+
+          {:ok, _} = WorkflowServer.merge_now(workflow_id, "final_merge")
+          {200, %{"ok" => true}}
+        end,
+        "research" => fn input ->
+          step_id = input["stepId"]
+
+          {:ok, _gid, _branches, _merge} =
+            WorkflowServer.add_parallel(
+              workflow_id,
+              [
+                step("#{step_id}_s1", "search", Agent.get(url_agent, & &1), %{
+                  "q" => "#{step_id}-1"
+                }),
+                step("#{step_id}_s2", "search", Agent.get(url_agent, & &1), %{
+                  "q" => "#{step_id}-2"
+                })
+              ],
+              %{
+                step_id: "#{step_id}_collect",
+                step_name: "collect",
+                url: Agent.get(url_agent, &(&1 <> "/step"))
+              },
+              invoking_step_id: step_id
+            )
+
+          {:ok, _} = WorkflowServer.merge_now(workflow_id, "#{step_id}_collect")
+          {200, %{"branch" => step_id}}
+        end,
+        "search" => fn input ->
+          {200, %{"result" => "hit:" <> input["data"]["q"]}}
+        end,
+        "collect" => fn input ->
+          step_id = input["stepId"]
+          topic_id = String.replace_suffix(step_id, "_collect", "")
+
+          {:ok, _} =
+            WorkflowServer.add_step(
+              workflow_id,
+              %{
+                step_id: "#{topic_id}_summary",
+                step_name: "summarise",
+                url: Agent.get(url_agent, &(&1 <> "/step")),
+                data: %{"topic" => topic_id}
+              },
+              invoking_step_id: step_id
+            )
+
+          {200, %{"collected" => length(Map.get(input, "mergeData", []))}}
+        end,
+        "summarise" => fn input ->
+          {200, %{"summary" => "summary:" <> input["data"]["topic"]}}
+        end,
+        "final_merge" => fn input ->
+          merge_data = Map.get(input, "mergeData", [])
+          Agent.update(state_agent, &Map.update!(&1, :final_merge_count, fn n -> n + 1 end))
+          {200, %{"merged" => Enum.map(merge_data, & &1["output"]["summary"])}}
+        end
+      })
+
+    Agent.update(url_agent, fn _ -> base_url end)
+
+    on_exit(fn ->
+      StepServer.stop(server_ref)
+      WorkflowStore.delete(workflow_id)
+    end)
+
+    assert {:ok, _pid} = WorkflowManager.start_workflow(workflow_id, "context_nested")
+    assert :ok = WorkflowHelpers.subscribe_to_workflow(workflow_id)
+
+    assert {:ok, _extract} =
+             WorkflowServer.add_step(workflow_id, %{
+               step_id: "extract",
+               step_name: "extract",
+               url: base_url <> "/step",
+               data: %{}
+             })
+
+    workflow = WorkflowHelpers.wait_for_completion(workflow_id, timeout_ms: 20_000)
+
+    assert workflow.status == :completed
+    assert Agent.get(state_agent, & &1.final_merge_count) == 1
+    assert workflow.steps["research_a_summary"].status == :completed
+    assert workflow.steps["research_b_summary"].status == :completed
+
+    assert Enum.sort(workflow.steps["final_merge"].parent_ids) == [
+             "research_a_summary",
+             "research_b_summary"
+           ]
+
+    assert workflow.groups
+           |> Map.values()
+           |> Enum.count(&match?(%CachePuppyCore.Workflow.ParallelGroup{}, &1)) == 3
   end
 
   defp unique_workflow_id(prefix) do

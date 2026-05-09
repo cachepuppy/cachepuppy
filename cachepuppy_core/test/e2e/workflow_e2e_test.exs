@@ -2,6 +2,7 @@ defmodule CachePuppyCore.E2E.WorkflowE2ETest do
   use ExUnit.Case, async: false
 
   alias CachePuppy.Test.E2E.Assertions
+  alias CachePuppy.Test.E2E.ScenarioFiveDeveloperServer
   alias CachePuppy.Test.E2E.ScenarioFourDeveloperServer
   alias CachePuppy.Test.E2E.ScenarioOneDeveloperServer
   alias CachePuppy.Test.E2E.ScenarioThreeDeveloperServer
@@ -115,7 +116,9 @@ defmodule CachePuppyCore.E2E.WorkflowE2ETest do
     :ok = Assertions.assert_graph_shape(workflow_id, %{node_count: 9, edge_count: 21})
   end
 
-  test "scenario 4 - dynamic parallel with per-branch summarize before final merge", %{api_base: api_base} do
+  test "scenario 4 - dynamic parallel with per-branch summarize before final merge", %{
+    api_base: api_base
+  } do
     {:ok, dev_base, dev_ref} = ScenarioFourDeveloperServer.start(api_base: api_base)
     on_exit(fn -> ScenarioFourDeveloperServer.stop(dev_ref) end)
 
@@ -145,6 +148,45 @@ defmodule CachePuppyCore.E2E.WorkflowE2ETest do
       Assertions.assert_graph_shape(workflow_id, %{
         node_count: 10,
         edge_count: 16
+      })
+  end
+
+  test "scenario 5 - nested parallel fan-out with context-driven branch placement", %{
+    api_base: api_base
+  } do
+    {:ok, dev_base, dev_ref} = ScenarioFiveDeveloperServer.start(api_base: api_base)
+    on_exit(fn -> ScenarioFiveDeveloperServer.stop(dev_ref) end)
+
+    start_response =
+      post_json!(dev_base <> "/start", %{
+        "paragraph" => "nested fanout research and search"
+      })
+
+    workflow_id = start_response["workflowId"]
+    on_exit(fn -> WorkflowStore.delete(workflow_id) end)
+
+    workflow = Assertions.wait_for_completion(api_base, workflow_id, timeout_ms: 20_000)
+
+    assert workflow["status"] == "completed"
+    assert Enum.all?(workflow["steps"], &(&1["status"] == "completed"))
+
+    research_steps = Enum.filter(workflow["steps"], &(&1["stepName"] == "research"))
+    search_steps = Enum.filter(workflow["steps"], &(&1["stepName"] == "search"))
+    collect_steps = Enum.filter(workflow["steps"], &(&1["stepName"] == "collect"))
+    summarise_steps = Enum.filter(workflow["steps"], &(&1["stepName"] == "summarise"))
+    merge = Enum.find(workflow["steps"], &(&1["stepName"] == "merge_summaries"))
+    store = Enum.find(workflow["steps"], &(&1["stepName"] == "store"))
+
+    assert length(research_steps) == 2
+    assert length(search_steps) == 4
+    assert length(collect_steps) == 2
+    assert length(summarise_steps) == 2
+    assert is_binary(merge["output"]["compiled"])
+    assert store["output"]["stored"] == true
+
+    :ok =
+      Assertions.assert_graph_shape(workflow_id, %{
+        node_count: 16
       })
   end
 

@@ -127,7 +127,12 @@ defmodule CachePuppyCoreWeb.EventChannelTest do
       execution_error: %{
         reason: :connection_error,
         attempts: 4,
-        step: %Step{step_id: "inner", step_name: "inner", url: "http://127.0.0.1:8787/x", status: :running}
+        step: %Step{
+          step_id: "inner",
+          step_name: "inner",
+          url: "http://127.0.0.1:8787/x",
+          status: :running
+        }
       }
     }
 

@@ -22,10 +22,10 @@ defmodule CachePuppyCore.Graph.BroadcasterTest do
     assert diff["workflowId"] == workflow_id
 
     assert_receive %Phoenix.Socket.Broadcast{
-                     topic: ^channel_topic,
-                     event: "message",
-                     payload: envelope
-                   }
+      topic: ^channel_topic,
+      event: "message",
+      payload: envelope
+    }
 
     assert envelope["event"] == "graph_diff"
     assert envelope["topic"] == topic
