@@ -5,7 +5,7 @@ defmodule CachePuppyCore.E2E.WorkflowE2ETest do
   alias CachePuppy.Test.E2E.ScenarioFiveDeveloperServer
   alias CachePuppy.Test.E2E.ScenarioFourDeveloperServer
   alias CachePuppy.Test.E2E.ScenarioOneDeveloperServer
-  alias CachePuppy.Test.E2E.ScenarioRetryDeveloperServer
+  alias CachePuppy.Test.E2E.ScenarioSixDeveloperServer
   alias CachePuppy.Test.E2E.ScenarioThreeDeveloperServer
   alias CachePuppy.Test.E2E.ScenarioTwoDeveloperServer
   alias CachePuppyCore.Workflow.WorkflowStore
@@ -191,13 +191,13 @@ defmodule CachePuppyCore.E2E.WorkflowE2ETest do
       })
   end
 
-  test "retry endpoint recovers failed workflow from failed step", %{api_base: api_base} do
-    {:ok, dev_base, dev_ref} = ScenarioRetryDeveloperServer.start(api_base: api_base)
-    on_exit(fn -> ScenarioRetryDeveloperServer.stop(dev_ref) end)
+  test "scenario 6 - retry endpoint recovers failed workflow from failed step", %{api_base: api_base} do
+    {:ok, dev_base, dev_ref} = ScenarioSixDeveloperServer.start(api_base: api_base)
+    on_exit(fn -> ScenarioSixDeveloperServer.stop(dev_ref) end)
 
     start_response =
       post_json!(dev_base <> "/start", %{
-        "paragraph" => "retry scenario"
+        "paragraph" => "scenario 6 paragraph"
       })
 
     workflow_id = start_response["workflowId"]
