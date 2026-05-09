@@ -6,11 +6,13 @@ import type {
   WorkflowExecuteNowResponse,
   WorkflowLoopCreatedResponse,
   WorkflowParallelMergeNowResponse,
+  WorkflowParallelOptions,
   WorkflowParallelCreatedResponse,
   WorkflowResumeInput,
   WorkflowStateResponse,
   WorkflowStatusResponse,
   WorkflowStepInput,
+  WorkflowStepOptions,
   WorkflowStepSummary,
   WorkflowSummary,
 } from "./types.js";
@@ -133,8 +135,16 @@ export class CachePuppyAdminClient {
     });
   }
 
-  async addWorkflowStep(workflowId: string, step: WorkflowStepInput): Promise<WorkflowStepSummary> {
-    return this.requestJson<WorkflowStepSummary>("POST", workflowActionPath(workflowId, "steps"), toStepBody(step), {
+  async addWorkflowStep(
+    workflowId: string,
+    step: WorkflowStepInput,
+    options?: WorkflowStepOptions,
+  ): Promise<WorkflowStepSummary> {
+    const body = {
+      ...toStepBody(step),
+      ...(options?.invokingStepId ? { invokingStepId: options.invokingStepId } : {}),
+    };
+    return this.requestJson<WorkflowStepSummary>("POST", workflowActionPath(workflowId, "steps"), body, {
       useServerApiPrefix: false,
       okStatuses: [201],
     });
@@ -144,8 +154,13 @@ export class CachePuppyAdminClient {
     workflowId: string,
     steps: WorkflowStepInput[],
     mergeStep: WorkflowStepInput,
+    options?: WorkflowParallelOptions,
   ): Promise<WorkflowParallelCreatedResponse> {
-    const body = { steps: steps.map((step) => toStepBody(step)), mergeStep: toStepBody(mergeStep) };
+    const body = {
+      steps: steps.map((step) => toStepBody(step)),
+      mergeStep: toStepBody(mergeStep),
+      ...(options?.invokingStepId ? { invokingStepId: options.invokingStepId } : {}),
+    };
     return this.requestJson<WorkflowParallelCreatedResponse>("POST", workflowActionPath(workflowId, "parallel"), body, {
       useServerApiPrefix: false,
       okStatuses: [201],

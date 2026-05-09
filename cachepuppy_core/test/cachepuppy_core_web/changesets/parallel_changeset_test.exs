@@ -18,7 +18,12 @@ defmodule CachePuppyCoreWeb.Changesets.ParallelChangesetTest do
   end
 
   test "rejects empty steps list" do
-    assert {:error, cs} = ParallelChangeset.validate_params(%{"steps" => [], "mergeStep" => %{"stepName" => "m", "url" => "https://x/m", "method" => "post"}})
+    assert {:error, cs} =
+             ParallelChangeset.validate_params(%{
+               "steps" => [],
+               "mergeStep" => %{"stepName" => "m", "url" => "https://x/m", "method" => "post"}
+             })
+
     refute cs.valid?
   end
 end

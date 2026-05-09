@@ -4,15 +4,29 @@ defmodule CachePuppyCoreWeb.StepController do
   import Ecto.Changeset
 
   alias CachePuppyCore.{WorkflowManager, WorkflowServer}
-  alias CachePuppyCoreWeb.Changesets.{LoopChangeset, ParallelMergeNowChangeset, ParallelChangeset, StepChangeset}
+
+  alias CachePuppyCoreWeb.Changesets.{
+    LoopChangeset,
+    ParallelMergeNowChangeset,
+    ParallelChangeset,
+    StepChangeset
+  }
+
   alias CachePuppyCoreWeb.{ErrorJSON, WorkflowJSON}
 
   @resume_types %{step_id: :string, output: :map}
 
   def add_step(conn, %{"id" => workflow_id} = params) do
+    invoking_step_id = invoking_step_id(params)
+
     with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
          {:ok, step_params} <- StepChangeset.validate_params(params),
-         {:ok, step} <- WorkflowServer.add_step(workflow_id, with_step_id(step_params)) do
+         {:ok, step} <-
+           WorkflowServer.add_step(
+             workflow_id,
+             with_step_id(step_params),
+             invoking_step_id: invoking_step_id
+           ) do
       conn |> put_status(:created) |> json(WorkflowJSON.step_created(step))
     else
       {:conn, conn} -> conn
@@ -22,14 +36,22 @@ defmodule CachePuppyCoreWeb.StepController do
   end
 
   def add_parallel(conn, %{"id" => workflow_id} = params) do
+    invoking_step_id = invoking_step_id(params)
+
     with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
-         {:ok, %{steps: steps, merge_step: merge_step}} <- ParallelChangeset.validate_params(params) do
+         {:ok, %{steps: steps, merge_step: merge_step}} <-
+           ParallelChangeset.validate_params(params) do
       steps_payload =
         Enum.map(steps, fn step -> step |> with_step_id() |> StepChangeset.to_step_params() end)
 
       merge_payload = merge_step |> with_step_id() |> StepChangeset.to_step_params()
 
-      case WorkflowServer.add_parallel(workflow_id, steps_payload, merge_payload) do
+      case WorkflowServer.add_parallel(
+             workflow_id,
+             steps_payload,
+             merge_payload,
+             invoking_step_id: invoking_step_id
+           ) do
         {:ok, group_id, branch_steps, merge_created} ->
           conn
           |> put_status(:created)
@@ -48,8 +70,11 @@ defmodule CachePuppyCoreWeb.StepController do
     with {:ok, _pid} <- lookup_workflow(workflow_id, conn),
          {:ok, attrs} <- ParallelMergeNowChangeset.validate_params(params) do
       case WorkflowServer.merge_now(workflow_id, attrs.merge_step_id) do
-        {:ok, _group} -> conn |> put_status(:ok) |> json(%{"workflowId" => workflow_id, "status" => "ok"})
-        other -> map_server_error(conn, workflow_id, other)
+        {:ok, _group} ->
+          conn |> put_status(:ok) |> json(%{"workflowId" => workflow_id, "status" => "ok"})
+
+        other ->
+          map_server_error(conn, workflow_id, other)
       end
     else
       {:conn, conn} -> conn
@@ -163,7 +188,18 @@ defmodule CachePuppyCoreWeb.StepController do
         attrs
 
       _ ->
-        Map.put(attrs, :step_id, "step_" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower))
+        Map.put(
+          attrs,
+          :step_id,
+          "step_" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)
+        )
+    end
+  end
+
+  defp invoking_step_id(params) do
+    case Map.get(params, "invokingStepId") do
+      id when is_binary(id) and id != "" -> id
+      _ -> nil
     end
   end
 
@@ -193,6 +229,12 @@ defmodule CachePuppyCoreWeb.StepController do
     conn
     |> put_status(:bad_request)
     |> json(ErrorJSON.validation_failed(%{"step" => ["invalid step payload"]}))
+  end
+
+  defp map_server_error(conn, _workflow_id, {:error, :invalid_invoking_step}) do
+    conn
+    |> put_status(:bad_request)
+    |> json(ErrorJSON.validation_failed(%{"invokingStepId" => ["invalid or unknown step id"]}))
   end
 
   defp map_server_error(conn, _workflow_id, {:error, :invalid_steps}) do

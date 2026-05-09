@@ -27,7 +27,10 @@ defmodule CachePuppyCoreWeb.WorkflowController do
           {:error, :workflow_visibility_timeout} ->
             conn
             |> put_status(:service_unavailable)
-            |> json(%{"error" => "workflow_unavailable", "message" => "Workflow did not become visible in time"})
+            |> json(%{
+              "error" => "workflow_unavailable",
+              "message" => "Workflow did not become visible in time"
+            })
 
           {:error, _reason} ->
             conn |> put_status(:internal_server_error) |> json(ErrorJSON.internal_error())
@@ -82,5 +85,4 @@ defmodule CachePuppyCoreWeb.WorkflowController do
       {:error, traverse_errors(cs, fn {msg, _opts} -> msg end)}
     end
   end
-
 end

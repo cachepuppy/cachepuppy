@@ -51,7 +51,9 @@ defmodule CachePuppyCoreWeb.Changesets.StepChangeset do
   defp maybe_validate_parent_ids(changeset) do
     if Map.has_key?(changeset.types, :parent_ids) do
       validate_change(changeset, :parent_ids, fn :parent_ids, list ->
-        if is_list(list) and Enum.all?(list, &is_binary/1), do: [], else: [parent_ids: "must be a list of strings"]
+        if is_list(list) and Enum.all?(list, &is_binary/1),
+          do: [],
+          else: [parent_ids: "must be a list of strings"]
       end)
     else
       changeset

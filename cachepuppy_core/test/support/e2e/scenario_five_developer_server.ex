@@ -1,10 +1,8 @@
-defmodule CachePuppy.Test.E2E.ScenarioFourDeveloperServer do
+defmodule CachePuppy.Test.E2E.ScenarioFiveDeveloperServer do
   @moduledoc """
-  Scenario 4 flow (dynamic parallel with nested serial work before merge):
-  start -> extract picks topics -> each branch performs research plus branch-local
-  summarization work -> merge at compile -> store.
-
-  This server validates that merge waits for full branch work, not partial progress.
+  Scenario 5 flow (nested parallel fan-out with context-driven branch placement):
+  start -> extract -> parallel research(A/B) -> per-branch nested search fan-out
+  -> collect -> summarise -> outer merge_summaries -> store.
   """
 
   import Plug.Conn
@@ -38,8 +36,10 @@ defmodule CachePuppy.Test.E2E.ScenarioFourDeveloperServer do
       {"POST", "/start"} -> handle_start(conn, api_base)
       {"POST", "/extract"} -> handle_extract(conn, api_base)
       {"POST", "/research"} -> handle_research(conn, api_base)
+      {"POST", "/search"} -> handle_search(conn)
+      {"POST", "/collect"} -> handle_collect(conn, api_base)
       {"POST", "/summarise"} -> handle_summarise(conn, api_base)
-      {"POST", "/compile"} -> handle_compile(conn, api_base)
+      {"POST", "/merge_summaries"} -> handle_merge_summaries(conn, api_base)
       {"POST", "/store"} -> handle_store(conn)
       _ -> send_json(conn, 404, %{"error" => "not_found"})
     end
@@ -48,7 +48,7 @@ defmodule CachePuppy.Test.E2E.ScenarioFourDeveloperServer do
   defp handle_start(conn, api_base) do
     with {:ok, payload, conn} <- decode_json(conn),
          paragraph when is_binary(paragraph) <- Map.get(payload, "paragraph"),
-         workflow <- post_json!(api_base <> "/api/workflows", %{"name" => "e2e-scenario-4"}, 201),
+         workflow <- post_json!(api_base <> "/api/workflows", %{"name" => "e2e-scenario-5"}, 201),
          workflow_id when is_binary(workflow_id) <- workflow["workflowId"],
          _ <-
            post_json!(
@@ -70,35 +70,28 @@ defmodule CachePuppy.Test.E2E.ScenarioFourDeveloperServer do
   defp handle_extract(conn, api_base) do
     with {:ok, payload, conn} <- decode_json(conn),
          input when is_map(input) <- Map.get(payload, "input"),
-         workflow_id when is_binary(workflow_id) <- input["workflowId"],
-         paragraph when is_binary(paragraph) <- get_in(input, ["data", "paragraph"]) do
+         workflow_id when is_binary(workflow_id) <- input["workflowId"] do
       jitter_sleep()
-      topics = paragraph |> String.split() |> Enum.take(3)
+      topics = ["A", "B"]
 
       _ =
         post_json!(
           api_base <> "/api/workflows/" <> workflow_id <> "/parallel",
           %{
             "steps" =>
-              topics
-              |> Enum.with_index(1)
-              |> Enum.map(fn {topic, idx} ->
+              Enum.map(topics, fn topic ->
                 %{
-                  "stepId" => "research_#{idx}",
+                  "stepId" => "research_#{String.downcase(topic)}",
                   "stepName" => "research",
                   "url" => base_url(conn) <> "/research",
                   "method" => "post",
-                  "data" => %{
-                    "topic" => topic,
-                    "researchStepId" => "research_#{idx}",
-                    "summariseStepId" => "summarise_#{idx}"
-                  }
+                  "data" => %{"topic" => topic}
                 }
               end),
             "mergeStep" => %{
-              "stepId" => "compile",
-              "stepName" => "compile",
-              "url" => base_url(conn) <> "/compile",
+              "stepId" => "merge_summaries",
+              "stepName" => "merge_summaries",
+              "url" => base_url(conn) <> "/merge_summaries",
               "method" => "post",
               "data" => %{}
             }
@@ -116,35 +109,93 @@ defmodule CachePuppy.Test.E2E.ScenarioFourDeveloperServer do
     with {:ok, payload, conn} <- decode_json(conn),
          input when is_map(input) <- Map.get(payload, "input"),
          workflow_id when is_binary(workflow_id) <- input["workflowId"],
-         topic when is_binary(topic) <- get_in(input, ["data", "topic"]),
-         research_step_id when is_binary(research_step_id) <-
-           get_in(input, ["data", "researchStepId"]),
-         summarise_step_id when is_binary(summarise_step_id) <-
-           get_in(input, ["data", "summariseStepId"]) do
-      notes = "facts about #{topic}"
+         research_step_id when is_binary(research_step_id) <- input["stepId"],
+         topic when is_binary(topic) <- get_in(input, ["data", "topic"]) do
+      base = String.replace_prefix(research_step_id, "research_", "")
 
       _ =
         post_json!(
-          api_base <> "/api/workflows/" <> workflow_id <> "/steps",
+          api_base <> "/api/workflows/" <> workflow_id <> "/parallel",
           %{
-            "stepId" => summarise_step_id,
-            "stepName" => "summarise",
-            "url" => base_url(conn) <> "/summarise",
-            "method" => "post",
-            "parentIds" => [research_step_id],
-            "data" => %{
-              "topic" => topic,
-              "notes" => notes,
-              "researchStepId" => research_step_id,
-              "summariseStepId" => summarise_step_id
+            "invokingStepId" => research_step_id,
+            "steps" => [
+              %{
+                "stepId" => "search_#{base}_1",
+                "stepName" => "search",
+                "url" => base_url(conn) <> "/search",
+                "method" => "post",
+                "data" => %{"topic" => topic, "query" => "#{topic}-q1"}
+              },
+              %{
+                "stepId" => "search_#{base}_2",
+                "stepName" => "search",
+                "url" => base_url(conn) <> "/search",
+                "method" => "post",
+                "data" => %{"topic" => topic, "query" => "#{topic}-q2"}
+              }
+            ],
+            "mergeStep" => %{
+              "stepId" => "collect_#{base}",
+              "stepName" => "collect",
+              "url" => base_url(conn) <> "/collect",
+              "method" => "post",
+              "data" => %{"topic" => topic}
             }
           },
           201
         )
 
-      send_json(conn, 200, %{"topic" => topic, "notes" => notes})
+      _ =
+        post_json!(
+          api_base <> "/api/workflows/" <> workflow_id <> "/parallel/merge_now",
+          %{"mergeStepId" => "collect_#{base}"},
+          200
+        )
+
+      send_json(conn, 200, %{"topic" => topic, "researchStepId" => research_step_id})
     else
       _ -> send_json(conn, 400, %{"error" => "invalid_research_request"})
+    end
+  end
+
+  defp handle_search(conn) do
+    with {:ok, payload, conn} <- decode_json(conn),
+         input when is_map(input) <- Map.get(payload, "input"),
+         topic when is_binary(topic) <- get_in(input, ["data", "topic"]),
+         query when is_binary(query) <- get_in(input, ["data", "query"]) do
+      send_json(conn, 200, %{"topic" => topic, "result" => "result for #{query}"})
+    else
+      _ -> send_json(conn, 400, %{"error" => "invalid_search_request"})
+    end
+  end
+
+  defp handle_collect(conn, api_base) do
+    with {:ok, payload, conn} <- decode_json(conn),
+         input when is_map(input) <- Map.get(payload, "input"),
+         workflow_id when is_binary(workflow_id) <- input["workflowId"],
+         collect_step_id when is_binary(collect_step_id) <- input["stepId"],
+         merge_data when is_list(merge_data) <- Map.get(input, "mergeData"),
+         topic when is_binary(topic) <- get_in(input, ["data", "topic"]) do
+      branch = String.replace_prefix(collect_step_id, "collect_", "")
+      summary_step_id = "summarise_#{branch}"
+
+      _ =
+        post_json!(
+          api_base <> "/api/workflows/" <> workflow_id <> "/steps",
+          %{
+            "invokingStepId" => collect_step_id,
+            "stepId" => summary_step_id,
+            "stepName" => "summarise",
+            "url" => base_url(conn) <> "/summarise",
+            "method" => "post",
+            "data" => %{"topic" => topic, "resultsCount" => length(merge_data)}
+          },
+          201
+        )
+
+      send_json(conn, 200, %{"topic" => topic, "collected" => length(merge_data)})
+    else
+      _ -> send_json(conn, 400, %{"error" => "invalid_collect_request"})
     end
   end
 
@@ -153,30 +204,27 @@ defmodule CachePuppy.Test.E2E.ScenarioFourDeveloperServer do
          input when is_map(input) <- Map.get(payload, "input"),
          workflow_id when is_binary(workflow_id) <- input["workflowId"],
          topic when is_binary(topic) <- get_in(input, ["data", "topic"]),
-         notes when is_binary(notes) <- get_in(input, ["data", "notes"]),
-         research_step_id when is_binary(research_step_id) <-
-           get_in(input, ["data", "researchStepId"]),
-         summarise_step_id when is_binary(summarise_step_id) <-
-           get_in(input, ["data", "summariseStepId"]) do
+         results_count when is_integer(results_count) <- get_in(input, ["data", "resultsCount"]) do
       _ =
         post_json!(
           api_base <> "/api/workflows/" <> workflow_id <> "/parallel/merge_now",
-          %{"mergeStepId" => "compile"},
+          %{"mergeStepId" => "merge_summaries"},
           200
         )
 
-      send_json(conn, 200, %{"topic" => topic, "branchSummary" => "#{topic}: #{notes}"})
+      send_json(conn, 200, %{"branchSummary" => "#{topic}:#{results_count}"})
     else
       _ -> send_json(conn, 400, %{"error" => "invalid_summarise_request"})
     end
   end
 
-  defp handle_compile(conn, api_base) do
+  defp handle_merge_summaries(conn, api_base) do
     with {:ok, payload, conn} <- decode_json(conn),
          input when is_map(input) <- Map.get(payload, "input"),
          workflow_id when is_binary(workflow_id) <- input["workflowId"],
+         merge_step_id when is_binary(merge_step_id) <- input["stepId"],
          merge_data when is_list(merge_data) <- Map.get(input, "mergeData") do
-      compiled =
+      merged =
         merge_data
         |> Enum.map(& &1["output"]["branchSummary"])
         |> Enum.join(" | ")
@@ -185,18 +233,19 @@ defmodule CachePuppy.Test.E2E.ScenarioFourDeveloperServer do
         post_json!(
           api_base <> "/api/workflows/" <> workflow_id <> "/steps",
           %{
+            "invokingStepId" => merge_step_id,
+            "stepId" => "store",
             "stepName" => "store",
             "url" => base_url(conn) <> "/store",
             "method" => "post",
-            "parentIds" => ["compile"],
-            "data" => %{"compiled" => compiled}
+            "data" => %{"compiled" => merged}
           },
           201
         )
 
-      send_json(conn, 200, %{"compiled" => compiled})
+      send_json(conn, 200, %{"compiled" => merged})
     else
-      _ -> send_json(conn, 400, %{"error" => "invalid_compile_request"})
+      _ -> send_json(conn, 400, %{"error" => "invalid_merge_summaries_request"})
     end
   end
 

@@ -164,9 +164,14 @@ defmodule CachePuppy.Test.E2E.ScenarioOneDeveloperServer do
 
   defp post_json!(url, payload, expected_status) do
     case Req.post(url, json: payload) do
-      {:ok, %{status: ^expected_status, body: body}} when is_map(body) -> body
-      {:ok, %{status: status, body: body}} -> raise "POST #{url} expected #{expected_status}, got #{status}: #{inspect(body)}"
-      {:error, reason} -> raise "POST #{url} failed: #{inspect(reason)}"
+      {:ok, %{status: ^expected_status, body: body}} when is_map(body) ->
+        body
+
+      {:ok, %{status: status, body: body}} ->
+        raise "POST #{url} expected #{expected_status}, got #{status}: #{inspect(body)}"
+
+      {:error, reason} ->
+        raise "POST #{url} failed: #{inspect(reason)}"
     end
   end
 

@@ -74,11 +74,31 @@ defmodule CachePuppy.Test.E2E.ScenarioTwoDeveloperServer do
           api_base <> "/api/workflows/" <> workflow_id <> "/parallel",
           %{
             "steps" => [
-              %{"stepName" => "research_A", "url" => base_url(conn) <> "/research_A", "method" => "post", "data" => %{"keyword" => "alpha"}},
-              %{"stepName" => "research_B", "url" => base_url(conn) <> "/research_B", "method" => "post", "data" => %{"keyword" => "beta"}},
-              %{"stepName" => "research_C", "url" => base_url(conn) <> "/research_C", "method" => "post", "data" => %{"keyword" => "gamma"}}
+              %{
+                "stepName" => "research_A",
+                "url" => base_url(conn) <> "/research_A",
+                "method" => "post",
+                "data" => %{"keyword" => "alpha"}
+              },
+              %{
+                "stepName" => "research_B",
+                "url" => base_url(conn) <> "/research_B",
+                "method" => "post",
+                "data" => %{"keyword" => "beta"}
+              },
+              %{
+                "stepName" => "research_C",
+                "url" => base_url(conn) <> "/research_C",
+                "method" => "post",
+                "data" => %{"keyword" => "gamma"}
+              }
             ],
-            "mergeStep" => %{"stepName" => "compile", "url" => base_url(conn) <> "/compile", "method" => "post", "data" => %{}}
+            "mergeStep" => %{
+              "stepName" => "compile",
+              "url" => base_url(conn) <> "/compile",
+              "method" => "post",
+              "data" => %{}
+            }
           },
           201
         )
@@ -155,9 +175,14 @@ defmodule CachePuppy.Test.E2E.ScenarioTwoDeveloperServer do
 
   defp post_json!(url, payload, expected_status) do
     case Req.post(url, json: payload) do
-      {:ok, %{status: ^expected_status, body: body}} when is_map(body) -> body
-      {:ok, %{status: status, body: body}} -> raise "POST #{url} expected #{expected_status}, got #{status}: #{inspect(body)}"
-      {:error, reason} -> raise "POST #{url} failed: #{inspect(reason)}"
+      {:ok, %{status: ^expected_status, body: body}} when is_map(body) ->
+        body
+
+      {:ok, %{status: status, body: body}} ->
+        raise "POST #{url} expected #{expected_status}, got #{status}: #{inspect(body)}"
+
+      {:error, reason} ->
+        raise "POST #{url} failed: #{inspect(reason)}"
     end
   end
 

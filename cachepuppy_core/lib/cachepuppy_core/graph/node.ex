@@ -61,7 +61,9 @@ defmodule CachePuppyCore.Graph.Node do
   defp sanitize_json_value(nil), do: nil
   defp sanitize_json_value(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
   defp sanitize_json_value(%NaiveDateTime{} = dt), do: NaiveDateTime.to_iso8601(dt)
-  defp sanitize_json_value(%_{} = struct), do: struct |> Map.from_struct() |> sanitize_json_value()
+
+  defp sanitize_json_value(%_{} = struct),
+    do: struct |> Map.from_struct() |> sanitize_json_value()
 
   defp sanitize_json_value(map) when is_map(map) do
     map
@@ -70,7 +72,10 @@ defmodule CachePuppyCore.Graph.Node do
   end
 
   defp sanitize_json_value(list) when is_list(list), do: Enum.map(list, &sanitize_json_value/1)
-  defp sanitize_json_value(tuple) when is_tuple(tuple), do: tuple |> Tuple.to_list() |> Enum.map(&sanitize_json_value/1)
+
+  defp sanitize_json_value(tuple) when is_tuple(tuple),
+    do: tuple |> Tuple.to_list() |> Enum.map(&sanitize_json_value/1)
+
   defp sanitize_json_value(value), do: value
 
   defp atom_to_string(v) when is_atom(v), do: Atom.to_string(v)

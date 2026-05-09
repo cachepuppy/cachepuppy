@@ -85,13 +85,15 @@ Use **`createAdminClient(options)`** when calling the server’s **HTTP** routes
 - `deleteData(table, key)` — `POST /api/cache/deletedata`; returns `deleted` as boolean.
 - `createWorkflow(name)` — `POST /api/workflows`; returns `{ workflowId, name, status }` (**201**).
 - `getWorkflow(workflowId)` — `GET /api/workflows/:id`; returns workflow graph state `{ workflowId, name, status, steps, groups }`.
-- `addWorkflowStep(workflowId, step)` — `POST /api/workflows/:id/steps`; returns `{ stepId, stepName, status }` (**201**).
-- `addWorkflowParallel(workflowId, steps, mergeStep)` — `POST /api/workflows/:id/parallel`; returns `{ groupId, totalBranches, steps, mergeStep }` (**201**).
+- `addWorkflowStep(workflowId, step, options?)` — `POST /api/workflows/:id/steps`; returns `{ stepId, stepName, status }` (**201**). `options.invokingStepId` is optional and lets the engine attach the new step to the invoking branch context.
+- `addWorkflowParallel(workflowId, steps, mergeStep, options?)` — `POST /api/workflows/:id/parallel`; returns `{ groupId, totalBranches, steps, mergeStep }` (**201**). `options.invokingStepId` is optional and creates nested fan-out under the invoking branch context.
 - `mergeWorkflowParallelNow(workflowId, mergeStepId)` — `POST /api/workflows/:id/parallel/merge_now`; returns `{ workflowId, status: "ok" }` (**200**).
 - `addWorkflowLoop(workflowId, step, { continueIf, maxIterations })` — `POST /api/workflows/:id/loop`; returns loop metadata `{ groupId, stepName, maxIterations, continueIf }` (**201**).
 - `resumeWorkflow(workflowId, { stepId, output? })` — `POST /api/workflows/:id/resume`; returns `{ workflowId, status }`.
 - `executeWorkflowNow(workflowId, step)` — `POST /api/workflows/:id/execute_now`; returns `{ stepId, output, status }`.
 - `endWorkflow(workflowId)` — `POST /api/workflows/:id/end`; returns `{ workflowId, status }`.
+
+Nested parallel note: when scheduling follow-up work from inside a running branch endpoint, pass the current callback `input.stepId` as `invokingStepId` so the engine places steps/parallel groups on that branch without manual `parentIds`.
 
 Non-success HTTP responses throw `Error` with status and optional `reason` from JSON.
 
