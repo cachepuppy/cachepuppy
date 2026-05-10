@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+
+  --color-bg: #ffffff;
+  --color-fg: #0a0a0a;
+  --color-muted-fg: #525252;
+  --color-subtle: #f5f5f5;
+  --color-border: #e5e5e5;
+  --color-border-strong: #0a0a0a;
+}
+
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-bg: #0a0a0a;
+    --color-fg: #fafafa;
+    --color-muted-fg: #a3a3a3;
+    --color-subtle: #171717;
+    --color-border: #262626;
+    --color-border-strong: #fafafa;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+@layer base {
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+
+code,
+pre {
+  font-family: var(--font-mono);
+}

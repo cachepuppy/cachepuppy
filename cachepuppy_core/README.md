@@ -182,15 +182,23 @@ Check node visibility:
 
 Expected steady-state: each response reports `cluster_size: 3`. Via nginx, `node` may vary per request.
 
-### Interactive demo (React, behind LB)
+### Unified demo (Next.js, behind LB)
 
-From the repository root, with the stack running (build the SDK packages first if you have not already):
+From the repository root, with the stack running:
 
 ```bash
-(cd sdk/javascript && npm ci && npm run build) && (cd sdk/react && npm ci && npm run build) && (cd example/javascript_demo/interactive && npm ci && npm run dev)
+make demo-unified
 ```
 
-The interactive demo uses `ws://localhost:4000/socket/websocket` by default (nginx via `VITE_WS_URL` override) and exercises publish/presence/topic-state interactions between multiple browser windows.
+This builds the `@cachepuppy/core` and `@cachepuppy/react` SDKs, installs the
+demo's dependencies, and starts the Next.js app on
+<http://localhost:3000>. The demo connects to
+`ws://localhost:4000/socket/websocket` by default (nginx in front of the BEAM
+nodes) and showcases caching, realtime cursors, and the seven workflow
+scenarios. Workflow step callbacks default to
+`http://host.docker.internal:3000` so Phoenix in Docker Desktop can reach Next
+back; see [`example/javascript_demo/unified/README.md`](../example/javascript_demo/unified/README.md)
+for overrides.
 
 ### Churn test workflow
 

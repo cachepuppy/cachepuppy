@@ -28,16 +28,6 @@
           "type": "json",
           "path": "docs/package.json",
           "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
-          "path": "example/javascript_demo/interactive/package.json",
-          "jsonpath": "$.version"
-        },
-        {
-          "type": "json",
-          "path": "example/javascript_demo/webhook-server/package.json",
-          "jsonpath": "$.version"
         }
       ]
     }

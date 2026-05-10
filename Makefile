@@ -1,4 +1,4 @@
-.PHONY: compose-up compose-clean-rebuild compose-single-up compose-single-down compose-single-clean-rebuild sdk-core-build sdk-react-build sdk-build demo-interactive demo-backend demo-workflows-backend demo-workflows-web demo-workflows
+.PHONY: compose-up compose-clean-rebuild compose-single-up compose-single-down compose-single-clean-rebuild sdk-core-build sdk-react-build sdk-build demo-unified
 
 compose-up:
 	cd cachepuppy_core && docker compose up --build
@@ -28,18 +28,19 @@ sdk-react-build:
 
 sdk-build: sdk-core-build sdk-react-build
 
-demo-interactive:
-	cd example/javascript_demo/interactive && npm run dev
+# Build both SDKs and run the unified Next.js demo (frontend + API routes in one app).
+# `WORKFLOW_DEMO_PUBLIC_URL` defaults to host.docker.internal so Phoenix running
+# in Docker Desktop (macOS/Windows) can reach the Next.js callback endpoints.
+# Override on the CLI for other setups, e.g.
+#   make demo-unified WORKFLOW_DEMO_PUBLIC_URL=http://192.168.1.10:3000
+WORKFLOW_DEMO_PUBLIC_URL ?= http://host.docker.internal:3000
+CACHEPUPPY_API_BASE      ?= http://127.0.0.1:4000
+NEXT_PUBLIC_WS_URL       ?= ws://127.0.0.1:4000/socket/websocket
 
-demo-backend:
-	cd example/javascript_demo/webhook-server && npm start
-
-demo-workflows-backend:
-	cd example/javascript_demo/workflows/server && npm start
-
-demo-workflows-web:
-	cd example/javascript_demo/workflows/web && npm run dev
-
-# Start both workflows services with one command.
-demo-workflows:
-	@bash -c 'set -euo pipefail; trap "kill 0" EXIT INT TERM; (cd example/javascript_demo/workflows/server && npm start) & (cd example/javascript_demo/workflows/web && npm run dev) & wait'
+demo-unified: sdk-build
+	cd example/javascript_demo/unified && npm install --no-audit --no-fund
+	cd example/javascript_demo/unified && \
+	  WORKFLOW_DEMO_PUBLIC_URL=$(WORKFLOW_DEMO_PUBLIC_URL) \
+	  CACHEPUPPY_API_BASE=$(CACHEPUPPY_API_BASE) \
+	  NEXT_PUBLIC_WS_URL=$(NEXT_PUBLIC_WS_URL) \
+	  npm run dev
