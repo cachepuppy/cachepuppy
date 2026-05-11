@@ -1,15 +1,20 @@
 {
   "name": "@cachepuppy/react",
   "version": "0.5.0",
-  "private": true,
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@cachepuppy/core": "file:../javascript"
+    "@cachepuppy/core": "^0.5.0"
   },
   "peerDependencies": {
     "react": ">=18"

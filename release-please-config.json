@@ -26,6 +26,11 @@
         },
         {
           "type": "json",
+          "path": "sdk/react/package.json",
+          "jsonpath": "$.dependencies['@cachepuppy/core']"
+        },
+        {
+          "type": "json",
           "path": "docs/package.json",
           "jsonpath": "$.version"
         }

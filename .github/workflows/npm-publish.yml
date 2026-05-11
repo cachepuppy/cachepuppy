@@ -1,0 +1,69 @@
+name: Publish SDKs to npm
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Derive release version
+        id: version
+        shell: bash
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          if [[ "$tag" != v* ]]; then
+            echo "Release tag must start with 'v' (got: $tag)" >&2
+            exit 1
+          fi
+          version="${tag#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Validate SDK versions match tag
+        shell: bash
+        run: |
+          expected="${{ steps.version.outputs.version }}"
+          core="$(node -p "require('./sdk/javascript/package.json').version")"
+          react="$(node -p "require('./sdk/react/package.json').version")"
+
+          if [[ "$core" != "$expected" ]]; then
+            echo "sdk/javascript/package.json version $core does not match tag $expected" >&2
+            exit 1
+          fi
+          if [[ "$react" != "$expected" ]]; then
+            echo "sdk/react/package.json version $react does not match tag $expected" >&2
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish @cachepuppy/core
+        working-directory: sdk/javascript
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm ci
+          npm run build
+          npm publish --access public
+
+      - name: Publish @cachepuppy/react
+        working-directory: sdk/react
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm ci
+          npm run build
+          npm publish --access public
