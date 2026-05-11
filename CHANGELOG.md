@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/cachepuppy/cachepuppy/compare/v0.6.0...v0.6.1) (2026-05-11)
+
+
+### Bug Fixes
+
+* **ci:** use release please token secret ([8f5141b](https://github.com/cachepuppy/cachepuppy/commit/8f5141be662a21f05a9e3a34bfdc7ccfe4590b1e))
+
 ## [0.6.0](https://github.com/cachepuppy/cachepuppy/compare/v0.5.0...v0.6.0) (2026-05-11)
 
 
