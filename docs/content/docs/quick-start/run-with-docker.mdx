@@ -16,7 +16,7 @@ description: Install Docker, clone the project, and start the stack with make co
 make compose-up
 ```
 
-This runs `docker compose up --build` under `cachepuppy_core`, builds the release image, starts **three** BEAM nodes plus **nginx** on port **4000**, and waits until nodes pass `/readyz`.
+This runs `docker compose up --build` under `cachepuppy_core`, builds the release image, starts **three** BEAM nodes plus **nginx** on port **4000**, and waits until nodes pass `/healthz`.
 
 ## Endpoints you will use
 

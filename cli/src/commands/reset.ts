@@ -54,10 +54,10 @@ export function registerResetCommand(program: Command): void {
         await composeUp(paths, config);
         upSpinner.succeed("Services restarted");
 
-        const readyUrl = `http://localhost:${config.httpPort}/readyz`;
-        const healthSpinner = ora("Waiting for readiness").start();
-        await waitForReady(readyUrl, 90);
-        healthSpinner.succeed("Server is ready");
+        const healthUrl = `http://localhost:${config.httpPort}/healthz`;
+        const healthSpinner = ora("Waiting for health").start();
+        await waitForReady(healthUrl, 90);
+        healthSpinner.succeed("Server is healthy");
       }
 
       success("CachePuppy reset complete.");

@@ -16,13 +16,8 @@ import Config
 #
 # Alternatively, you can use `mix phx.gen.release` to generate a `bin/server`
 # script that automatically sets the env var above.
-parse_required_positive_int_env! = fn name ->
-  raw =
-    System.get_env(name) ||
-      raise """
-      required environment variable #{name} is missing.
-      It must be set to a positive integer.
-      """
+parse_positive_int_env! = fn name, default ->
+  raw = System.get_env(name) || default
 
   case Integer.parse(raw) do
     {value, ""} when value > 0 ->
@@ -37,15 +32,7 @@ parse_required_positive_int_env! = fn name ->
 end
 
 if System.get_env("PHX_SERVER") do
-  total_nodes = parse_required_positive_int_env!.("TOTAL_NODES")
-
   config :cachepuppy_core, CachePuppyCoreWeb.Endpoint, server: true
-
-  config :cachepuppy_core,
-    cache_expected_nodes: total_nodes,
-    cache_quorum_poll_interval_ms:
-      String.to_integer(System.get_env("QUORUM_POLL_INTERVAL_MS", "2000")),
-    cache_quorum_grace_ms: String.to_integer(System.get_env("QUORUM_GRACE_MS", "20000"))
 end
 
 config :cachepuppy_core, CachePuppyCoreWeb.Endpoint,
@@ -77,7 +64,8 @@ end
 
 config :cachepuppy_core,
   cache_snapshot_interval_ms:
-    String.to_integer(System.get_env("CACHE_SNAPSHOT_INTERVAL_MS", "300000"))
+    String.to_integer(System.get_env("CACHE_SNAPSHOT_INTERVAL_MS", "300000")),
+  cache_storage_dir: System.get_env("CACHE_STORAGE_DIR") || "tmp/cache_shards"
 
 if String.downcase(System.get_env("CACHE_PERSISTENCE_TEST_MODE", "false")) == "true" do
   config :cachepuppy_core,
@@ -100,20 +88,56 @@ if config_env() == :prod do
 
   host = System.get_env("PHX_HOST") || "example.com"
 
+  cachepuppy_runtime =
+    System.get_env("CACHEPUPPY_RUNTIME", "local")
+    |> String.downcase()
+
   libcluster_dns_query = System.get_env("LIBCLUSTER_DNS_QUERY", "cachepuppy-core")
   libcluster_node_basename = System.get_env("LIBCLUSTER_NODE_BASENAME", "cachepuppy_core")
 
-  config :libcluster,
-    topologies: [
-      local_docker: [
-        strategy: Cluster.Strategy.DNSPoll,
-        config: [
-          polling_interval: 5_000,
-          query: libcluster_dns_query,
-          node_basename: libcluster_node_basename
+  libcluster_polling_interval_ms =
+    parse_positive_int_env!.("LIBCLUSTER_POLLING_INTERVAL_MS", "5000")
+
+  libcluster_k8s_service =
+    System.get_env("LIBCLUSTER_K8S_SERVICE") ||
+      System.get_env("LIBCLUSTER_DNS_QUERY") ||
+      "cachepuppy-headless"
+
+  libcluster_topology =
+    case cachepuppy_runtime do
+      "local" ->
+        [
+          cachepuppy_local: [
+            strategy: Cluster.Strategy.DNSPoll,
+            config: [
+              polling_interval: libcluster_polling_interval_ms,
+              query: libcluster_dns_query,
+              node_basename: libcluster_node_basename
+            ]
+          ]
         ]
-      ]
-    ]
+
+      "kubernetes" ->
+        [
+          cachepuppy_kubernetes: [
+            strategy: Cluster.Strategy.Kubernetes.DNS,
+            config: [
+              polling_interval: libcluster_polling_interval_ms,
+              service: libcluster_k8s_service,
+              application_name: libcluster_node_basename
+            ]
+          ]
+        ]
+
+      unsupported ->
+        raise """
+        invalid CACHEPUPPY_RUNTIME=#{inspect(unsupported)}.
+        Supported values are: local, kubernetes.
+        """
+    end
+
+  config :libcluster,
+    topologies: libcluster_topology
 
   config :cachepuppy_core, CachePuppyCoreWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],

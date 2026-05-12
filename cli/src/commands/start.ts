@@ -37,10 +37,10 @@ export function registerStartCommand(program: Command): void {
       upSpinner.succeed("Services started");
 
       const timeoutSeconds = Number.parseInt(options.timeout ?? "90", 10);
-      const readyUrl = `http://localhost:${config.httpPort}/readyz`;
-      const healthSpinner = ora(`Waiting for readiness (${readyUrl})`).start();
-      await waitForReady(readyUrl, Number.isFinite(timeoutSeconds) ? timeoutSeconds : 90);
-      healthSpinner.succeed("Server is ready");
+      const healthUrl = `http://localhost:${config.httpPort}/healthz`;
+      const healthSpinner = ora(`Waiting for health (${healthUrl})`).start();
+      await waitForReady(healthUrl, Number.isFinite(timeoutSeconds) ? timeoutSeconds : 90);
+      healthSpinner.succeed("Server is healthy");
 
       success("CachePuppy is running.");
       info(`HTTP: http://localhost:${config.httpPort}`);

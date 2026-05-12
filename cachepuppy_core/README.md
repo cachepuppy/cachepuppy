@@ -14,7 +14,6 @@ With `mix phx.server`, the app runs on `http://localhost:4000`. With Docker Comp
 ## HTTP endpoint
 
 - `GET /healthz` is liveness-only and returns `200` when the node process is up.
-- `GET /readyz` is quorum-aware readiness and returns `200` only when cluster quorum is met.
 - `GET /api/health` returns status plus cluster visibility (`node`, `cluster_size`, `connected_nodes`).
 
 ## JSON cache API (`/api/cache/*`)
@@ -43,18 +42,6 @@ Base path: **`/api/server/v1`**. The `:topic` path segment is the **logical** ro
 | `GET` | `/topics/:topic/presence` | Presence snapshot for the room. Response: `%{"client_count" => integer, "presence" => map}` (same underlying Presence topic as `events:<topic>` joins). |
 
 These handlers reuse [`TopicManager`](lib/cachepuppy_core/topic_manager.ex) and the same PubSub topic as [`EventChannel`](lib/cachepuppy_core_web/channels/event_channel.ex), via [`TopicRoom`](lib/cachepuppy_core_web/topic_room.ex), so behavior stays aligned with the browser websocket contract.
-
-Required runtime env for quorum:
-
-- `TOTAL_NODES` (required, positive integer)
-- `QUORUM_POLL_INTERVAL_MS` (optional, default `2000`)
-- `QUORUM_GRACE_MS` (optional, default `20000`)
-
-Quorum behavior:
-
-- If quorum is lost, the node immediately blocks snapshot/checkpoint finalization and enters a grace period.
-- WAL appends continue during grace.
-- If quorum is not restored before grace expires, the node hard-stops.
 
 ## Websocket endpoint
 
@@ -155,7 +142,7 @@ For local debugging or when you do not need a multi-node cluster, run one Phoeni
 - From the repository root: `make compose-single-up` (foreground with build) or `make compose-single-down`
 - From `cachepuppy_core/`: `docker compose -f docker-compose.single.yml up -d --build`
 
-This stack sets `TOTAL_NODES=1`, uses a dedicated volume (`cachepuppy_cache_shards_data_single`), and keeps the `cachepuppy-core` network alias for libcluster DNS. WebSockets: `ws://127.0.0.1:4000/socket/websocket`.
+This stack uses a dedicated volume (`cachepuppy_cache_shards_data_single`) and keeps the `cachepuppy-core` network alias for libcluster DNS. WebSockets: `ws://127.0.0.1:4000/socket/websocket`.
 
 ## Local libcluster multi-node testing
 
@@ -168,7 +155,7 @@ This project supports local 3-node clustering via `libcluster` and Docker Compos
 
 `nginx` waits until all three Phoenix replicas pass their HTTP healthchecks before starting, so Docker DNS can resolve `app1`–`app3` and nginx does not fail with `host not found in upstream`.
 
-`app1`–`app3` share the same image tag (`cachepuppy_core_app:latest`) so one `docker compose build` / `up --build` updates every replica (healthchecks use quorum-aware `/readyz`).
+`app1`–`app3` share the same image tag (`cachepuppy_core_app:latest`) so one `docker compose build` / `up --build` updates every replica.
 
 Check node visibility:
 
