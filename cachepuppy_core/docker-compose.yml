@@ -29,9 +29,6 @@ services:
       RELEASE_DISTRIBUTION: "name"
       LIBCLUSTER_DNS_QUERY: "cachepuppy-core"
       LIBCLUSTER_NODE_BASENAME: "cachepuppy_core"
-      TOTAL_NODES: "3"
-      QUORUM_POLL_INTERVAL_MS: "2000"
-      QUORUM_GRACE_MS: "20000"
     command: >
       /bin/sh -lc 'export RELEASE_NODE="cachepuppy_core@$(hostname -i | awk "{print \$1}")";
       exec bin/cachepuppy_core start'
@@ -44,7 +41,7 @@ services:
         aliases:
           - cachepuppy-core
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/readyz"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/healthz"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -64,9 +61,6 @@ services:
       RELEASE_DISTRIBUTION: "name"
       LIBCLUSTER_DNS_QUERY: "cachepuppy-core"
       LIBCLUSTER_NODE_BASENAME: "cachepuppy_core"
-      TOTAL_NODES: "3"
-      QUORUM_POLL_INTERVAL_MS: "2000"
-      QUORUM_GRACE_MS: "20000"
     command: >
       /bin/sh -lc 'export RELEASE_NODE="cachepuppy_core@$(hostname -i | awk "{print \$1}")";
       exec bin/cachepuppy_core start'
@@ -79,7 +73,7 @@ services:
         aliases:
           - cachepuppy-core
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/readyz"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/healthz"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -99,9 +93,6 @@ services:
       RELEASE_DISTRIBUTION: "name"
       LIBCLUSTER_DNS_QUERY: "cachepuppy-core"
       LIBCLUSTER_NODE_BASENAME: "cachepuppy_core"
-      TOTAL_NODES: "3"
-      QUORUM_POLL_INTERVAL_MS: "2000"
-      QUORUM_GRACE_MS: "20000"
     command: >
       /bin/sh -lc 'export RELEASE_NODE="cachepuppy_core@$(hostname -i | awk "{print \$1}")";
       exec bin/cachepuppy_core start'
@@ -114,7 +105,7 @@ services:
         aliases:
           - cachepuppy-core
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/readyz"]
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:4000/healthz"]
       interval: 5s
       timeout: 3s
       retries: 12

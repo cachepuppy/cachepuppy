@@ -64,10 +64,10 @@ export function registerUpdateCommand(program: Command): void {
         await composeUp(paths, updated, { forceRecreate: true });
         upSpinner.succeed("Services recreated");
 
-        const readyUrl = `http://localhost:${updated.httpPort}/readyz`;
-        const healthSpinner = ora("Waiting for readiness").start();
-        await waitForReady(readyUrl, 90);
-        healthSpinner.succeed("Server is ready");
+        const healthUrl = `http://localhost:${updated.httpPort}/healthz`;
+        const healthSpinner = ora("Waiting for health").start();
+        await waitForReady(healthUrl, 90);
+        healthSpinner.succeed("Server is healthy");
       }
 
       success(`Updated to ${imageRepo}:${nextTag}`);

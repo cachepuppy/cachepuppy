@@ -1,20 +1,14 @@
 ---
 title: Operations and cluster health
-description: Health checks, readiness, and quorum-related environment variables.
+description: Health checks and cluster visibility.
 ---
 
 ## HTTP health endpoints
 
 - **`GET /healthz`** — process liveness only.
-- **`GET /readyz`** — quorum-aware readiness; returns success only when cluster quorum expectations are met.
 - **`GET /api/health`** — JSON payload describing the local node and connected cluster members.
 
-## Quorum environment variables
+## Cluster visibility
 
-The Elixir README documents the required and optional variables:
-
-- **`TOTAL_NODES`** — required positive integer describing how many nodes participate in quorum math.
-- **`QUORUM_POLL_INTERVAL_MS`** — optional polling interval (defaults to `2000`).
-- **`QUORUM_GRACE_MS`** — optional grace window (defaults to `20000`) before a hard stop when quorum is lost.
-
-During development, `TOTAL_NODES=1` is usually enough to keep readiness checks intuitive on a laptop.
+Use `/api/health` to confirm which BEAM node handled a request and which peers
+it can currently see through libcluster.

@@ -35,7 +35,6 @@ description: JSON APIs, admin topic routes, and process-level health checks.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/healthz` | Liveness — process is up. |
-| `GET` | `/readyz` | Readiness — quorum satisfied. |
 
 <Callout type="info" title="Implementation pointer">
   See `cachepuppy_core/lib/cachepuppy_core_web/router.ex` for the authoritative route table wired today.
