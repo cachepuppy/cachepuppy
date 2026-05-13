@@ -39,15 +39,15 @@ The black box is fully open. Deploy it on as many nodes as you need — it scale
 
 Run the NextJs Example App that connects to the CachePuppy Server and see CachePuppy in action
 
-- First clone the repo into a directory
-- cd into the directory
-- Run the CachePuppy server by running the command (requires docker to be installed and running)
+- First clone the repo into a directory 🗂️
+- cd into the directory ➡️
+- Run the CachePuppy server by running the command (requires docker to be installed and running) ⭐️
 
 ```bash
 make cp-up
 ```
 
-- Now run the Example App (FYI this is located in example/javascript/unified in case you want to inspect the code)
+- Now run the Example App (FYI this is located in example/javascript/unified in case you want to inspect the code) ⭐️
 
 ```bash
 make cp-demo
@@ -201,8 +201,9 @@ You deploy nodes. CachePuppy does the rest.
 
 CachePuppy ships with SDKs for all major languages. The server is the open-source black box — the SDKs are just thin clients.
 
-| Language                | Install                                          | npm                                                                                       |
-| ----------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------- |
-| JavaScript / TypeScript | `npm install @cachepuppy/core @cachepuppy/react` | [@cachepuppy/core](https://www.npmjs.com/package/@cachepuppy/core) · [@cachepuppy/react](https://www.npmjs.com/package/@cachepuppy/react) |
+| Package             | Install                         | npm                                                                  |
+| ------------------- | ------------------------------- | -------------------------------------------------------------------- |
+| `@cachepuppy/core`  | `npm install @cachepuppy/core`  | [@cachepuppy/core](https://www.npmjs.com/package/@cachepuppy/core)   |
+| `@cachepuppy/react` | `npm install @cachepuppy/react` | [@cachepuppy/react](https://www.npmjs.com/package/@cachepuppy/react) |
 
 ---
