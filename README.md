@@ -56,7 +56,7 @@ make cp-demo
 Access the Next.js Example App on
 <http://localhost:3000>.
 
-- **Example App Code** — Inspect the example app code under [`example/javascript_demo/unified/`](example/javascript_demo/unified/)
+- Inspect the example app code under [`example/javascript_demo/unified/`](example/javascript_demo/unified/)
 
 ## Features
 
