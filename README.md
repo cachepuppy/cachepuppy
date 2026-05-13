@@ -130,7 +130,7 @@ await cachepuppy.update("table", "key", { field1: "valueB" });
 
 **Example Workflow — “Support note → classify → CRM task”:** CachePuppy runs **two** HTTP steps in order. Step 1 POSTs the raw note to your classifier; when that succeeds, step 2 POSTs to your CRM connector to open a follow-up task.
 
-**Server (Node, serverless handler, etc.)** — create the run, register both outbound HTTP hops so the second waits on the first, then fetch a snapshot you can return to the browser (IDs, friendly name, step rows).
+**Server (Node, serverless handler, etc.)** — create the run, register the steps, CachePuppy takes care of the orchestration
 
 ```ts
 import { cachePuppyAdmin } from "@cachepuppy/core";
@@ -201,8 +201,8 @@ You deploy nodes. CachePuppy does the rest.
 
 CachePuppy ships with SDKs for all major languages. The server is the open-source black box — the SDKs are just thin clients.
 
-| Language                | Install                                          |
-| ----------------------- | ------------------------------------------------ |
-| JavaScript / TypeScript | `npm install @cachepuppy/core @cachepuppy/react` |
+| Language                | Install                                          | npm                                                                                       |
+| ----------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| JavaScript / TypeScript | `npm install @cachepuppy/core @cachepuppy/react` | [@cachepuppy/core](https://www.npmjs.com/package/@cachepuppy/core) · [@cachepuppy/react](https://www.npmjs.com/package/@cachepuppy/react) |
 
 ---
