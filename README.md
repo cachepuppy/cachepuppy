@@ -47,14 +47,14 @@ Run the NextJs Example App that connects to the CachePuppy Server and see CacheP
 make cp-up
 ```
 
-- Now run the Example App (FYI this is located in example/javascript/unified in case you want to inspect the code) ⭐️
+- Now run the Example App ⭐️
 
 ```bash
 make cp-demo
 ```
 
-Access the Next.js Example App on
-<http://localhost:3000>.
+- Access the Next.js Example App on
+  <http://localhost:3000>
 
 - Inspect the example app code under [`example/javascript_demo/unified/`](example/javascript_demo/unified/)
 
