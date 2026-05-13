@@ -117,33 +117,32 @@ await cachepuppy.update("table", "key", { field1: "valueB" });
 
 ### 🔄 Feature 3 — Workflow orchestration (SDK + server)
 
-> Durable HTTP-step workflows run inside the CachePuppy cluster: each step is a `GET`/`POST`/… call the orchestrator makes to **your** URLs, with retries, parallel branches, merge steps, and status streamed over Phoenix.
+> Think of it as a **checklist your server runs for you**: CachePuppy calls your own HTTPS endpoints in the right order, remembers what finished or failed, can split work across several calls and bring it back together, and keeps browsers or dashboards updated over the same realtime channel as the rest of the product.
 
-- **`createWorkflow(name)`** — start a new run and receive its `workflowId`.
-- **`getWorkflow(workflowId)`** — read the current graph: step rows, parallel groups, and overall status.
-- **`addWorkflowStep(workflowId, step, options?)`** — queue one HTTP step
-- **`addWorkflowParallel(workflowId, steps, mergeStep, options?)`** — fan out several HTTP steps, then run a merge step when branches complete.
-- **`mergeWorkflowParallelNow(workflowId, mergeStepId)`** — force-merge an open parallel group when your own logic says branches are ready.
-- **`retryFailedWorkflowSteps(workflowId)`** — reset every failed step and let the orchestrator try again.
-- **`endWorkflow(workflowId)`** — mark the run finished on the server.
-- **`subscribeWorkflow(workflowId, handler)`** — on `CachePuppyClient`, receive every `workflow:<id>` envelope (graph updates, step events, etc.).
-- **`onWorkflowStatus(workflowId, handler)`** — same client helper filtered to `workflow_status` pushes for lightweight UI state.
+- **Start workflow** — open a run and point at the first API CachePuppy should call.
+- **Add a step** — chain on as many serial hops as you need, one after another.
+- **Add parallel work** — fan out to several APIs at once (fixed branches or data-driven).
+- **Add a merge step** — one final hop that gathers parallel results.
+- **Trigger the merge** — tell CachePuppy when to collapse the branches (including early merges when your rules allow it).
+- **Retry** — replay failed hops or bulk-retry without rebuilding the graph by hand.
 
 **Use it for:** AI or human-in-the-loop pipelines, ordered webhooks, fan-out / merge jobs, and anything a hosted workflow product would do — except the engine runs on your CachePuppy cluster.
 
-**Scenario — “Support note → classify → CRM task”:** CachePuppy runs **two** HTTP steps in order. Step 1 POSTs the raw note to your classifier; when that returns 200, step 2 POSTs to your CRM connector to open a follow-up task. The snippet queues both edges up front (`invokingStepId` ties step 2 after step 1), then reads the graph and attaches a status listener.
+**Example Workflow — “Support note → classify → CRM task”:** CachePuppy runs **two** HTTP steps in order. Step 1 POSTs the raw note to your classifier; when that succeeds, step 2 POSTs to your CRM connector to open a follow-up task.
+
+**Server (Node, serverless handler, etc.)** — create the run, register both outbound HTTP hops so the second waits on the first, then fetch a snapshot you can return to the browser (IDs, friendly name, step rows).
 
 ```ts
-import { createAdminClient, createClient } from "@cachepuppy/core";
+import { cachePuppyAdmin } from "@cachepuppy/core";
 
 const base = "https://api.mycompany.com/workflow-handlers";
-const socketUrl = "ws://127.0.0.1:4000/socket/websocket";
 
-const admin = createAdminClient({ url: socketUrl });
-const { workflowId } = await admin.createWorkflow("support-note-ingest");
+const { workflowId } = await cachePuppyAdmin.createWorkflow(
+  "support-note-ingest",
+);
 
-// Step 1 — CachePuppy invokes this POST first.
-const classify = await admin.addWorkflowStep(workflowId, {
+// Step 1 — CachePuppy calls your classifier first.
+const classify = await cachePuppyAdmin.addWorkflowStep(workflowId, {
   stepName: "classify_intent",
   method: "post",
   url: `${base}/classify`,
@@ -151,8 +150,8 @@ const classify = await admin.addWorkflowStep(workflowId, {
   successCodes: [200],
 });
 
-// Step 2 — runs only after step 1 succeeds (orchestrator follows invokingStepId).
-await admin.addWorkflowStep(
+// Step 2 — runs only after step 1 succeeds.
+await cachePuppyAdmin.addWorkflowStep(
   workflowId,
   {
     stepName: "open_crm_task",
@@ -164,14 +163,22 @@ await admin.addWorkflowStep(
   { invokingStepId: classify.stepId },
 );
 
-// Inspect the queued graph (step names, statuses, parent links) from any backend.
-const graph = await admin.getWorkflow(workflowId);
+const graph = await cachePuppyAdmin.getWorkflow(workflowId);
+// e.g. return { workflowId, name: graph.name } to the client.
+```
 
-// Browser or BFF with a socket: stream coarse workflow status as HTTP steps complete.
-const client = createClient({ url: socketUrl });
+**Client (browser or any environment that may open a websocket)** — reuse the `workflowId` from your server response, connect once, and subscribe to coarse status transitions while CachePuppy executes the HTTP hops above.
+
+```ts
+import { createClient } from "@cachepuppy/core";
+
+const workflowId = "…"; // value returned from your server/API
+
+const client = createClient({ url: "ws://127.0.0.1:4000/socket/websocket" });
 await client.connect();
+
 await client.onWorkflowStatus(workflowId, ({ status }) => {
-  console.log(`${graph.name} (${workflowId}): ${status}`);
+  console.log(`${workflowId}: ${status}`);
 });
 ```
 
