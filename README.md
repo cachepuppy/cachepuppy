@@ -6,14 +6,14 @@
 
 **The open-source infrastructure layer you didn't know you were missing.**
 
-Realtime WebSockets · Distributed Caching · Workflow Orchestration — all in one deployable, scalable Elixir beast.
+Realtime WebSockets · Distributed Caching · Workflow Orchestration — all in one deployable, scalable server.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 [![Built with Elixir](https://img.shields.io/badge/Built%20with-Elixir-6e4a7e.svg)](https://elixir-lang.org/)
 [![Powered by Phoenix](https://img.shields.io/badge/Powered%20by-Phoenix-orange.svg)](https://www.phoenixframework.org/)
 [![Docs](https://img.shields.io/badge/Docs-docs.cachepuppy.com-green)](https://docs.cachepuppy.com)
 
-[Website](https://cachepuppy.com) · [Documentation](https://docs.cachepuppy.com) · [SDKs](#sdks) · [Self-host](#self-hosting)
+[Website](https://cachepuppy.com) · [Documentation](https://docs.cachepuppy.com) · [SDKs](#sdks) · [Quickstart](#quickstart)
 
 </div>
 
@@ -21,19 +21,42 @@ Realtime WebSockets · Distributed Caching · Workflow Orchestration — all in 
 
 ## What is CachePuppy?
 
-Most apps end up duct-taping together Redis, a WebSocket server, a job queue, and a workflow engine — each with its own ops burden, failure modes, and billing.
+Most apps end up duct-taping together a cache like Redis, a WebSocket server, a job queue, and a workflow engine — each with its own ops burden, failure modes, and billing.
 
 **CachePuppy replaces all of that.**
 
 It's an open-source, self-hostable infrastructure layer built on Elixir and Phoenix that gives you:
 
 - ⚡ **Realtime, stateful WebSockets** — pub/sub with per-topic state and webhook sync
-- 🗄️ **Distributed ETS-backed key-value store** — Redis-like, sharded, durable, and fast
+- 🗄️ **Distributed ETS-backed key-value store** — Redis-inspired, sharded, durable, and fast
 - 🔄 **Workflow orchestration** — AI workflows, state machines, durable execution
 
-The black box is fully open. Deploy it on as many nodes as you need — it scales horizontally out of the box.
+The black box is fully open. Deploy it on as many nodes as you need — it scales ✅ horizontally out of the box and behaves as one single machine.
 
 ---
+
+## Quickstart
+
+Run the NextJs Example App that connects to the CachePuppy Server and see CachePuppy in action
+
+- First clone the repo into a directory
+- cd into the directory
+- Run the CachePuppy server by running the command (requires docker to be installed and running)
+
+```bash
+make cp-up
+```
+
+- Now run the Example App (FYI this is located in example/javascript/unified in case you want to inspect the code)
+
+```bash
+make cp-demo
+```
+
+Access the Next.js Example App on
+<http://localhost:3000>.
+
+- **Example App Code** — Inspect the example app code under [`example/javascript_demo/unified/`](example/javascript_demo/unified/)
 
 ## Features
 
@@ -64,62 +87,91 @@ await cachepuppy.flush("room:42");
 
 ---
 
-### 🗄️ Feature 2 — Distributed Redis-like ETS Cache
+### 🗄️ Feature 2 — Distributed Redis-inspired ETS Cache
 
-> A Redis replacement that lives inside your Elixir cluster — with sharding, durability, and parallelism baked in.
+> A Redis inspired cache that lives inside your Elixir cluster — with sharding, durability, and parallelism baked in.
 
 - **Sharded & distributed** — tables are split across nodes; shards are managed by [Horde](https://github.com/derekkraan/horde) so they survive node failure and rebalance automatically
 - **Durable shard processes** — each shard maintains its own WAL (Write-Ahead Log) and snapshots for crash recovery
 - **Consistent writes via process queuing** — `SET` operations are serialized through the shard process, no race conditions
 - **Parallel reads via ETS** — `GET` operations bypass the process entirely and read directly from the node's ETS table for maximum throughput
 - **TTL support** — set expiry on any key; hot key optimizations built in
-- **Full key lifecycle** — `SET`, `GET`, `DELETE` all exposed via API
+- **Full key lifecycle** — `SET`, `GET`, `UPDATE`, `DELETE` all exposed via API
 - **Smart routing** — key + table are hashed to determine the shard ID, then the owning node is resolved via Horde's registry
 
-```bash
-# Via HTTP API
-POST /cache/set   { "table": "sessions", "key": "user:99", "value": "...", "ttl": 3600 }
-GET  /cache/get?table=sessions&key=user:99
-DELETE /cache/delete?table=sessions&key=user:99
+```js
+// Set data to the cache
+await cachepuppy.set("table", "key", { field1: "valueA" });
+
+// Set data to the cache
+await cachepuppy.get("table", "key");
+
+// Set data to the cache
+await cachepuppy.delete("table", "key");
+
+// Set data to the cache
+await cachepuppy.update("table", "key", { field1: "valueB" });
 ```
 
 ---
 
-### 🔄 Feature 3 — Workflow Orchestration
+### 🔄 Feature 3 — Workflow orchestration (SDK + server)
 
-> Durable, stateful execution for AI pipelines and business workflows — without changing how you write code.
+> Durable HTTP-step workflows run inside the CachePuppy cluster: each step is a `GET`/`POST`/… call the orchestrator makes to **your** URLs, with retries, parallel branches, merge steps, and status streamed over Phoenix.
 
-- **AI Workflows** — chain LLM calls, tool use, and side effects with guaranteed execution
-- **State Machines** — model complex business logic as explicit states and transitions
-- **Durable state** — workflow state survives crashes, restarts, and deploys
-- **Zero framework lock-in** — write your logic as plain API endpoints; CachePuppy handles the orchestration around them
+- **`createWorkflow(name)`** — start a new run and receive its `workflowId`.
+- **`getWorkflow(workflowId)`** — read the current graph: step rows, parallel groups, and overall status.
+- **`addWorkflowStep(workflowId, step, options?)`** — queue one HTTP step
+- **`addWorkflowParallel(workflowId, steps, mergeStep, options?)`** — fan out several HTTP steps, then run a merge step when branches complete.
+- **`mergeWorkflowParallelNow(workflowId, mergeStepId)`** — force-merge an open parallel group when your own logic says branches are ready.
+- **`retryFailedWorkflowSteps(workflowId)`** — reset every failed step and let the orchestrator try again.
+- **`endWorkflow(workflowId)`** — mark the run finished on the server.
+- **`subscribeWorkflow(workflowId, handler)`** — on `CachePuppyClient`, receive every `workflow:<id>` envelope (graph updates, step events, etc.).
+- **`onWorkflowStatus(workflowId, handler)`** — same client helper filtered to `workflow_status` pushes for lightweight UI state.
 
-Think Temporal or Trigger.dev, but open-source and co-located with your cache and WebSocket layer.
+**Use it for:** AI or human-in-the-loop pipelines, ordered webhooks, fan-out / merge jobs, and anything a hosted workflow product would do — except the engine runs on your CachePuppy cluster.
 
-```js
+**Scenario — “Support note → classify → CRM task”:** CachePuppy runs **two** HTTP steps in order. Step 1 POSTs the raw note to your classifier; when that returns 200, step 2 POSTs to your CRM connector to open a follow-up task. The snippet queues both edges up front (`invokingStepId` ties step 2 after step 1), then reads the graph and attaches a status listener.
+
+```ts
 import { createAdminClient, createClient } from "@cachepuppy/core";
 
-// Backend/admin orchestration over HTTP
-const admin = createAdminClient({ url: "ws://localhost:4000/socket/websocket" });
-const workflow = await admin.createWorkflow("onboard-user");
+const base = "https://api.mycompany.com/workflow-handlers";
+const socketUrl = "ws://127.0.0.1:4000/socket/websocket";
 
-await admin.addWorkflowStep(workflow.workflowId, {
-  stepName: "create-account",
-  url: "https://myapp.internal/api/users/create",
+const admin = createAdminClient({ url: socketUrl });
+const { workflowId } = await admin.createWorkflow("support-note-ingest");
+
+// Step 1 — CachePuppy invokes this POST first.
+const classify = await admin.addWorkflowStep(workflowId, {
+  stepName: "classify_intent",
   method: "post",
+  url: `${base}/classify`,
+  data: { note: "Customer wants a refund on order #4811", channel: "email" },
+  successCodes: [200],
 });
 
-await admin.addWorkflowStep(workflow.workflowId, {
-  stepName: "send-welcome",
-  url: "https://myapp.internal/api/emails/welcome",
-  method: "post",
-});
+// Step 2 — runs only after step 1 succeeds (orchestrator follows invokingStepId).
+await admin.addWorkflowStep(
+  workflowId,
+  {
+    stepName: "open_crm_task",
+    method: "post",
+    url: `${base}/crm/create-task`,
+    data: { title: "Refund follow-up", relatedOrder: "4811" },
+    successCodes: [201],
+  },
+  { invokingStepId: classify.stepId },
+);
 
-// Client-side realtime status subscription
-const client = createClient({ url: "ws://localhost:4000/socket/websocket" });
+// Inspect the queued graph (step names, statuses, parent links) from any backend.
+const graph = await admin.getWorkflow(workflowId);
+
+// Browser or BFF with a socket: stream coarse workflow status as HTTP steps complete.
+const client = createClient({ url: socketUrl });
 await client.connect();
-await client.onWorkflowStatus(workflow.workflowId, ({ status }) => {
-  console.log("Workflow status:", status);
+await client.onWorkflowStatus(workflowId, ({ status }) => {
+  console.log(`${graph.name} (${workflowId}): ${status}`);
 });
 ```
 
@@ -142,38 +194,8 @@ You deploy nodes. CachePuppy does the rest.
 
 CachePuppy ships with SDKs for all major languages. The server is the open-source black box — the SDKs are just thin clients.
 
-| Language                | Install                               |
-| ----------------------- | ------------------------------------- |
+| Language                | Install                                          |
+| ----------------------- | ------------------------------------------------ |
 | JavaScript / TypeScript | `npm install @cachepuppy/core @cachepuppy/react` |
-| Python                  | `pip install cachepuppy`              |
-| Go                      | `go get github.com/cachepuppy/go-sdk` |
-| Ruby                    | `gem install cachepuppy`              |
-| Elixir                  | `{:cachepuppy, "~> 1.0"}`             |
 
 ---
-
-## Self-hosting
-
-CachePuppy is fully open-source. Run it anywhere.
-
-```bash
-# Clone the repo
-git clone https://github.com/cachepuppy/cachepuppy
-cd cachepuppy
-
-# Configure
-cp config/example.env .env
-# edit .env with your settings
-
-# Run with Docker
-docker compose up
-
-# Or deploy to a cluster
-docker compose -f docker-compose.cluster.yml up --scale cachepuppy=3
-```
-
-See the [self-hosting guide](https://docs.cachepuppy.com/self-hosting) for production configuration, clustering, persistent storage, and load balancing.
-
----
-
-## Architecture Overview
