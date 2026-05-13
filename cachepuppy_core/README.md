@@ -139,7 +139,7 @@ Join Phoenix topic `session` (fixed string) for connection-scoped state that doe
 
 For local debugging or when you do not need a multi-node cluster, run one Phoenix container on **host port 4000** (no nginx):
 
-- From the repository root: `make compose-single-up` (foreground with build) or `make compose-single-down`
+- From the repository root: `make cp-single-up` (foreground with build) or `make cp-single-down`
 - From `cachepuppy_core/`: `docker compose -f docker-compose.single.yml up -d --build`
 
 This stack uses a dedicated volume (`cachepuppy_cache_shards_data_single`) and keeps the `cachepuppy-core` network alias for libcluster DNS. WebSockets: `ws://127.0.0.1:4000/socket/websocket`.
@@ -174,7 +174,7 @@ Expected steady-state: each response reports `cluster_size: 3`. Via nginx, `node
 From the repository root, with the stack running:
 
 ```bash
-make demo-unified
+make cp-demo
 ```
 
 This builds the `@cachepuppy/core` and `@cachepuppy/react` SDKs, installs the
