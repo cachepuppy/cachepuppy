@@ -8,7 +8,8 @@ spec:
     apiVersion: apps/v1
     kind: StatefulSet
     name: cachepuppy
-  minReplicas: 3
+  # minReplicas matches the managed-service minimum node count (1 pod per node).
+  minReplicas: 1
   maxReplicas: 10
   metrics:
     - type: Resource

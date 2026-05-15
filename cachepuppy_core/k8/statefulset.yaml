@@ -5,7 +5,8 @@ metadata:
   namespace: cachepuppy
 spec:
   serviceName: cachepuppy-headless
-  replicas: 3
+  # Managed deployments target one Cachepuppy pod per cluster node (min 1 node).
+  replicas: 1
   selector:
     matchLabels:
       app: cachepuppy-core
@@ -14,6 +15,21 @@ spec:
       labels:
         app: cachepuppy-core
     spec:
+      # At most one pod per node; scale replica count with the node pool (HPA min/max).
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: cachepuppy-core
+              topologyKey: kubernetes.io/hostname
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: cachepuppy-core
       containers:
         - name: cachepuppy
           image: cachepuppy/cachepuppy:latest
@@ -48,13 +64,13 @@ spec:
             - name: SECRET_KEY_BASE
               valueFrom:
                 secretKeyRef:
-                  name: cachepuppy-core-secrets
+                  name: cachepuppy-secrets
                   key: secret-key-base
 
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: cachepuppy-core-secrets
+                  name: cachepuppy-secrets
                   key: jwt-secret
 
           livenessProbe:
