@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cachepuppy-headless
+  namespace: cachepuppy
+spec:
+  clusterIp: None
+  publishNotReadyAddress: true
+  selector:
+    app: cachepuppy-core
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http
+    - name: epmd
+      port: 4369
+      targetPort: epmd
+    - name: dist
+      port: 9100
+      targetPort: dist
