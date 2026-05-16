@@ -1,13 +1,15 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: cachepuppy-headless
-  namespace: cachepuppy
+  name: {{ include "cachepuppy.headlessServiceName" . }}
+  namespace: {{ include "cachepuppy.namespace" . }}
+  labels:
+    {{- include "cachepuppy.labels" . | nindent 4 }}
 spec:
   clusterIP: None
   publishNotReadyAddresses: true
   selector:
-    app: cachepuppy-core
+    {{- include "cachepuppy.selectorLabels" . | nindent 4 }}
   ports:
     - name: http
       port: 4000
