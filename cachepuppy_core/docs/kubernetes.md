@@ -239,3 +239,33 @@ Configure idle/read timeouts high enough for long-lived WebSocket sessions.
 
 A Deployment can work if pod IP based node names are acceptable. Use a
 StatefulSet if you want stable pod identities instead.
+
+## Helm Chart (managed multi-tenant installs)
+
+The chart at `cachepuppy_core/helm/cachepuppy` parameterizes the manifests in
+`cachepuppy_core/k8/`. Each user signup should install one release into a
+dedicated namespace with tenant-specific values.
+
+Example (see `values-signup.example.yaml`):
+
+```bash
+helm upgrade --install cachepuppy ./cachepuppy_core/helm/cachepuppy \
+  --namespace cachepuppy-usr_01h2abc \
+  --create-namespace \
+  -f ./generated/usr_01h2abc-values.yaml
+```
+
+Control-plane responsibilities per tenant:
+
+- Set `tenant.id` and `ingress.host` / `config.phxHost` from the user's domain.
+- Generate `secrets.*` (or pre-create `secrets.existingSecret` in the namespace).
+- Set `autoscaling.minReplicas` / `maxReplicas` from the user's plan.
+- Enable `persistence` when shared RWX storage is provisioned.
+
+Render locally without installing:
+
+```bash
+helm template cachepuppy ./cachepuppy_core/helm/cachepuppy \
+  -f ./cachepuppy_core/helm/cachepuppy/values-signup.example.yaml \
+  --namespace cachepuppy-usr_01h2abc
+```

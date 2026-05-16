@@ -1,0 +1,89 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cachepuppy
+  namespace: cachepuppy
+spec:
+  serviceName: cachepuppy-headless
+  # Managed deployments target one Cachepuppy pod per cluster node (min 1 node).
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cachepuppy-core
+  template:
+    metadata:
+      labels:
+        app: cachepuppy-core
+    spec:
+      # At most one pod per node; scale replica count with the node pool (HPA min/max).
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: cachepuppy-core
+              topologyKey: kubernetes.io/hostname
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app: cachepuppy-core
+      containers:
+        - name: cachepuppy
+          image: cachepuppy/cachepuppy:latest
+
+          ports:
+            - name: http
+              containerPort: 4000
+            - name: epmd
+              containerPort: 4369
+            - name: dist
+              containerPort: 9100
+
+          envFrom:
+            - configMapRef:
+                name: cachepuppy-config
+
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+
+            - name: RELEASE_NODE
+              value: "cachepuppy_core@$(POD_IP)"
+
+            - name: RELEASE_COOKIE
+              valueFrom:
+                secretKeyRef:
+                  name: cachepuppy-secrets
+                  key: release-cookie
+
+            - name: SECRET_KEY_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: cachepuppy-secrets
+                  key: secret-key-base
+
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: cachepuppy-secrets
+                  key: jwt-secret
+
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12

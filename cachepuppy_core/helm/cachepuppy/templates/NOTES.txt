@@ -1,0 +1,15 @@
+Cachepuppy has been deployed for tenant {{ .Values.tenant.id }}.
+
+Namespace:  {{ include "cachepuppy.namespace" . }}
+Release:    {{ .Release.Name }}
+{{- if .Values.ingress.enabled }}
+
+Ingress host: {{ .Values.ingress.host }}
+{{- end }}
+
+Health check (in-cluster):
+  kubectl -n {{ include "cachepuppy.namespace" . }} port-forward svc/{{ include "cachepuppy.publicServiceName" . }} 8080:80
+  curl http://127.0.0.1:8080/healthz
+
+Diagnostics:
+  curl https://{{ .Values.ingress.host }}/api/health

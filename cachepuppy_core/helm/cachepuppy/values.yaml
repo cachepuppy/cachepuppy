@@ -1,0 +1,89 @@
+# Default values for cachepuppy.
+# Per-tenant installs override these (see values-signup.example.yaml).
+
+# Tenant metadata (labels/annotations). The Kubernetes namespace is set at install
+# time via `helm install --namespace <tenant-ns> --create-namespace`.
+tenant:
+  id: ""
+
+nameOverride: ""
+fullnameOverride: ""
+
+# When true, render a Namespace resource (name = .Release.Namespace).
+# Prefer `helm install --create-namespace` and leave this false.
+namespace:
+  create: false
+
+image:
+  repository: cachepuppy/cachepuppy
+  tag: latest
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# Plain-text secret values (chart base64-encodes them). For production, prefer
+# `secrets.existingSecret` populated by your control plane before install.
+secrets:
+  existingSecret: ""
+  releaseCookie: ""
+  secretKeyBase: ""
+  jwtSecret: ""
+
+config:
+  phxHost: cachepuppy.example.com
+  cachepuppyRuntime: kubernetes
+  releaseDistribution: name
+  libclusterNodeBasename: cachepuppy_core
+  libclusterK8sService: cachepuppy-headless
+  libclusterPollingIntervalMs: "5000"
+  erlAflags: "-kernel inet_dist_listen_min 9100 inet_dist_listen_max 9100"
+  authEnabled: "true"
+  jwtIdentityClaim: sub
+  cacheSnapshotIntervalMs: "300000"
+  # cacheStorageDir: "/app/tmp/cache_shards"
+
+statefulset:
+  replicas: 1
+  podAntiAffinity: true
+  topologySpread: true
+
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+ingress:
+  enabled: true
+  className: ""
+  host: cachepuppy.example.com
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+  tls:
+    enabled: true
+    secretName: cachepuppy-tls
+
+# Shared RWX volume for shard persistence (wired when enabled).
+persistence:
+  enabled: false
+  storageClassName: ""
+  size: 10Gi
+  mountPath: /app/tmp/cache_shards
+
+serviceAccount:
+  create: false
+  name: ""
+
+resources: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+commonLabels: {}
+commonAnnotations: {}

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cachepuppy.publicServiceName" . }}
+  namespace: {{ include "cachepuppy.namespace" . }}
+  labels:
+    {{- include "cachepuppy.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- include "cachepuppy.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
